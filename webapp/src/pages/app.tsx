@@ -2,14 +2,18 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setTokenGetter } from '../api';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import LoginPage from './LoginPage';
-import OrganisationStatusPage from './OrganisationStatusPage';
+import OrganisationPage from './OrganisationPage';
+import OrganisationListPage from './OrganisationListPage';
 import TracesListPage from './TracesListPage';
 import TraceDetailsPage from './TraceDetailsPage';
 import DatasetListPage from './DatasetListPage';
 import DatasetDetailsPage from './DatasetDetailsPage';
+import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
+import Layout from './Layout';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +24,20 @@ const queryClient = new QueryClient({
   },
 });
 
-const auth0Domain = process.env.REACT_APP_AUTH0_DOMAIN || '';
-const auth0ClientId = process.env.REACT_APP_AUTH0_CLIENT_ID || '';
-const auth0Audience = process.env.REACT_APP_AUTH0_AUDIENCE || '';
+const auth0Domain = import.meta.env.VITE_AUTH0_DOMAIN || '';
+const auth0ClientId = import.meta.env.VITE_AUTH0_CLIENT_ID || '';
+const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || '';
+
+// Component to set up Auth0 token getter for API calls
+const Auth0TokenSetup: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { getAccessTokenSilently } = useAuth0();
+
+  React.useEffect(() => {
+    setTokenGetter(() => getAccessTokenSilently());
+  }, [getAccessTokenSilently]);
+
+  return <>{children}</>;
+};
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isLoading } = useAuth0();
@@ -41,18 +56,26 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/" replace />;
   }
 
-  return <>{children}</>;
+  return <Layout>{children}</Layout>;
 };
 
 const AppRoutes: React.FC = () => {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
+	  <Route
+        path="/organisation"
+        element={
+          <ProtectedRoute>
+            <OrganisationListPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/organisation/:organisationId"
         element={
           <ProtectedRoute>
-            <OrganisationStatusPage />
+            <OrganisationPage />
           </ProtectedRoute>
         }
       />
@@ -89,6 +112,14 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
+        path="/organisation/:organisationId/experiments"
+        element={
+          <ProtectedRoute>
+            <ExperimentsListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/organisation/:organisationId/dataset/:datasetId/experiment/:experimentId"
         element={
           <ProtectedRoute>
@@ -107,7 +138,7 @@ const App: React.FC = () => {
       <div className="container mt-5">
         <div className="alert alert-danger">
           <h4>Configuration Error</h4>
-          <p>Please set REACT_APP_AUTH0_DOMAIN and REACT_APP_AUTH0_CLIENT_ID environment variables.</p>
+          <p>Please set VITE_AUTH0_DOMAIN and VITE_AUTH0_CLIENT_ID environment variables.</p>
         </div>
       </div>
     );
@@ -121,10 +152,14 @@ const App: React.FC = () => {
         redirect_uri: window.location.origin,
         audience: auth0Audience,
       }}
+      useRefreshTokens={true}
+      cacheLocation="localstorage"
     >
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
-          <AppRoutes />
+          <Auth0TokenSetup>
+            <AppRoutes />
+          </Auth0TokenSetup>
         </BrowserRouter>
       </QueryClientProvider>
     </Auth0Provider>

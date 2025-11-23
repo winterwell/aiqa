@@ -1,3 +1,8 @@
+/**
+ * OpenTelemetry span exporter that sends spans to the AIQA server API.
+ * Buffers spans and flushes them periodically or on shutdown. Thread-safe.
+ */
+
 import { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
 import { ExportResult, ExportResultCode } from '@opentelemetry/core';
 
@@ -38,6 +43,10 @@ interface SerializableSpan {
   };
 }
 
+/**
+ * Exports spans to AIQA server. Buffers spans and auto-flushes every flushIntervalSeconds.
+ * Call shutdown() before process exit to flush remaining spans.
+ */
 export class AiqaSpanExporter implements SpanExporter {
   private serverUrl: string;
   private apiKey: string;
@@ -120,8 +129,7 @@ export class AiqaSpanExporter implements SpanExporter {
   }
 
   /**
-   * Flush buffered spans to the server
-   * Thread-safe: ensures only one flush operation runs at a time
+   * Flush buffered spans to the server. Thread-safe: ensures only one flush operation runs at a time.
    */
   async flush(): Promise<void> {
     // Wait for any ongoing flush to complete
@@ -187,7 +195,7 @@ export class AiqaSpanExporter implements SpanExporter {
   }
 
   /**
-   * Shutdown the exporter, flushing any remaining spans
+   * Shutdown the exporter, flushing any remaining spans. Call before process exit.
    */
   async shutdown(): Promise<void> {
     this.shutdownRequested = true;
@@ -202,9 +210,9 @@ export class AiqaSpanExporter implements SpanExporter {
   }
 }
 
-// Compatibility export alias for ElasticsearchSpanExporter
-// Note: This is a compatibility layer - the actual implementation uses AiqaSpanExporter
-// which requires AIQA_SERVER_URL and AIQA_API_KEY environment variables
+/**
+ * Compatibility alias for ElasticsearchSpanExporter. Uses AIQA_SERVER_URL and AIQA_API_KEY env vars if set.
+ */
 export class ElasticsearchSpanExporter extends AiqaSpanExporter {
   constructor(serverUrl: string = 'http://localhost:9200', index: string = 'traces') {
     // Map ELASTICSEARCH_BASE_URL to AIQA server URL, or use AIQA_SERVER_URL if set

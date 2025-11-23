@@ -1,15 +1,39 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_AIQA_SERVER_URL || 'http://localhost:4001';
+
+// Token getter function - will be set by Auth0Provider wrapper
+let getAccessToken: (() => Promise<string | undefined>) | null = null;
+
+/**
+ * Set the token getter function from Auth0
+ */
+export function setTokenGetter(getter: () => Promise<string | undefined>) {
+  getAccessToken = getter;
+}
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  // In a real implementation, you'd get the auth token from Auth0
-  // For now, we'll assume the API doesn't require auth for GET requests
-  // POST requests that need API keys would need special handling
+  // Get Auth0 access token if available
+  let token: string | undefined;
+  if (getAccessToken) {
+    try {
+      token = await getAccessToken();
+    } catch (error) {
+      console.error('Failed to get access token:', error);
+    }
+  }
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  // Add Authorization header with Bearer token if available
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -28,6 +52,13 @@ export async function getOrganisation(id: string) {
 export async function listOrganisations(query?: string) {
   const url = query ? `/organisation?q=${encodeURIComponent(query)}` : '/organisation';
   return fetchWithAuth(url);
+}
+
+export async function createOrganisation(org: { name: string; members: string[] }) {
+  return fetchWithAuth('/organisation', {
+    method: 'POST',
+    body: JSON.stringify(org),
+  });
 }
 
 // Dataset endpoints
@@ -88,10 +119,33 @@ export async function searchInputs(
   params.append('offset', offset.toString());
 
   // Note: This endpoint requires API key authentication
-  return fetchWithAuth(`/input?${params.toString()}`, {
-    headers: {
-      // 'X-API-Key': apiKey, // Would need to be added
-    },
+  return fetchWithAuth(`/input?${params.toString()}`);
+}
+
+// User endpoints
+export async function getUser(id: string) {
+  return fetchWithAuth(`/user/${id}`);
+}
+
+export async function getUserByEmail(email: string) {
+  const query = `email:${email}`;
+  return fetchWithAuth(`/user?q=${encodeURIComponent(query)}`);
+}
+
+export async function createUser(user: { email: string; name: string }) {
+  return fetchWithAuth('/user', {
+    method: 'POST',
+    body: JSON.stringify(user),
   });
+}
+
+export async function getOrCreateUser(email: string, name: string) {
+  // First, try to find the user by email
+  const users = await getUserByEmail(email);
+  if (Array.isArray(users) && users.length > 0) {
+    return users[0];
+  }
+  // If not found, create a new user
+  return createUser({ email, name });
 }
 

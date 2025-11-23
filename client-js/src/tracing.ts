@@ -1,3 +1,7 @@
+/**
+ * OpenTelemetry tracing setup and utilities. Initializes tracer provider on import.
+ * Provides withTracingAsync and withTracing decorators to automatically trace function calls.
+ */
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
@@ -34,7 +38,8 @@ provider.register();
 const tracer = trace.getTracer('example-tracer');
 
 /**
- * Wrap fn to add tracing
+ * Wrap async function to automatically create spans. Records input/output as span attributes.
+ * Spans are automatically linked via OpenTelemetry context.
  */
 export function withTracingAsync(fn: Function, { name, ignoreInput, ignoreOutput, filterInput, filterOutput }) {
 	let fnName = name || fn.name || "_";
@@ -87,7 +92,8 @@ export function withTracingAsync(fn: Function, { name, ignoreInput, ignoreOutput
 
 
 /**
- * Wrap fn to add tracing
+ * Wrap synchronous function to automatically create spans. Records input/output as span attributes.
+ * Spans are automatically linked via OpenTelemetry context.
  */
 export function withTracing(fn: Function, { name, ignoreInput, ignoreOutput, filterInput, filterOutput }) {
 	let fnName = name || fn.name || "_";

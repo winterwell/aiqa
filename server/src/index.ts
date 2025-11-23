@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import dotenv from 'dotenv';
-import { initPool, createSchema as createSqlSchema, closePool } from './common/db_sql.js';
-import { initClient, createSchema as createEsSchema, closeClient } from './common/db_es.js';
+import { initPool, createSchema as createSqlSchema, closePool } from './db/db_sql.js';
+import { initClient, createSchema as createEsSchema, closeClient } from './db/db_es.js';
 import {
   createOrganisation,
   getOrganisation,
@@ -31,14 +32,14 @@ import {
   addOrganisationMember,
   removeOrganisationMember,
   getOrganisationMembers,
-} from './common/db_sql.js';
+} from './db/db_sql.js';
 import {
   bulkInsertSpans,
   bulkInsertInputs,
   searchSpans,
   searchInputs,
-} from './common/db_es.js';
-import { authenticateApiKey, AuthenticatedRequest } from './common/auth.js';
+} from './db/db_es.js';
+import { authenticate, AuthenticatedRequest } from './server_auth.js';
 import SearchQuery from './common/SearchQuery.js';
 import { Span } from './common/types/index.js';
 
@@ -85,7 +86,7 @@ fastify.get('/health', async () => {
 });
 
 // ===== SPAN ENDPOINTS (ElasticSearch) =====
-fastify.post('/span', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
+fastify.post('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   const organisationId = request.organisationId!;
   const spans = request.body as Span | Span[];
 
@@ -101,8 +102,9 @@ fastify.post('/span', { preHandler: authenticateApiKey }, async (request: Authen
   return { success: true, count: spansWithOrg.length };
 });
 
-fastify.get('/span', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
+fastify.get('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   const organisationId = request.organisationId!;
+  console.log("organisationId", organisationId);
   const query = (request.query as any).q as string | undefined;
   const limit = parseInt((request.query as any).limit || '100');
   const offset = parseInt((request.query as any).offset || '0');
@@ -213,7 +215,7 @@ fastify.post('/api-key', async (request, reply) => {
     return;
   }
   
-  const { hashApiKey } = await import('./common/auth.js');
+  const { hashApiKey } = await import('./server_auth.js');
   const keyHash = hashApiKey(key);
   
   const apiKey = await createApiKey({
@@ -309,7 +311,7 @@ fastify.delete('/dataset/:id', async (request, reply) => {
 });
 
 // ===== INPUT ENDPOINTS (ElasticSearch) =====
-fastify.post('/input', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
+fastify.post('/input', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   const organisationId = request.organisationId!;
   const inputs = request.body as Span | Span[];
 
@@ -333,7 +335,7 @@ fastify.post('/input', { preHandler: authenticateApiKey }, async (request: Authe
   return { success: true, count: inputsWithOrg.length };
 });
 
-fastify.get('/input', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
+fastify.get('/input', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   const organisationId = request.organisationId!;
   const query = (request.query as any).q as string | undefined;
   const datasetId = (request.query as any).dataset_id as string | undefined;
@@ -420,7 +422,12 @@ fastify.get('/organisation/:organisationId/member', async (request, reply) => {
 // Start server
 const start = async () => {
   try {
-    const port = parseInt(process.env.PORT || '3000');
+    // Register CORS plugin - allow all origins
+    await fastify.register(cors, {
+      origin: true,
+    });
+    
+    const port = parseInt(process.env.PORT || '4001');
     await fastify.listen({ port, host: '0.0.0.0' });
     fastify.log.info(`Server listening on port ${port}`);
   } catch (err) {

@@ -1,0 +1,5 @@
+nohup.out
+server/node_modules
+**/.env
+server/dist
+webapp/node_modules

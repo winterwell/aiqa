@@ -18,6 +18,9 @@
         "name": {
           "type": "string"
         },
+        "sub": {
+          "type": "string"
+        },
         "updated": {
           "format": "date-time",
           "type": "string"

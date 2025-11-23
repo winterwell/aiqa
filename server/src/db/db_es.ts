@@ -1,12 +1,23 @@
+/**
+ * Elasticsearch operations for storing and querying OpenTelemetry spans.
+ * 
+ * Lifecycle: Call initClient() before any operations, closeClient() during shutdown.
+ * All functions throw if client not initialized. Uses two indices: 'traces' for spans, 'dataset_spans' for inputs.
+ */
+
 import { Client } from '@elastic/elasticsearch';
-import { Span } from './types/index.js';
-import SearchQuery from './SearchQuery.js';
-import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from './utils/schema-loader.js';
+import { Span } from '../common/types/index.js';
+import SearchQuery from '../common/SearchQuery.js';
+import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/utils/schema-loader.js';
+import { searchEntities as searchEntitiesEs } from './es_query.js';
 
 let client: Client | null = null;
-const SPAN_INDEX = 'traces';
+const SPAN_INDEX = 'spans';
 const DATASET_SPANS_INDEX = 'dataset_spans';
 
+/**
+ * Initialize Elasticsearch client. Must be called before any operations.
+ */
 export function initClient(elasticsearchUrl: string = 'http://localhost:9200'): void {
   client = new Client({
     node: elasticsearchUrl,
@@ -29,6 +40,15 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
     // Special handling: use 'flattened' type for all 'attributes' fields to avoid mapping explosion
     if (fieldName === 'attributes' && prop.type === 'object') {
       mappings[fieldName] = { type: 'flattened' };
+      continue;
+    }
+    
+    // Special handling for HrTime fields (startTime, endTime, duration)
+    // These are arrays of [seconds, nanoseconds] that we'll convert to milliseconds (long)
+    if ((fieldName === 'startTime' || fieldName === 'endTime' || fieldName === 'duration') &&
+        prop.type === 'array' && prop.items?.type === 'integer' && 
+        prop.minItems === 2 && prop.maxItems === 2) {
+      mappings[fieldName] = { type: 'long' };
       continue;
     }
     
@@ -109,6 +129,39 @@ async function createIndex(indexName: string, mappings: any): Promise<void> {
   });
 }
 
+// Convert HrTime tuple [seconds, nanoseconds] to milliseconds
+function hrTimeToMillis(hrTime: [number, number] | undefined): number | undefined {
+  if (!hrTime || !Array.isArray(hrTime) || hrTime.length !== 2) {
+    return undefined;
+  }
+  return hrTime[0] * 1000 + Math.floor(hrTime[1] / 1000000);
+}
+
+// Transform span document for Elasticsearch (convert HrTime tuples to milliseconds)
+function transformSpanForEs(doc: any): any {
+  const transformed = { ...doc };
+  if (Array.isArray(transformed.startTime)) {
+    transformed.startTime = hrTimeToMillis(transformed.startTime);
+  }
+  if (Array.isArray(transformed.endTime)) {
+    transformed.endTime = hrTimeToMillis(transformed.endTime);
+  }
+  if (Array.isArray(transformed.duration)) {
+    transformed.duration = hrTimeToMillis(transformed.duration);
+  }
+  // Transform events array - convert time to timestamp
+  if (Array.isArray(transformed.events)) {
+    transformed.events = transformed.events.map((event: any) => {
+      if (event && Array.isArray(event.time)) {
+        const { time, ...rest } = event;
+        return { ...rest, timestamp: hrTimeToMillis(event.time) };
+      }
+      return event;
+    });
+  }
+  return transformed;
+}
+
 // Generic bulk insert function
 async function bulkInsert<T>(indexName: string, documents: T[]): Promise<void> {
   if (!client) {
@@ -119,13 +172,34 @@ async function bulkInsert<T>(indexName: string, documents: T[]): Promise<void> {
 
   const body = documents.flatMap(doc => [
     { index: { _index: indexName } },
-    doc
+    transformSpanForEs(doc)
   ]);
 
-  await client.bulk({ body });
+  const response = await client.bulk({ 
+    body,
+    refresh: 'wait_for' // Make documents immediately searchable
+  });
+
+  // Check for errors in bulk response
+  if (response.errors) {
+    const erroredDocuments: any[] = [];
+    response.items.forEach((action: any, i: number) => {
+      const operation = Object.keys(action)[0];
+      if (action[operation].error) {
+        erroredDocuments.push({
+          operation,
+          document: documents[Math.floor(i / 2)],
+          error: action[operation].error
+        });
+      }
+    });
+    if (erroredDocuments.length > 0) {
+      throw new Error(`Bulk insert errors: ${JSON.stringify(erroredDocuments, null, 2)}`);
+    }
+  }
 }
 
-// Generic search function
+// Generic search function wrapper
 async function searchEntities<T>(
   indexName: string,
   searchQuery?: SearchQuery | string | null,
@@ -137,106 +211,45 @@ async function searchEntities<T>(
     throw new Error('Elasticsearch client not initialized.');
   }
 
-  const esQuery: any = {
-    bool: {
-      must: [searchQueryToEsQuery(searchQuery)]
-    }
-  };
-
-  // Add filters
-  if (filters) {
-    for (const [key, value] of Object.entries(filters)) {
-      if (value !== undefined && value !== null) {
-        esQuery.bool.must.push({ term: { [key]: value } });
-      }
-    }
-  }
-
-  const result = await client.search<T>({
-    index: indexName,
-    query: esQuery,
-    size: limit,
-    from: offset,
-    sort: [{ '@timestamp': { order: 'desc' } }]
-  });
-
-  const hits = (result.hits.hits || []).map((hit: any) => hit._source!);
-  const total = result.hits.total as number | { value: number };
-
-  return { hits, total: typeof total === 'number' ? total : total.value };
+  return searchEntitiesEs<T>(
+    client,
+    indexName,
+    searchQuery,
+    filters,
+    limit,
+    offset
+  );
 }
 
+/**
+ * Create Elasticsearch indices with mappings. Safe to call multiple times (skips if index exists).
+ * Call during application startup.
+ */
 export async function createSchema(): Promise<void> {
   const mappings = generateSpanMappings();
   await createIndex(SPAN_INDEX, mappings);
   await createIndex(DATASET_SPANS_INDEX, mappings);
 }
 
+/**
+ * Bulk insert spans into 'traces' index. Spans should have organisation_id set.
+ */
 export async function bulkInsertSpans(spans: Span[]): Promise<void> {
   return bulkInsert<Span>(SPAN_INDEX, spans);
 }
 
+/**
+ * Bulk insert input spans into 'dataset_spans' index. Inputs must have dataset_id and organisation_id set.
+ */
 export async function bulkInsertInputs(inputs: Span[]): Promise<void> {
   return bulkInsert<Span>(DATASET_SPANS_INDEX, inputs);
 }
 
-// Convert SearchQuery to Elasticsearch query
-function searchQueryToEsQuery(sq: SearchQuery | string | null | undefined): any {
-  if (!sq) {
-    return { match_all: {} };
-  }
 
-  const searchQuery = typeof sq === 'string' ? new SearchQuery(sq) : sq;
-  if (!searchQuery.tree || searchQuery.tree.length === 0) {
-    return { match_all: {} };
-  }
-
-  return buildEsQuery(searchQuery.tree);
-}
-
-function buildEsQuery(tree: any[]): any {
-  if (typeof tree === 'string') {
-    return { match: { _all: tree } };
-  }
-
-  if (tree.length === 1) {
-    const item = tree[0];
-    if (typeof item === 'string') {
-      return { match: { _all: item } };
-    }
-    if (typeof item === 'object' && !Array.isArray(item)) {
-      const keys = Object.keys(item);
-      if (keys.length === 1) {
-        const key = keys[0];
-        const value = item[key];
-        return { term: { [key]: value } };
-      }
-    }
-    return buildEsQuery(Array.isArray(item) ? item : [item]);
-  }
-
-  const op = tree[0];
-  const bits = tree.slice(1);
-
-  const queries = bits.map((bit: any) => {
-    if (typeof bit === 'object' && !Array.isArray(bit)) {
-      const keys = Object.keys(bit);
-      if (keys.length === 1) {
-        const key = keys[0];
-        const value = bit[key];
-        return { term: { [key]: value } };
-      }
-    }
-    return buildEsQuery(Array.isArray(bit) ? bit : [bit]);
-  });
-
-  if (op === 'OR') {
-    return { bool: { should: queries, minimum_should_match: 1 } };
-  } else {
-    return { bool: { must: queries } };
-  }
-}
-
+/**
+ * Search spans in 'traces' index. Filters by organisationId if provided.
+ * @param searchQuery - Gmail-style search query or SearchQuery instance. Returns all if null.
+ */
 export async function searchSpans(
   searchQuery?: SearchQuery | string | null,
   organisationId?: string,
@@ -252,6 +265,10 @@ export async function searchSpans(
   );
 }
 
+/**
+ * Search input spans in 'dataset_spans' index. Filters by organisationId and/or datasetId if provided.
+ * @param searchQuery - Gmail-style search query or SearchQuery instance. Returns all if null.
+ */
 export async function searchInputs(
   searchQuery?: SearchQuery | string | null,
   organisationId?: string,
@@ -275,6 +292,22 @@ export async function searchInputs(
   );
 }
 
+/**
+ * Delete an index. Useful for testing.
+ */
+export async function deleteIndex(indexName: string): Promise<void> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+  const indexExists = await client.indices.exists({ index: indexName });
+  if (indexExists) {
+    await client.indices.delete({ index: indexName });
+  }
+}
+
+/**
+ * Close Elasticsearch client. Call during graceful shutdown.
+ */
 export async function closeClient(): Promise<void> {
   if (client) {
     // Elasticsearch client doesn't have a close method, but we can reset it

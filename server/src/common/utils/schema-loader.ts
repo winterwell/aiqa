@@ -1,6 +1,3 @@
-import fs from 'fs';
-import path from 'path';
-
 export interface JsonSchema {
   $ref?: string;
   definitions?: Record<string, {
@@ -10,13 +7,14 @@ export interface JsonSchema {
   }>;
 }
 
+import { getSchema } from './schema-registry.js';
+
 /**
  * Load a JSON schema file for a type
+ * Schemas are imported and bundled into the build, so no file system access is needed
  */
 export function loadSchema(typeName: string): JsonSchema {
-  const schemaPath = path.join(__dirname, '../types', `${typeName}.schema.json`);
-  const schemaContent = fs.readFileSync(schemaPath, 'utf-8');
-  return JSON.parse(schemaContent);
+  return getSchema(typeName);
 }
 
 /**
@@ -50,7 +48,7 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
   }
   
   if (fieldName === 'members') {
-    return "UUID[] DEFAULT '{}'";
+    return "TEXT[] DEFAULT '{}'";
   }
   
   if (fieldName.includes('_id') && fieldName !== 'id') {
@@ -74,7 +72,7 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
       }
       return 'VARCHAR(255)';
     case 'number':
-      return 'INTEGER NOT NULL DEFAULT 1000';
+      return 'INTEGER';
     case 'boolean':
       return 'BOOLEAN';
     case 'array':
@@ -86,6 +84,25 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
     default:
       return 'JSONB';
   }
+}
+
+/**
+ * Convert PascalCase/camelCase to snake_case
+ */
+function toSnakeCase(str: string): string {
+  return str
+    .replace(/([A-Z])/g, '_$1')
+    .toLowerCase()
+    .replace(/^_/, '');
+}
+
+/**
+ * Convert type name to PostgreSQL table name (snake_case, pluralized)
+ */
+function typeNameToTableName(typeName: string): string {
+  const snakeCase = toSnakeCase(typeName);
+  // Simple pluralization: add 's' (works for most cases)
+  return `${snakeCase}s`;
 }
 
 /**
@@ -103,6 +120,7 @@ export function generatePostgresTable(
   }
   
   const columns: string[] = [];
+  const columnMap = new Map<string, string>();
   const required = def.required || [];
   
   // Add columns from schema
@@ -110,18 +128,24 @@ export function generatePostgresTable(
     const pgType = jsonSchemaToPostgresType(prop, fieldName);
     const isRequired = required.includes(fieldName);
     const notNull = isRequired && !pgType.includes('DEFAULT') ? ' NOT NULL' : '';
-    columns.push(`  ${fieldName} ${pgType}${notNull}`);
+    columnMap.set(fieldName, `${pgType}${notNull}`);
   }
   
-  // Add additional columns (for foreign keys, etc.)
+  // Override or add additional columns (for foreign keys, etc.)
   for (const [fieldName, columnDef] of Object.entries(additionalColumns)) {
+    columnMap.set(fieldName, columnDef);
+  }
+  
+  // Convert map to array of column definitions
+  for (const [fieldName, columnDef] of columnMap.entries()) {
     columns.push(`  ${fieldName} ${columnDef}`);
   }
   
   // Add constraints
   columns.push(...constraints);
   
-  return `CREATE TABLE IF NOT EXISTS ${typeName.toLowerCase()}s (\n${columns.join(',\n')}\n)`;
+  const tableName = typeNameToTableName(typeName);
+  return `CREATE TABLE IF NOT EXISTS ${tableName} (\n${columns.join(',\n')}\n)`;
 }
 
 /**

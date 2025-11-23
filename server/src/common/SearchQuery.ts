@@ -1,3 +1,7 @@
+/**
+ * Gmail-style search query parser and builder. Supports AND/OR operators and field:value syntax.
+ * Used for filtering entities in both PostgreSQL and Elasticsearch queries.
+ */
 
 import { assert, assMatch } from './utils/assert.js';
 import { is } from './utils/miscutils.js';
@@ -14,14 +18,8 @@ const _ = {
 };
 
 /**
- * Manipulate search query strings like a boss.
- * e.g.
- * `let sq = new SearchQuery("apples OR oranges"); 
- * SearchQuery.setProp(sq, "lang", "en")`
- * 
- * See DataLog for the original of this!
- * 
- * TODO we'll want more search capabilities as we go on
+ * Parses and manipulates Gmail-style search queries. Supports AND/OR operators and field:value syntax.
+ * Example: new SearchQuery("apples OR oranges") or SearchQuery.setProp(sq, "lang", "en")
  */
 class SearchQuery {
 
@@ -84,17 +82,37 @@ SearchQuery._init = (sq: SearchQuery) => {
 SearchQuery.parse = (sq: SearchQuery) => {
 	// HACK just space separate and crude key:value for now!
 	let bits = sq.query.split(" ");
-	let bits2 = bits.map(bit => {
-		let kv = bit.match(/^([a-zA-Z_0-9]+):(.+)/);
-		if (kv) return {[kv[1]]: kv[2]};
-		return bit;
-	});
+	let bits2: any[] = [];
+	let i = 0;
 	let op = SearchQuery.AND;
 	if (bits.includes("OR")) {
 		op = SearchQuery.OR;
 	}
-	// only one op needed (added below), ie [AND, a, b] not [AND,a,AND,b]
-	bits2 = bits2.filter(v => v !== op);
+	
+	while (i < bits.length) {
+		const bit = bits[i];
+		if (bit === op) {
+			i++;
+			continue;
+		}
+		let kv = bit.match(/^([a-zA-Z_0-9.]+):(.+)/);
+		if (kv) {
+			// Found a field:value pair - check if there are more words that should be part of the value
+			let value = kv[2];
+			let j = i + 1;
+			// Collect following non-field:value tokens as part of this value
+			while (j < bits.length && bits[j] !== op && !bits[j].match(/^[a-zA-Z_0-9.]+:/)) {
+				value += ' ' + bits[j];
+				j++;
+			}
+			bits2.push({[kv[1]]: value});
+			i = j;
+		} else {
+			bits2.push(bit);
+			i++;
+		}
+	}
+	
 	/**
 	 * Return the expression tree, which is a nested array
 	 * E.g. "a OR (b AND near:c)" --> ["OR", "a", ["AND", "b", ["near", "c"]]]
