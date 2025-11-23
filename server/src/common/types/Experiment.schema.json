@@ -1,0 +1,38 @@
+{
+  "$ref": "#/definitions/Experiment",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Experiment": {
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "dataset_id": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "organisation_id": {
+          "type": "string"
+        },
+        "summary_results": {},
+        "updated": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "dataset_id",
+        "organisation_id",
+        "summary_results",
+        "created",
+        "updated"
+      ],
+      "type": "object"
+    }
+  }
+}

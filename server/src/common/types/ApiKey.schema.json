@@ -1,0 +1,42 @@
+{
+  "$ref": "#/definitions/ApiKey",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ApiKey": {
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "key_hash": {
+          "type": "string"
+        },
+        "organisation_id": {
+          "type": "string"
+        },
+        "rate_limit_per_hour": {
+          "type": "number"
+        },
+        "retention_period_days": {
+          "type": "number"
+        },
+        "updated": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "organisation_id",
+        "key_hash",
+        "created",
+        "updated"
+      ],
+      "type": "object"
+    }
+  }
+}

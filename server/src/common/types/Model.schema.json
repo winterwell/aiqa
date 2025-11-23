@@ -1,0 +1,47 @@
+{
+  "$ref": "#/definitions/Model",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Model": {
+      "additionalProperties": false,
+      "description": "E.g. connection details for ChatGPT 4.1, Claude 3.5 Sonnet, etc.",
+      "properties": {
+        "api_key": {
+          "type": "string"
+        },
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "organisation_id": {
+          "type": "string"
+        },
+        "updated": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "organisation_id",
+        "name",
+        "api_key",
+        "created",
+        "updated"
+      ],
+      "type": "object"
+    }
+  }
+}

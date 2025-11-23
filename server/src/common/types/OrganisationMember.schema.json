@@ -1,0 +1,27 @@
+{
+  "$ref": "#/definitions/OrganisationMember",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "OrganisationMember": {
+      "additionalProperties": false,
+      "properties": {
+        "created": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "organisation_id": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "organisation_id",
+        "user_id",
+        "created"
+      ],
+      "type": "object"
+    }
+  }
+}
