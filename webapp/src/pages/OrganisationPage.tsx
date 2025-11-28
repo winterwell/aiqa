@@ -4,7 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupIt
 import { useQuery } from '@tanstack/react-query';
 import { getOrganisation } from '../api';
 
-const OrganisationStatusPage: React.FC = () => {
+const OrganisationPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
 
   const { data: organisation, isLoading, error } = useQuery({
@@ -80,32 +80,10 @@ const OrganisationStatusPage: React.FC = () => {
             </CardBody>
           </Card>
         </Col>
-
-        <Col md={6}>
-          <Card>
-            <CardHeader>
-              <h5>Quick Links</h5>
-            </CardHeader>
-            <CardBody>
-              <ListGroup flush>
-                <ListGroupItem>
-                  <Link to={`/organisation/${organisationId}/traces`}>
-                    View Traces
-                  </Link>
-                </ListGroupItem>
-                <ListGroupItem>
-                  <Link to={`/organisation/${organisationId}/dataset`}>
-                    View Datasets
-                  </Link>
-                </ListGroupItem>
-              </ListGroup>
-            </CardBody>
-          </Card>
-        </Col>
       </Row>
     </Container>
   );
 };
 
-export default OrganisationStatusPage;
+export default OrganisationPage;
 

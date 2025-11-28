@@ -12,8 +12,10 @@ import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/
 import { searchEntities as searchEntitiesEs } from './es_query.js';
 
 let client: Client | null = null;
-const SPAN_INDEX = 'spans';
-const DATASET_SPANS_INDEX = 'dataset_spans';
+const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
+const SPAN_INDEX_ALIAS = process.env.SPANS_INDEX_ALIAS || 'aiqa_spans_alias';
+const DATASET_SPANS_INDEX = process.env.DATASET_SPANS_INDEX || 'aiqa_dataset_spans';
+const DATASET_SPANS_INDEX_ALIAS = process.env.DATASET_SPANS_INDEX_ALIAS || 'aiqa_dataset_spans_alias';
 
 /**
  * Initialize Elasticsearch client. Must be called before any operations.
@@ -109,6 +111,18 @@ async function createIndex(indexName: string, mappings: any): Promise<void> {
 
   const indexExists = await client.indices.exists({ index: indexName });
   if (indexExists) {
+    // Index exists - try to update mapping with any new fields
+    // Elasticsearch allows adding new fields but not changing existing ones
+    try {
+      await client.indices.putMapping({
+        index: indexName,
+        properties: mappings
+      });
+    } catch (error: any) {
+      // Ignore mapping update errors (e.g., if fields already exist or can't be updated)
+      // This is safe - existing fields won't be changed, new fields will be added
+      console.warn(`Could not update mapping for ${indexName}:`, error.message);
+    }
     return;
   }
 
@@ -170,10 +184,14 @@ async function bulkInsert<T>(indexName: string, documents: T[]): Promise<void> {
 
   if (documents.length === 0) return;
 
-  const body = documents.flatMap(doc => [
-    { index: { _index: indexName } },
-    transformSpanForEs(doc)
-  ]);
+  const body = documents.flatMap(doc => {
+    const transformed = transformSpanForEs(doc);
+    const docId = (doc as any).spanId;
+    const indexAction = docId 
+      ? { index: { _index: indexName, _id: docId } }
+      : { index: { _index: indexName } };
+    return [indexAction, transformed];
+  });
 
   const response = await client.bulk({ 
     body,
@@ -232,14 +250,14 @@ export async function createSchema(): Promise<void> {
 }
 
 /**
- * Bulk insert spans into 'traces' index. Spans should have organisation_id set.
+ * Bulk insert spans into 'traces' index. Spans should have organisation set.
  */
 export async function bulkInsertSpans(spans: Span[]): Promise<void> {
   return bulkInsert<Span>(SPAN_INDEX, spans);
 }
 
 /**
- * Bulk insert input spans into 'dataset_spans' index. Inputs must have dataset_id and organisation_id set.
+ * Bulk insert input spans into 'dataset_spans' index. Inputs must have dataset and organisation set.
  */
 export async function bulkInsertInputs(inputs: Span[]): Promise<void> {
   return bulkInsert<Span>(DATASET_SPANS_INDEX, inputs);
@@ -259,7 +277,7 @@ export async function searchSpans(
   return searchEntities<Span>(
     SPAN_INDEX,
     searchQuery,
-    organisationId ? { organisation_id: organisationId } : undefined,
+    { organisation: organisationId },
     limit,
     offset
   );
@@ -278,10 +296,10 @@ export async function searchInputs(
 ): Promise<{ hits: Span[]; total: number }> {
   const filters: Record<string, string> = {};
   if (organisationId) {
-    filters.organisation_id = organisationId;
+    filters.organisation = organisationId;
   }
   if (datasetId) {
-    filters.dataset_id = datasetId;
+    filters.dataset = datasetId;
   }
   return searchEntities<Span>(
     DATASET_SPANS_INDEX,

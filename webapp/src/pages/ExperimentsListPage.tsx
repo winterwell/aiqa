@@ -1,27 +1,35 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, Input, Table } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
-import { listExperiments } from '../api';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Card, CardBody, CardHeader, Input, Table, Button, Form, FormGroup, Label, Alert } from 'reactstrap';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { listExperiments, createExperiment, listDatasets } from '../api';
 import { Experiment } from '../common/types';
+
 
 const ExperimentsListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedDatasetId, setSelectedDatasetId] = useState('');
 
   const { data: experiments, isLoading, error } = useQuery({
     queryKey: ['experiments', organisationId, searchQuery],
-    queryFn: () => listExperiments(searchQuery || undefined),
+    queryFn: () => listExperiments(organisationId!, searchQuery || undefined),
     enabled: !!organisationId,
-    select: (data) => {
-      // Filter by organisation_id on the client side since the API might not support it
-      return data.filter((exp: Experiment) => exp.organisation_id === organisationId);
-    },
+  });
+
+  const { data: datasets } = useQuery({
+    queryKey: ['datasets', organisationId],
+    queryFn: () => listDatasets(organisationId!),
+    enabled: !!organisationId,
   });
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
+
 
   if (isLoading) {
     return (
@@ -55,10 +63,14 @@ const ExperimentsListPage: React.FC = () => {
           <Link to={`/organisation/${organisationId}`} className="btn btn-link mb-3">
             ← Back to Organisation
           </Link>
-          <h1>Experiments</h1>
-          <p className="text-muted">Organisation: {organisationId}</p>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h1>Experiment Results</h1>
+            </div>
+          </div>
         </Col>
       </Row>
+
 
       <Row className="mt-3">
         <Col>
@@ -123,4 +135,3 @@ const ExperimentsListPage: React.FC = () => {
 };
 
 export default ExperimentsListPage;
-

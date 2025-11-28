@@ -4,6 +4,7 @@ import { Auth0Provider, useAuth0 } from '@auth0/auth0-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setTokenGetter } from '../api';
 import 'bootstrap/dist/css/bootstrap.min.css';
+import '../custom.css';
 import LoginPage from './LoginPage';
 import OrganisationPage from './OrganisationPage';
 import OrganisationListPage from './OrganisationListPage';
@@ -13,6 +14,10 @@ import DatasetListPage from './DatasetListPage';
 import DatasetDetailsPage from './DatasetDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
+import ApiKeyPage from './ApiKeyPage';
+import CodeSetupPage from './CodeSetupPage';
+import ExperimentCodePage from './ExperimentCodePage';
+import MetricsPage from './MetricsPage';
 import Layout from './Layout';
 
 const queryClient = new QueryClient({
@@ -31,9 +36,41 @@ const auth0Audience = import.meta.env.VITE_AUTH0_AUDIENCE || '';
 // Component to set up Auth0 token getter for API calls
 const Auth0TokenSetup: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { getAccessTokenSilently } = useAuth0();
+  const cacheClearedRef = React.useRef(false);
 
   React.useEffect(() => {
-    setTokenGetter(() => getAccessTokenSilently());
+    setTokenGetter(async () => {
+      try {
+        if (auth0Audience) {
+          return await getAccessTokenSilently({
+            authorizationParams: {
+              audience: auth0Audience,
+            },
+          });
+        }
+        return await getAccessTokenSilently();
+      } catch (error: any) {
+        // Check if it's a refresh token error
+        const errorMessage = error?.message || error?.toString() || '';
+        if ((errorMessage.includes('Missing Refresh Token') || errorMessage.includes('refresh_token')) && !cacheClearedRef.current) {
+          cacheClearedRef.current = true;
+          console.warn('Refresh token issue detected. Clearing Auth0 cache and reloading...');
+          // Clear all Auth0-related localStorage entries
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('@@auth0spajs@@') || key.includes('auth0')) {
+              localStorage.removeItem(key);
+            }
+          });
+          // Reload page to trigger fresh authentication
+          setTimeout(() => {
+            window.location.reload();
+          }, 100);
+          return undefined;
+        }
+        // Re-throw other errors
+        throw error;
+      }
+    });
   }, [getAccessTokenSilently]);
 
   return <>{children}</>;
@@ -76,6 +113,38 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <OrganisationPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/api-key"
+        element={
+          <ProtectedRoute>
+            <ApiKeyPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/code-setup"
+        element={
+          <ProtectedRoute>
+            <CodeSetupPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/experiment-code"
+        element={
+          <ProtectedRoute>
+            <ExperimentCodePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/metrics"
+        element={
+          <ProtectedRoute>
+            <MetricsPage />
           </ProtectedRoute>
         }
       />
@@ -151,6 +220,7 @@ const App: React.FC = () => {
       authorizationParams={{
         redirect_uri: window.location.origin,
         audience: auth0Audience,
+        scope: 'openid profile email offline_access',
       }}
       useRefreshTokens={true}
       cacheLocation="localstorage"

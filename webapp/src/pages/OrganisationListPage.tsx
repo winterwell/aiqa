@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, Button, Form, FormGroup, Label, Input, Table, Alert } from 'reactstrap';
@@ -32,6 +32,11 @@ const OrganisationListPage: React.FC = () => {
     queryFn: () => listOrganisations("members:" + dbUser?.id),
 	enabled: !!dbUser?.id,
   });
+  useEffect(() => {
+    if (allOrganisations && allOrganisations.length === 1) {
+      navigate(`/organisation/${allOrganisations[0].id}`);
+    }
+  }, [allOrganisations, navigate]);
 
   // Filter organizations where the user is a member
   const userOrganisations = React.useMemo(() => {

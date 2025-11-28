@@ -1,208 +1,166 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, Input, Table, Pagination, PaginationItem, PaginationLink } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
+import { Container, Row, Col } from 'reactstrap';
+import { ColumnDef } from '@tanstack/react-table';
 import { searchSpans } from '../api';
 import { Span } from '../common/types';
+import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
+
+const getTraceId = (span: Span) => {
+  return span.client_trace_id || (span as any).traceId || (span as any).spanContext?.()?.traceId || '';
+};
+
+const getStartTime = (span: Span) => {
+  const startTime = (span as any).startTime;
+  if (!startTime) return null;
+  // Handle HrTime tuple [seconds, nanoseconds]
+  if (Array.isArray(startTime) && startTime.length === 2) {
+    return new Date(startTime[0] * 1000 + startTime[1] / 1000000);
+  }
+  // Handle if it's already a number (milliseconds)
+  if (typeof startTime === 'number') {
+    return new Date(startTime);
+  }
+  // Handle if it's already a Date
+  if (startTime instanceof Date) {
+    return startTime;
+  }
+  return null;
+};
+
+const getDuration = (span: Span): number | null => {
+  const startTimeHr = (span as any).startTime;
+  const endTimeHr = (span as any).endTime;
+  
+  // Calculate duration from HrTime tuples if available
+  if (Array.isArray(startTimeHr) && Array.isArray(endTimeHr) && startTimeHr.length === 2 && endTimeHr.length === 2) {
+    const startMs = startTimeHr[0] * 1000 + startTimeHr[1] / 1000000;
+    const endMs = endTimeHr[0] * 1000 + endTimeHr[1] / 1000000;
+    return endMs - startMs;
+  } else if ((span as any).duration && Array.isArray((span as any).duration)) {
+    // Duration as HrTime tuple
+    const durHr = (span as any).duration;
+    return durHr[0] * 1000 + durHr[1] / 1000000;
+  }
+  return null;
+};
 
 const TracesListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [limit] = useState(50);
-  const [offset, setOffset] = useState(0);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['spans', organisationId, searchQuery, limit, offset],
-    queryFn: () => searchSpans(organisationId!, searchQuery || undefined, limit, offset),
-    enabled: !!organisationId,
-  });
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setOffset(0);
-  };
-
-  const handlePageChange = (newOffset: number) => {
-    setOffset(newOffset);
-    window.scrollTo(0, 0);
-  };
-
-  const getTraceId = (span: Span) => {
-    return span.client_trace_id || span.traceId;
-  };
-
-  const getSpanId = (span: Span) => {
-    return span.client_span_id || span.spanContext().spanId;
-  };
-
-  if (isLoading) {
-    return (
-      <Container className="mt-4">
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container className="mt-4">
-        <div className="alert alert-danger">
-          <h4>Error</h4>
-          <p>Failed to load traces: {error instanceof Error ? error.message : 'Unknown error'}</p>
-        </div>
-      </Container>
-    );
-  }
-
-  const spans = data?.hits || [];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
-
-  // Group spans by trace ID
-  const tracesMap = new Map<string, Span[]>();
-  spans.forEach((span) => {
-    const traceId = getTraceId(span);
-    if (traceId) {
-      if (!tracesMap.has(traceId)) {
-        tracesMap.set(traceId, []);
-      }
-      tracesMap.get(traceId)!.push(span);
+  const loadData = async (query: string): Promise<PageableData<Span>> => {
+    const limit = 1000; // Fetch more traces for in-memory filtering
+    const result = await searchSpans({ organisationId: organisationId!, query, isRoot: true, limit, offset: 0 });
+    
+    console.log('[TracesListPage] API Response:', {
+      total: result.total,
+      offset: result.offset,
+      limit: result.limit,
+      hitsCount: result.hits?.length || 0,
+    });
+    
+    if (result.hits && result.hits.length > 0) {
+      console.log('[TracesListPage] First span sample:', result.hits[0]);
+      console.log('[TracesListPage] First span keys:', Object.keys(result.hits[0]));
+      console.log('[TracesListPage] First span properties:', {
+        name: (result.hits[0] as any).name,
+        traceId: (result.hits[0] as any).traceId,
+        client_trace_id: result.hits[0].client_trace_id,
+        startTime: (result.hits[0] as any).startTime,
+        duration: (result.hits[0] as any).duration,
+      });
     }
-  });
+    
+    return result;
+  };
 
-  const traces = Array.from(tracesMap.entries());
+  const columns = useMemo<ColumnDef<Span>[]>(
+    () => [
+      {
+        id: 'traceId',
+        header: 'Trace ID',
+        cell: ({ row }) => {
+          const traceId = getTraceId(row.original);
+          console.log('[TracesListPage] traceId cell render:', { traceId, span: row.original });
+          if (!traceId) return <span>N/A</span>;
+          return <code className="small">{traceId.length > 16 ? `${traceId.substring(0, 16)}...` : traceId}</code>;
+        },
+      },
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => {
+          const name = (row.original as any).name || 'Unknown';
+          console.log('[TracesListPage] name cell render:', { name, span: row.original });
+          return <span>{name}</span>;
+        },
+      },
+      {
+        id: 'startTime',
+        header: 'Start Time',
+        accessorFn: (row) => {
+          const startTime = getStartTime(row);
+          return startTime ? startTime.getTime() : null;
+        },
+        cell: ({ row }) => {
+          const startTime = getStartTime(row.original);
+          console.log('[TracesListPage] startTime cell render:', { startTime, span: row.original });
+          return <span>{startTime ? startTime.toLocaleString() : 'N/A'}</span>;
+        },
+        enableSorting: true,
+      },
+      {
+        id: 'duration',
+        header: 'Duration',
+        accessorFn: (row) => {
+          const duration = getDuration(row);
+          return duration !== null ? duration : null;
+        },
+        cell: ({ row }) => {
+          const duration = getDuration(row.original);
+          console.log('[TracesListPage] duration cell render:', { duration, span: row.original });
+          return <span>{duration !== null ? `${Math.round(duration / 1000)}s` : ''}</span>;
+        },
+        enableSorting: true,
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        cell: ({ row }) => {
+          const traceId = getTraceId(row.original);
+          return (
+            <Link
+              to={`/organisation/${organisationId}/traces/${traceId}`}
+              className="btn btn-sm btn-primary"
+            >
+              View
+            </Link>
+          );
+        },
+      },
+    ],
+    [organisationId]
+  );
 
   return (
     <Container className="mt-4">
       <Row>
         <Col>
           <h1>Traces</h1>
-          <p className="text-muted">Organisation: {organisationId}</p>
         </Col>
       </Row>
 
       <Row className="mt-3">
         <Col>
-          <Input
-            type="text"
-            placeholder="Search traces (Gmail-style syntax)"
-            value={searchQuery}
-            onChange={handleSearchChange}
+          <TableUsingAPI
+            loadData={loadData}
+            columns={columns}
+            searchPlaceholder="Search traces"
+            searchDebounceMs={500}
+            pageSize={50}
+            enableInMemoryFiltering={true}
+            initialSorting={[{ id: 'startTime', desc: true }]}
           />
-        </Col>
-      </Row>
-
-      <Row className="mt-3">
-        <Col>
-          <Card>
-            <CardBody>
-              {traces.length === 0 ? (
-                <p className="text-muted">No traces found.</p>
-              ) : (
-                <>
-                  <p className="text-muted">
-                    Showing {offset + 1}-{Math.min(offset + limit, total)} of {total} traces
-                  </p>
-                  <Table hover>
-                    <thead>
-                      <tr>
-                        <th>Trace ID</th>
-                        <th>Spans</th>
-                        <th>Name</th>
-                        <th>Start Time</th>
-                        <th>Duration</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {traces.map(([traceId, traceSpans]) => {
-                        const firstSpan = traceSpans[0];
-                        const startTime = firstSpan.startTime
-                          ? new Date(firstSpan.startTime[0] * 1000 + firstSpan.startTime[1] / 1000000)
-                          : null;
-                        const endTime = traceSpans.reduce((latest, span) => {
-                          if (!span.endTime) return latest;
-                          const spanEnd = new Date(span.endTime[0] * 1000 + span.endTime[1] / 1000000);
-                          return !latest || spanEnd > latest ? spanEnd : latest;
-                        }, null as Date | null);
-                        const duration = startTime && endTime ? endTime.getTime() - startTime.getTime() : null;
-                        const name = firstSpan.name || 'Unknown';
-
-                        return (
-                          <tr key={traceId}>
-                            <td>
-                              <code className="small">{traceId.substring(0, 16)}...</code>
-                            </td>
-                            <td>{traceSpans.length}</td>
-                            <td>{name}</td>
-                            <td>{startTime ? startTime.toLocaleString() : 'N/A'}</td>
-                            <td>{duration !== null ? `${duration}ms` : 'N/A'}</td>
-                            <td>
-                              <Link
-                                to={`/organisation/${organisationId}/traces/${traceId}`}
-                                className="btn btn-sm btn-primary"
-                              >
-                                View
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </Table>
-
-                  {totalPages > 1 && (
-                    <Pagination className="mt-3">
-                      <PaginationItem disabled={currentPage === 1}>
-                        <PaginationLink
-                          previous
-                          onClick={() => handlePageChange(Math.max(0, offset - limit))}
-                        />
-                      </PaginationItem>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                        if (
-                          page === 1 ||
-                          page === totalPages ||
-                          (page >= currentPage - 2 && page <= currentPage + 2)
-                        ) {
-                          return (
-                            <PaginationItem key={page} active={page === currentPage}>
-                              <PaginationLink
-                                onClick={() => handlePageChange((page - 1) * limit)}
-                              >
-                                {page}
-                              </PaginationLink>
-                            </PaginationItem>
-                          );
-                        } else if (
-                          page === currentPage - 3 ||
-                          page === currentPage + 3
-                        ) {
-                          return (
-                            <PaginationItem key={page} disabled>
-                              <PaginationLink>...</PaginationLink>
-                            </PaginationItem>
-                          );
-                        }
-                        return null;
-                      })}
-                      <PaginationItem disabled={currentPage === totalPages}>
-                        <PaginationLink
-                          next
-                          onClick={() => handlePageChange(Math.min((totalPages - 1) * limit, offset + limit))}
-                        />
-                      </PaginationItem>
-                    </Pagination>
-                  )}
-                </>
-              )}
-            </CardBody>
-          </Card>
         </Col>
       </Row>
     </Container>

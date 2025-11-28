@@ -1,5 +1,5 @@
 import tap from 'tap';
-import SearchQuery, { searchQueryToSqlWhereClause } from '../dist/src/common/SearchQuery.js';
+import SearchQuery, { searchQueryToSqlWhereClause } from '../dist/common/SearchQuery.js';
 
 tap.test('searchQueryToSqlWhereClause - simple OR', t => {
   const sq = new SearchQuery('apples OR oranges');

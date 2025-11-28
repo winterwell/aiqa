@@ -10,7 +10,7 @@ import {
   listOrganisations,
   updateOrganisation,
   deleteOrganisation,
-} from '../dist/src/db_sql.js';
+} from '../dist/db/db_sql.js';
 
 dotenv.config();
 

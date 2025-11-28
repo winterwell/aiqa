@@ -23,6 +23,34 @@ export function searchQueryToEsQuery(sq: SearchQuery | string | null | undefined
 }
 
 /**
+ * Process a single bit/item into an Elasticsearch query
+ */
+function buildESQuery2_oneBit(bit: any): any {
+  if (typeof bit === 'string') {
+    return { match: { _all: bit } };
+  }
+  if (typeof bit === 'object' && !Array.isArray(bit)) {
+    const keys = Object.keys(bit);
+    if (keys.length === 1) {
+      const key = keys[0];
+      let value = bit[key];
+      // Handle unset (missing/null field)
+      if (value === 'unset') {
+        return { bool: { must_not: { exists: { field: key } } } };
+      }
+      // Convert string numbers to actual numbers for numeric fields
+      if (typeof value === 'string' && /^-?\d+$/.test(value)) {
+        value = parseInt(value, 10);
+      } else if (typeof value === 'string' && /^-?\d*\.\d+$/.test(value)) {
+        value = parseFloat(value);
+      }
+      return { term: { [key]: value } };
+    }
+  }
+  return buildEsQuery(Array.isArray(bit) ? bit : [bit]);
+}
+
+/**
  * Build Elasticsearch query from parse tree
  */
 export function buildEsQuery(tree: any[]): any {
@@ -31,50 +59,13 @@ export function buildEsQuery(tree: any[]): any {
   }
 
   if (tree.length === 1) {
-    const item = tree[0];
-    if (typeof item === 'string') {
-      return { match: { _all: item } };
-    }
-    if (typeof item === 'object' && !Array.isArray(item)) {
-      const keys = Object.keys(item);
-      if (keys.length === 1) {
-        const key = keys[0];
-        let value = item[key];
-        // Convert string numbers to actual numbers for numeric fields
-        if (typeof value === 'string' && /^-?\d+$/.test(value)) {
-          value = parseInt(value, 10);
-        } else if (typeof value === 'string' && /^-?\d*\.\d+$/.test(value)) {
-          value = parseFloat(value);
-        }
-        return { term: { [key]: value } };
-      }
-    }
-    return buildEsQuery(Array.isArray(item) ? item : [item]);
+    return buildESQuery2_oneBit(tree[0]);
   }
 
   const op = tree[0];
   const bits = tree.slice(1);
 
-  const queries = bits.map((bit: any) => {
-    if (typeof bit === 'string') {
-      return { match: { _all: bit } };
-    }
-    if (typeof bit === 'object' && !Array.isArray(bit)) {
-      const keys = Object.keys(bit);
-      if (keys.length === 1) {
-        const key = keys[0];
-        let value = bit[key];
-        // Convert string numbers to actual numbers for numeric fields
-        if (typeof value === 'string' && /^-?\d+$/.test(value)) {
-          value = parseInt(value, 10);
-        } else if (typeof value === 'string' && /^-?\d*\.\d+$/.test(value)) {
-          value = parseFloat(value);
-        }
-        return { term: { [key]: value } };
-      }
-    }
-    return buildEsQuery(Array.isArray(bit) ? bit : [bit]);
-  });
+  const queries = bits.map((bit: any) => buildESQuery2_oneBit(bit));
 
   if (op === 'OR') {
     return { bool: { should: queries, minimum_should_match: 1 } };

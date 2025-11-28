@@ -47,7 +47,7 @@ interface SerializableSpan {
  * Exports spans to AIQA server. Buffers spans and auto-flushes every flushIntervalSeconds.
  * Call shutdown() before process exit to flush remaining spans.
  */
-export class AiqaSpanExporter implements SpanExporter {
+export class AIQASpanExporter implements SpanExporter {
   private serverUrl: string;
   private apiKey: string;
   private flushIntervalMs: number;
@@ -58,7 +58,7 @@ export class AiqaSpanExporter implements SpanExporter {
 
   constructor(
     serverUrl: string = 'http://localhost:3000',
-    apiKey: string,
+    apiKey: string = process.env.AIQA_API_KEY || '',
     flushIntervalSeconds: number = 5
   ) {
     this.serverUrl = serverUrl.replace(/\/$/, ''); // Remove trailing slash
@@ -149,10 +149,19 @@ export class AiqaSpanExporter implements SpanExporter {
         return;
       }
 
+      // Skip sending if server URL is not configured
+      if (!this.serverUrl) {
+        console.warn(`Skipping flush: AIQA_SERVER_URL is not set. ${spansToFlush.length} span(s) will not be sent.`);
+        return;
+      }
+
       await this.sendSpans(spansToFlush);
     } catch (error: any) {
       console.error('Error flushing spans to server:', error.message);
-      throw error;
+      // Don't throw in auto-flush to avoid crashing the process
+      if (this.shutdownRequested) {
+        throw error;
+      }
     } finally {
       resolveFlush!();
     }
@@ -162,11 +171,16 @@ export class AiqaSpanExporter implements SpanExporter {
    * Send spans to the server API
    */
   private async sendSpans(spans: SerializableSpan[]): Promise<void> {
+    if (!this.serverUrl) {
+      throw new Error('AIQA_SERVER_URL is not set. Cannot send spans to server.');
+    }
+
+	console.log('Sending spans to server:', this.serverUrl, spans, this.apiKey);
     const response = await fetch(`${this.serverUrl}/span`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
+        'Authorization': `ApiKey ${this.apiKey}`,
       },
       body: JSON.stringify(spans),
     });
@@ -192,6 +206,12 @@ export class AiqaSpanExporter implements SpanExporter {
         });
       }
     }, this.flushIntervalMs);
+    
+    // Unref the timer so it doesn't prevent process exit
+    // This allows the exporter to work as a daemon that won't block normal exit
+    if (this.flushTimer && typeof this.flushTimer.unref === 'function') {
+      this.flushTimer.unref();
+    }
   }
 
   /**
@@ -209,19 +229,3 @@ export class AiqaSpanExporter implements SpanExporter {
     await this.flush();
   }
 }
-
-/**
- * Compatibility alias for ElasticsearchSpanExporter. Uses AIQA_SERVER_URL and AIQA_API_KEY env vars if set.
- */
-export class ElasticsearchSpanExporter extends AiqaSpanExporter {
-  constructor(serverUrl: string = 'http://localhost:9200', index: string = 'traces') {
-    // Map ELASTICSEARCH_BASE_URL to AIQA server URL, or use AIQA_SERVER_URL if set
-    const aiqaServerUrl = process.env.AIQA_SERVER_URL || serverUrl;
-    const apiKey = process.env.AIQA_API_KEY || '';
-    if (!apiKey) {
-      console.warn('Warning: AIQA_API_KEY not set. Spans may not be sent successfully.');
-    }
-    super(aiqaServerUrl, apiKey);
-  }
-}
-

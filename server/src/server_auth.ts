@@ -1,11 +1,10 @@
 /**
  * Authentication middleware and utilities for API key and JWT token authentication.
- * API keys are hashed with SHA-256 before storage/verification.
  * JWT tokens are verified and user's organisation is looked up from the User table.
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { getApiKeyByHash, getUser, getOrganisationsForUser, getOrganisation, listUsers } from './db/db_sql.js';
+import { getUser, getOrganisationsForUser, getOrganisation, listUsers, getApiKey } from './db/db_sql.js';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
@@ -16,16 +15,10 @@ import SearchQuery from './common/SearchQuery.js';
  * organisationId, userId, and apiKeyId are set when authentication succeeds.
  */
 export interface AuthenticatedRequest extends FastifyRequest {
+  authenticatedWith?: 'api_key' | 'jwt';
   organisationId?: string;
   userId?: string;
   apiKeyId?: string;
-}
-
-/**
- * Hash an API key using SHA-256. Used to store keys securely (never store plain keys).
- */
-export function hashApiKey(key: string): string {
-  return crypto.createHash('sha256').update(key).digest('hex');
 }
 
 /**
@@ -134,19 +127,20 @@ async function verifyJwtToken(token: string): Promise<JwtVerificationResult | nu
 async function authenticateWithApiKey(
   request: AuthenticatedRequest,
   reply: FastifyReply,
-  apiKey: string
+  apiId: string
 ): Promise<boolean> {
-  const keyHash = hashApiKey(apiKey);
-  const apiKeyRecord = await getApiKeyByHash(keyHash);
+  const apiKey = await getApiKey(apiId);
   
-  if (!apiKeyRecord) {
+  if (!apiKey) {
+	console.error('API key not found:', apiId);
     return false;
   }
 
   // Look up user from API key's organisation (API keys are tied to organisations)
   // For API keys, we use the organisation_id directly from the API key record
-  request.organisationId = apiKeyRecord.organisation_id;
-  request.apiKeyId = apiKeyRecord.id;
+  request.organisationId = apiKey.organisation_id;
+  request.apiKeyId = apiKey.id;
+  request.authenticatedWith = 'api_key';
   return true;
 }
 
@@ -223,12 +217,15 @@ async function authenticateWithJwt(
   }
 
   request.userId = userId;
+  request.authenticatedWith = 'jwt';
   return true;
 }
 
 /**
  * Fastify preHandler middleware for authentication (API key or JWT token).
- * Expects Authorization header: "Bearer <api-key-or-jwt-token>".
+ * Expects Authorization header:
+ *   - "Bearer <jwt-token>" for JWT authentication
+ *   - "ApiKey <api-key>" for API key authentication
  * 
  * For API keys: Looks up organisation from ApiKey table.
  * For JWT tokens: Verifies token, looks up user, then finds organisation from User's memberships.
@@ -245,31 +242,43 @@ export async function authenticate(
 ): Promise<void> {
   const authHeader = request.headers.authorization;
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    reply.code(401).send({ error: 'Missing or invalid Authorization header' });
+  if (!authHeader) {
+    reply.code(401).send({ error: 'Missing Authorization header' });
     return;
   }
 
-  const token = authHeader.substring(7);
   const authRequest = request as AuthenticatedRequest;
 
-  // Try API key authentication first (API keys are typically longer)
-  // If it fails, try JWT authentication
-  const apiKeySuccess = await authenticateWithApiKey(authRequest, reply, token);
-  if (apiKeySuccess) {
+  // Check for API key authentication: "ApiKey <api-key>"
+  if (authHeader.startsWith('ApiKey ')) {
+    const apiKey = authHeader.substring(7).trim();
+    const apiKeySuccess = await authenticateWithApiKey(authRequest, reply, apiKey);
+    if (apiKeySuccess) {
+      return;
+    }
+    // API key authentication failed - only send error if reply hasn't been sent yet
+    if (!reply.sent) {
+      reply.code(401).send({ error: 'Invalid API key' });
+    }
     return;
   }
 
-  // Try JWT authentication
-  const jwtSuccess = await authenticateWithJwt(authRequest, reply, token);
-  if (jwtSuccess) {
+  // Check for JWT authentication: "Bearer <jwt-token>"
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const jwtSuccess = await authenticateWithJwt(authRequest, reply, token);
+    if (jwtSuccess) {
+      return;
+    }
+    // JWT authentication failed - only send error if reply hasn't been sent yet
+    if (!reply.sent) {
+      reply.code(401).send({ error: 'Invalid JWT token' });
+    }
     return;
   }
 
-  // Both failed - only send error if reply hasn't been sent yet
-  if (!reply.sent) {
-    reply.code(401).send({ error: 'Invalid API key or JWT token' });
-  }
+  // Invalid Authorization header format
+  reply.code(401).send({ error: 'Invalid Authorization header format. Use "Bearer <jwt-token>" or "ApiKey <api-key>"' });
 }
 
 /**

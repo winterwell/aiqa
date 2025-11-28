@@ -92,18 +92,25 @@ fastify.post('/span', { preHandler: authenticate }, async (request: Authenticate
 
   const spansArray = Array.isArray(spans) ? spans : [spans];
   
-  // Add organisation_id to each span
+  // Add organisation to each span
   const spansWithOrg = spansArray.map(span => ({
     ...span,
-    organisation_id: organisationId,
+    organisation: organisationId,
   }));
-
+  console.log("inserting: "+spansWithOrg.length+" spans");
   await bulkInsertSpans(spansWithOrg);
   return { success: true, count: spansWithOrg.length };
 });
 
+/**
+ * Query spans
+ */
 fastify.get('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  const organisationId = request.organisationId!;
+	const organisationId = (request.query as any).organisation as string | undefined;
+	if (!organisationId) {
+	  reply.code(400).send({ error: 'organisation query parameter is required' });
+	  return;
+	}
   console.log("organisationId", organisationId);
   const query = (request.query as any).q as string | undefined;
   const limit = parseInt((request.query as any).limit || '100');
@@ -209,23 +216,11 @@ fastify.delete('/user/:id', async (request, reply) => {
 // ===== API KEY ENDPOINTS (PostgreSQL) =====
 fastify.post('/api-key', async (request, reply) => {
   const body = request.body as any;
-  const { key } = body;
-  if (!key) {
-    reply.code(400).send({ error: 'API key is required' });
-    return;
-  }
-  
-  const { hashApiKey } = await import('./server_auth.js');
-  const keyHash = hashApiKey(key);
-  
   const apiKey = await createApiKey({
-    ...body,
-    key_hash: keyHash,
+    ...body
   });
   
-  // Don't return the hash
-  const { key_hash, ...apiKeyResponse } = apiKey;
-  return apiKeyResponse;
+  return apiKey;
 });
 
 fastify.get('/api-key/:id', async (request, reply) => {
@@ -235,15 +230,19 @@ fastify.get('/api-key/:id', async (request, reply) => {
     reply.code(404).send({ error: 'API key not found' });
     return;
   }
-  const { key_hash, ...apiKeyResponse } = apiKey;
-  return apiKeyResponse;
+  return apiKey;
 });
 
 fastify.get('/api-key', async (request, reply) => {
+  const organisationId = (request.query as any).organisation_id as string | undefined;
+  if (!organisationId) {
+    reply.code(400).send({ error: 'organisation_id query parameter is required' });
+    return;
+  }
   const query = (request.query as any).q as string | undefined;
   const searchQuery = query ? new SearchQuery(query) : null;
-  const apiKeys = await listApiKeys(searchQuery);
-  return apiKeys.map(({ key_hash, ...rest }) => rest);
+  const apiKeys = await listApiKeys(organisationId, searchQuery);
+  return apiKeys;
 });
 
 fastify.put('/api-key/:id', async (request, reply) => {
@@ -253,8 +252,7 @@ fastify.put('/api-key/:id', async (request, reply) => {
     reply.code(404).send({ error: 'API key not found' });
     return;
   }
-  const { key_hash, ...apiKeyResponse } = apiKey;
-  return apiKeyResponse;
+  return apiKey;
 });
 
 fastify.delete('/api-key/:id', async (request, reply) => {
@@ -269,6 +267,11 @@ fastify.delete('/api-key/:id', async (request, reply) => {
 
 // ===== DATASET ENDPOINTS (PostgreSQL) =====
 fastify.post('/dataset', async (request, reply) => {
+	const organisationId = (request.query as any).organisation_id as string | undefined;
+  if (!organisationId) {
+    reply.code(400).send({ error: 'organisation_id query parameter is required' });
+    return;
+  }
   const dataset = await createDataset(request.body as any);
   return dataset;
 });
@@ -284,9 +287,14 @@ fastify.get('/dataset/:id', async (request, reply) => {
 });
 
 fastify.get('/dataset', async (request, reply) => {
+  const organisationId = (request.query as any).organisation_id as string | undefined;
+  if (!organisationId) {
+    reply.code(400).send({ error: 'organisation_id query parameter is required' });
+    return;
+  }
   const query = (request.query as any).q as string | undefined;
   const searchQuery = query ? new SearchQuery(query) : null;
-  const datasets = await listDatasets(searchQuery);
+  const datasets = await listDatasets(organisationId, searchQuery);
   return datasets;
 });
 
@@ -317,18 +325,18 @@ fastify.post('/input', { preHandler: authenticate }, async (request: Authenticat
 
   const inputsArray = Array.isArray(inputs) ? inputs : [inputs];
   
-  // Validate dataset_id is present
+  // Validate dataset is present
   for (const input of inputsArray) {
-    if (!input.dataset_id) {
-      reply.code(400).send({ error: 'dataset_id is required for input documents' });
+    if (!input.dataset) {
+      reply.code(400).send({ error: 'dataset is required for input documents' });
       return;
     }
   }
   
-  // Add organisation_id to each input
+  // Add organisation to each input
   const inputsWithOrg = inputsArray.map(input => ({
     ...input,
-    organisation_id: organisationId,
+    organisation: organisationId,
   }));
 
   await bulkInsertInputs(inputsWithOrg);
@@ -370,9 +378,14 @@ fastify.get('/experiment/:id', async (request, reply) => {
 });
 
 fastify.get('/experiment', async (request, reply) => {
+  const organisationId = (request.query as any).organisation_id as string | undefined;
+  if (!organisationId) {
+    reply.code(400).send({ error: 'organisation_id query parameter is required' });
+    return;
+  }
   const query = (request.query as any).q as string | undefined;
   const searchQuery = query ? new SearchQuery(query) : null;
-  const experiments = await listExperiments(searchQuery);
+  const experiments = await listExperiments(organisationId, searchQuery);
   return experiments;
 });
 

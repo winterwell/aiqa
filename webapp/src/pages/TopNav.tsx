@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { Navbar, Nav, NavItem, Dropdown, DropdownToggle, DropdownMenu, DropdownItem } from 'reactstrap';
+import { Navbar, Nav, NavItem, Dropdown, DropdownToggle, DropdownMenu, DropdownItem, NavLink } from 'reactstrap';
 import Logo from '../components/Logo';
+import { getOrganisation } from '../api';
+import { useParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 
 const TopNav: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuth0();
@@ -12,12 +15,31 @@ const TopNav: React.FC = () => {
   if (!isAuthenticated) {
     return null;
   }
+  // organisation_id from url /organisation/{organisation_id}
+  // work directly on window.location.pathname
+  const pathBits = window.location.pathname.split('/');
+  const orgIndex = pathBits.indexOf('organisation');  
+  const organisationId = orgIndex !== -1 ? pathBits[orgIndex + 1] : null;
+  console.log('organisationId', organisationId);
+
+  const {data: organisation} = useQuery({
+    queryKey: ['organisation', organisationId],
+    queryFn: () => getOrganisation(organisationId),
+    enabled: !!organisationId,
+  });
+
+  console.log('organisation', organisation);
 
   return (
     <Navbar color="light" light expand="md" className="border-bottom">
-      <div className="container-fluid">
+      <div className="container-fluid d-flex align-items-center">
         <Logo size={32} showText={true} />
         <Nav className="ms-auto" navbar>
+			<NavItem>
+				<NavLink href="/organisation">
+					{organisation?.name}
+				</NavLink>
+			</NavItem>
           <NavItem>
             <Dropdown isOpen={dropdownOpen} toggle={toggle}>
               <DropdownToggle caret nav>

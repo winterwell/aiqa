@@ -5,18 +5,20 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
  * Represents a completed span that can be read and exported.
  */
 export interface Span extends ReadableSpan {
-  organisation_id: string;  
+	/** Trace ID */
+	traceId: string;
+  organisation: string;  
   /** Only set for spans in the `dataset_spans` index */
-  dataset_id?: string | string[];
+  dataset?: string | string[];
   /** Only set for spans in the `spans` index IF created during an experiment */
-  experiment_id?: string;
-  /** Client-set span ID (overrides OpenTelemetry span ID if provided) */
-  client_span_id?: string;
-  /** Client-set trace ID (overrides OpenTelemetry trace ID if provided) */
-  client_trace_id?: string;
+  experiment?: string;
+  /** Client-set span ID (goes alongside OpenTelemetry span ID if provided) */
+  clientSpanId?: string;
+  /** Client-set trace ID (goes alongside OpenTelemetry trace ID if provided) */
+  clientTraceId?: string;
   /** Client-set tags for the span */
   tags?: Record<string, any>;
   /** Hash of the input for looking up same-input spans */
-  input_hash?: string;
+  inputHash?: string;
 }
 

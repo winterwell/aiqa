@@ -54,7 +54,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       droppedAttributesCount: 0,
       droppedEventsCount: 0,
       droppedLinksCount: 0,
-      organisation_id: orgId,
+      organisation: orgId,
     },
     {
       traceId: 'tr1',
@@ -84,7 +84,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       droppedAttributesCount: 0,
       droppedEventsCount: 0,
       droppedLinksCount: 0,
-      organisation_id: orgId,
+      organisation: orgId,
     }
   ];
 

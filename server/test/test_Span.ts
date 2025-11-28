@@ -1,9 +1,9 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
 import Fastify from 'fastify';
-import { initPool, createSchema as createSqlSchema, closePool, createOrganisation, createApiKey } from '../dist/src/db_sql.js';
-import { initClient, createSchema as createEsSchema, closeClient } from '../dist/src/db_es.js';
-import type { Span } from '../dist/src/common/types/index.js';
+import { initPool, createSchema as createSqlSchema, closePool, createOrganisation, createApiKey } from '../dist/db/db_sql.js';
+import { initClient, createSchema as createEsSchema, closeClient } from '../dist/db/db_es.js';
+import type { Span } from '../dist/common/types/index.js';
 import type { AuthenticatedRequest } from '../src/server_auth.js';
 
 dotenv.config();
@@ -45,7 +45,7 @@ tap.before(async () => {
     
     const spansWithOrg = spansArray.map(span => ({
       ...span,
-      organisation_id: organisationId,
+      organisation: organisationId,
     }));
 
     await bulkInsertSpans(spansWithOrg);
@@ -79,10 +79,7 @@ tap.before(async () => {
 
   // Create test API key
   const apiKey = 'test-api-key-' + Date.now();
-  const { hashApiKey } = await import('../dist/src/server_auth.js');
-  const keyHash = hashApiKey(apiKey);
   await createApiKey({
-    key_hash: keyHash,
     organisation_id: testOrgId,
   });
   testApiKey = apiKey;
@@ -133,7 +130,7 @@ tap.test('create a new span and retrieve it by id', async (t) => {
     instrumentationLibrary: {
       name: 'test',
     },
-    client_span_id: clientSpanId,
+    clientSpanId: clientSpanId,
   };
 
   // Create span via POST /span
@@ -141,7 +138,7 @@ tap.test('create a new span and retrieve it by id', async (t) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${testApiKey}`,
+      'Authorization': `ApiKey ${testApiKey}`,
     },
     body: JSON.stringify(span),
   });
@@ -154,11 +151,11 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   // Wait a bit for Elasticsearch to index
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Retrieve span by id via GET /span?q=client_span_id:xxx
-  const getResponse = await fetch(`${serverUrl}/span?q=client_span_id:${clientSpanId}`, {
+  // Retrieve span by id via GET /span?q=clientSpanId:xxx
+  const getResponse = await fetch(`${serverUrl}/span?q=clientSpanId:${clientSpanId}`, {
     method: 'GET',
     headers: {
-      'Authorization': `Bearer ${testApiKey}`,
+      'Authorization': `ApiKey ${testApiKey}`,
     },
   });
 
@@ -167,8 +164,8 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   t.ok(getResult.hits, 'should have hits array');
   t.ok(Array.isArray(getResult.hits), 'hits should be an array');
   t.equal(getResult.hits.length, 1, 'should find exactly one span');
-  t.equal(getResult.hits[0].client_span_id, clientSpanId, 'should match the created span id');
-  t.equal(getResult.hits[0].organisation_id, testOrgId, 'should have correct organisation_id');
+  t.equal(getResult.hits[0].clientSpanId, clientSpanId, 'should match the created span id');
+  t.equal(getResult.hits[0].organisation, testOrgId, 'should have correct organisation');
   t.equal(getResult.hits[0].name, 'test-span', 'should have correct name');
 });
 

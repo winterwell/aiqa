@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
-import { getDataset, listExperiments } from '../api';
-import { Dataset, Experiment } from '../common/types';
+import { ColumnDef } from '@tanstack/react-table';
+import { getDataset, listExperiments, searchInputs } from '../api';
+import { Dataset, Experiment, Span } from '../common/types';
+import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
 
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
@@ -15,14 +17,95 @@ const DatasetDetailsPage: React.FC = () => {
   });
 
   const { data: experiments } = useQuery({
-    queryKey: ['experiments', datasetId],
-    queryFn: () => listExperiments(),
-    enabled: !!datasetId,
+    queryKey: ['experiments', organisationId, datasetId],
+    queryFn: () => listExperiments(organisationId!),
+    enabled: !!datasetId && !!organisationId,
     select: (data) => {
       // Filter by dataset_id
       return data.filter((exp: Experiment) => exp.dataset_id === datasetId);
     },
   });
+
+  const loadSpansData = async (query: string): Promise<PageableData<Span>> => {
+    const result = await searchInputs(organisationId!, datasetId, query || undefined, 1000, 0);
+    return {
+      hits: result.hits || [],
+      offset: result.offset || 0,
+      limit: result.limit || 1000,
+      total: result.total,
+    };
+  };
+
+  const getSpanId = (span: Span) => {
+    return (span as any).span?.id || (span as any).client_span_id || 'N/A';
+  };
+
+  const getTraceId = (span: Span) => {
+    return (span as any).trace?.id || (span as any).client_trace_id || 'N/A';
+  };
+
+  const getStartTime = (span: Span) => {
+    if (!(span as any).startTime) return null;
+    return new Date((span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000);
+  };
+
+  const getDuration = (span: Span) => {
+    if (!(span as any).startTime || !(span as any).endTime) return null;
+    const start = (span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000;
+    const end = (span as any).endTime[0] * 1000 + (span as any).endTime[1] / 1000000;
+    return end - start;
+  };
+
+  const columns = useMemo<ColumnDef<Span>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => (row.original as any).name || 'N/A',
+      },
+      {
+        id: 'spanId',
+        header: 'Span ID',
+        cell: ({ row }) => (
+          <code className="small">{getSpanId(row.original).substring(0, 16)}...</code>
+        ),
+      },
+      {
+        id: 'traceId',
+        header: 'Trace ID',
+        cell: ({ row }) => (
+          <code className="small">{getTraceId(row.original).substring(0, 16)}...</code>
+        ),
+      },
+      {
+        id: 'startTime',
+        header: 'Start Time',
+        cell: ({ row }) => {
+          const startTime = getStartTime(row.original);
+          return startTime ? startTime.toLocaleString() : 'N/A';
+        },
+      },
+      {
+        id: 'duration',
+        header: 'Duration',
+        cell: ({ row }) => {
+          const duration = getDuration(row.original);
+          return duration !== null ? `${duration.toFixed(2)}ms` : 'N/A';
+        },
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: ({ row }) => {
+          const status = (row.original as any).status;
+          if (!status) return 'N/A';
+          const code = status.code === 1 ? 'OK' : status.code === 2 ? 'ERROR' : 'UNSET';
+          return <Badge color={code === 'ERROR' ? 'danger' : code === 'OK' ? 'success' : 'secondary'}>{code}</Badge>;
+        },
+      },
+    ],
+    []
+  );
 
   if (isLoading) {
     return (
@@ -101,35 +184,6 @@ const DatasetDetailsPage: React.FC = () => {
           </Card>
         </Col>
 
-        <Col md={6}>
-          <Card>
-            <CardHeader>
-              <h5>Schemas</h5>
-            </CardHeader>
-            <CardBody>
-              <div className="mb-3">
-                <strong>Input Schema:</strong>
-                {dataset.input_schema ? (
-                  <pre className="bg-light p-2 mt-2 small">
-                    {JSON.stringify(dataset.input_schema, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-muted">Not defined</p>
-                )}
-              </div>
-              <div>
-                <strong>Output Schema:</strong>
-                {dataset.output_schema ? (
-                  <pre className="bg-light p-2 mt-2 small">
-                    {JSON.stringify(dataset.output_schema, null, 2)}
-                  </pre>
-                ) : (
-                  <p className="text-muted">Not defined</p>
-                )}
-              </div>
-            </CardBody>
-          </Card>
-        </Col>
       </Row>
 
       {dataset.metrics && (
@@ -151,36 +205,17 @@ const DatasetDetailsPage: React.FC = () => {
 
       <Row className="mt-3">
         <Col>
-          <Card>
-            <CardHeader>
-              <h5>Experiments ({datasetExperiments.length})</h5>
-            </CardHeader>
-            <CardBody>
-              {datasetExperiments.length === 0 ? (
-                <p className="text-muted">No experiments found for this dataset.</p>
-              ) : (
-                <div className="list-group">
-                  {datasetExperiments.map((experiment: Experiment) => (
-                    <Link
-                      key={experiment.id}
-                      to={`/organisation/${organisationId}/dataset/${datasetId}/experiment/${experiment.id}`}
-                      className="list-group-item list-group-item-action"
-                    >
-                      <div className="d-flex w-100 justify-content-between">
-                        <h6 className="mb-1">Experiment {experiment.id.substring(0, 8)}...</h6>
-                        <small>{new Date(experiment.created).toLocaleString()}</small>
-                      </div>
-                      <p className="mb-1 text-muted small">
-                        Updated: {new Date(experiment.updated).toLocaleString()}
-                      </p>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+          <TableUsingAPI
+            loadData={loadSpansData}
+            columns={columns}
+            searchPlaceholder="Search spans..."
+            searchDebounceMs={500}
+            pageSize={50}
+            enableInMemoryFiltering={true}
+          />
         </Col>
       </Row>
+
     </Container>
   );
 };

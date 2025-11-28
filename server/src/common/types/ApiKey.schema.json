@@ -12,9 +12,6 @@
         "id": {
           "type": "string"
         },
-        "key_hash": {
-          "type": "string"
-        },
         "organisation_id": {
           "type": "string"
         },
@@ -32,7 +29,6 @@
       "required": [
         "id",
         "organisation_id",
-        "key_hash",
         "created",
         "updated"
       ],

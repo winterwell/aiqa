@@ -22,10 +22,30 @@ This talk will cover:
  - How to test
  - And we'll cover some pitfalls
 
-## War Stories
+## Epic Fails 
 
-TODO a short game/session to share war stories from me and the audience.
+How bad can it get?
 
+Leaving out testing failures that have actually cost lives, of which sadly there are examples, here's some non-fatal but still very expensive fails.
+
+- Long-Term Capital Management - Founders included two Nobel prize winning economists. Ironically lasted only 4 years, until a rapid $4 billion loss drove it into bankruptcy (1994 - 1998)
+  - Hidden assumptions. Overconfidence. Lack of long tail testing.
+
+- Mars Climate Orbiter - Metric/imperial conversion error (1999)
+
+- The 2010 Flash Crash (201)
+ 
+- Knight Capital $400m trading loss in 45 minutes from a faulty software update (2012)
+
+- Google Photos - Tagged black people as gorillas (their fix? ban the words gorilla, ape, monkey - a ban which is still in place today) (2015)
+ 
+- Microsoft Tay - Twitter bot that learns from people ...became a nazi within a day (2016)
+
+- Amazon AI recruitment ... trained in sexism (2018)
+
+- Elon Musk breaking the CyberTruck armoured glass windows (2021)
+
+- CrowdStrike Falcon update -> blue screen of death for 8 million devices (2024)
 
 ## Test like: an Investor
 

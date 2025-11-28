@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/example.js",
-    "dev": "ts-node src/example.ts"
+    "dev": "ts-node src/example.ts",
+    "test": "pnpm run build && tap test/**/*.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "tap": "^19.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }

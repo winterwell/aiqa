@@ -1,26 +1,50 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, Input, Table, Pagination, PaginationItem, PaginationLink } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
-import { listDatasets } from '../api';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Card, CardBody, CardHeader, Input, Table, Button, Form, FormGroup, Label, Alert } from 'reactstrap';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { listDatasets, createDataset } from '../api';
 import { Dataset } from '../common/types';
 
 const DatasetListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
-  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [datasetName, setDatasetName] = useState('');
+  const [datasetDescription, setDatasetDescription] = useState('');
 
   const { data: datasets, isLoading, error } = useQuery({
-    queryKey: ['datasets', organisationId, searchQuery],
-    queryFn: () => listDatasets(searchQuery || undefined),
+    queryKey: ['datasets', organisationId],
+    queryFn: () => listDatasets(organisationId),
     enabled: !!organisationId,
-    select: (data) => {
-      // Filter by organisation_id on the client side since the API might not support it
-      return data.filter((ds: Dataset) => ds.organisation_id === organisationId);
+  });
+
+  const createDatasetMutation = useMutation({
+    mutationFn: async (datasetData: {
+      organisation_id: string;
+      name: string;
+      description?: string;
+    }) => {
+      return createDataset(datasetData);
+    },
+    onSuccess: (newDataset) => {
+      queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+      setShowCreateForm(false);
+      setDatasetName('');
+      setDatasetDescription('');
+      navigate(`/organisation/${organisationId}/dataset/${newDataset.id}`);
     },
   });
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const handleCreateDataset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!organisationId || !datasetName.trim()) return;
+
+    createDatasetMutation.mutate({
+      organisation_id: organisationId,
+      name: datasetName.trim(),
+      description: datasetDescription.trim() || undefined,
+    });
   };
 
   if (isLoading) {
@@ -55,21 +79,71 @@ const DatasetListPage: React.FC = () => {
           <Link to={`/organisation/${organisationId}`} className="btn btn-link mb-3">
             ← Back to Organisation
           </Link>
-          <h1>Datasets</h1>
-          <p className="text-muted">Organisation: {organisationId}</p>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h1>Datasets</h1>
+            </div>
+            <Button color="primary" onClick={() => setShowCreateForm(true)}>
+              Create New Dataset
+            </Button>
+          </div>
         </Col>
       </Row>
 
-      <Row className="mt-3">
-        <Col>
-          <Input
-            type="text"
-            placeholder="Search datasets (Gmail-style syntax)"
-            value={searchQuery}
-            onChange={handleSearchChange}
-          />
-        </Col>
-      </Row>
+      {showCreateForm && (
+        <Row className="mb-4">
+          <Col>
+            <Card>
+              <CardHeader>
+                <h5>Create New Dataset</h5>
+              </CardHeader>
+              <CardBody>
+                <Form onSubmit={handleCreateDataset}>
+                  <FormGroup>
+                    <Label for="datasetName">Dataset Name</Label>
+                    <Input
+                      type="text"
+                      id="datasetName"
+                      value={datasetName}
+                      onChange={(e) => setDatasetName(e.target.value)}
+                      placeholder="Enter dataset name"
+                      required
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label for="datasetDescription">Description (optional)</Label>
+                    <Input
+                      type="textarea"
+                      id="datasetDescription"
+                      value={datasetDescription}
+                      onChange={(e) => setDatasetDescription(e.target.value)}
+                      placeholder="Enter dataset description"
+                      rows={3}
+                    />
+                  </FormGroup>
+                  <div className="d-flex gap-2">
+                    <Button color="primary" type="submit" disabled={createDatasetMutation.isPending}>
+                      {createDatasetMutation.isPending ? 'Creating...' : 'Create Dataset'}
+                    </Button>
+                    <Button color="secondary" onClick={() => {
+                      setShowCreateForm(false);
+                      setDatasetName('');
+                      setDatasetDescription('');
+                    }}>
+                      Cancel
+                    </Button>
+                  </div>
+                  {createDatasetMutation.isError && (
+                    <Alert color="danger" className="mt-3">
+                      Failed to create dataset: {createDatasetMutation.error instanceof Error ? createDatasetMutation.error.message : 'Unknown error'}
+                    </Alert>
+                  )}
+                </Form>
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       <Row className="mt-3">
         <Col>
