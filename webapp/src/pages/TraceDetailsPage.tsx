@@ -7,6 +7,35 @@ import { searchSpans } from '../api';
 import { Span } from '../common/types';
 import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
 import { getSpanId, getStartTime, getEndTime, getDuration } from '../utils/span-utils';
+import JsonObjectViewer from '../components/JsonObjectViewer';
+
+interface SpanTree {
+	span: Span;
+	children: SpanTree[];
+}
+
+function organiseSpansIntoTree(spans: Span[], parent: Span | null): SpanTree | null {
+	if ( ! parent) {
+		const roots = spans.filter(span => {
+			const parentSpanId = (span as any).parentSpanId || (span as any).span?.parent?.id;
+			return !parentSpanId;
+		});
+		if ( ! roots.length) {
+			return null;
+		}
+		return organiseSpansIntoTree(spans, roots[0]);
+	}
+	const parentId = getSpanId(parent);
+    const childSpans = spans.filter(span => {
+		const spanParentId = (span as any).parentSpanId || (span as any).span?.parent?.id;
+		return spanParentId === parentId;
+	});
+    const tree: SpanTree = {
+        span: parent,
+        children: childSpans.map(childSpan => organiseSpansIntoTree(spans, childSpan)).filter((child): child is SpanTree => child !== null),
+    };
+	return tree;
+}
 
 const TraceDetailsPage: React.FC = () => {
   const { organisationId, traceId } = useParams<{ organisationId: string; traceId: string }>();
@@ -20,50 +49,8 @@ const TraceDetailsPage: React.FC = () => {
     },
     enabled: !!organisationId && !!traceId,
   });
-
-  const columns = useMemo<ColumnDef<Span>[]>(
-    () => [
-      {
-        accessorKey: 'name',
-        header: 'Name',
-        cell: ({ row }) => (row.original as any).name || 'N/A',
-      },
-      {
-        id: 'spanId',
-        header: 'Span ID',
-        cell: ({ row }) => (
-          <code className="small">{getSpanId(row.original).substring(0, 16)}...</code>
-        ),
-      },
-      {
-        id: 'startTime',
-        header: 'Start Time',
-        cell: ({ row }) => {
-          const startTime = getStartTime(row.original);
-          return startTime ? startTime.toLocaleString() : 'N/A';
-        },
-      },
-      {
-        id: 'duration',
-        header: 'Duration',
-        cell: ({ row }) => {
-          const duration = getDuration(row.original);
-          return duration !== null ? `${duration.toFixed(2)}ms` : 'N/A';
-        },
-      },
-      {
-        id: 'status',
-        header: 'Status',
-        cell: ({ row }) => {
-          const status = (row.original as any).status;
-          if (!status) return 'N/A';
-          const code = status.code === 1 ? 'OK' : status.code === 2 ? 'ERROR' : 'UNSET';
-          return <Badge color={code === 'ERROR' ? 'danger' : code === 'OK' ? 'success' : 'secondary'}>{code}</Badge>;
-        },
-      },
-    ],
-    []
-  );
+  // organise the traceSpans into a tree of spans, with the root span at the top
+  const spanTree = organiseSpansIntoTree(traceSpans, null);
 
   return (
     <Container className="mt-4">
@@ -81,6 +68,7 @@ const TraceDetailsPage: React.FC = () => {
 
 	  <pre>
 		{JSON.stringify(traceSpans, null, 2)}
+		<JsonObjectViewer json={traceSpans} />
 	  </pre>
     </Container>
   );
