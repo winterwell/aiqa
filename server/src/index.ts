@@ -369,16 +369,16 @@ fastify.delete('/dataset/:id', { preHandler: authenticate }, async (request, rep
   return { success: true };
 });
 
-// ===== INPUT ENDPOINTS (ElasticSearch) =====
-fastify.post('/input', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+// ===== EXAMPLE ENDPOINTS (ElasticSearch) =====
+fastify.post('/example', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   const organisation = request.organisation!;
   const inputs = request.body as Span | Span[];
 
   const inputsArray = Array.isArray(inputs) ? inputs : [inputs];
   
   // Validate dataset is present
-  for (const input of inputsArray) {
-    if (!input.dataset) {
+  for (const example of inputsArray) {
+    if (!example.dataset) {
       reply.code(400).send({ error: 'dataset is required for input documents' });
       return;
     }

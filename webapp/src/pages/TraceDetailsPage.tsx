@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Badge } from 'reactstrap';
+import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { searchSpans } from '../api';
+import { createExampleFromSpan, listDatasets, searchSpans } from '../api';
 import { Span } from '../common/types';
 import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
-import { getSpanId, getStartTime, getEndTime, getDuration } from '../utils/span-utils';
+import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import JsonObjectViewer from '../components/JsonObjectViewer';
 
 interface SpanTree {
@@ -50,7 +50,29 @@ const TraceDetailsPage: React.FC = () => {
     enabled: !!organisationId && !!traceId,
   });
   // organise the traceSpans into a tree of spans, with the root span at the top
-  const spanTree = organiseSpansIntoTree(traceSpans, null);
+  const spanTree = traceSpans ? organiseSpansIntoTree(traceSpans, null) : null;
+
+  const {data:datasets, isLoading:isLoadingDataSets} = useQuery({
+     queryKey: ['datasets'],
+	 queryFn: async () => {
+		const result = await listDatasets(organisationId);
+		return result;
+	 },
+	 enabled: !!organisationId
+  });
+
+  const addToDataSet = async (span: Span) => {
+	console.log('addToDataSet', span);
+	if (!datasets?.length) {
+		console.warn("No datasets?!", datasets, isLoadingDataSets);
+		return;
+	}
+	const dataset = datasets[0]; // HACK
+	// post to dataset examples
+	const ok = await createExampleFromSpan({organisationId, datasetId:dataset.id, span});
+	console.log(ok);
+};
+
 
   return (
     <Container className="mt-4">
@@ -67,12 +89,32 @@ const TraceDetailsPage: React.FC = () => {
       </Row>
 
 	  <pre>
-		{JSON.stringify(traceSpans, null, 2)}
-		<JsonObjectViewer json={traceSpans} />
+		{spanTree && <SpanTreeViewer spanTree={spanTree} addToDataSet={addToDataSet} />}
 	  </pre>
     </Container>
   );
 };
+
+function SpanTreeViewer({ spanTree, addToDataSet }: { spanTree: SpanTree }) {
+	let span = spanTree.span;
+	let children = spanTree.children;
+
+	return (
+		<div>
+			{span.name} <Timestamp timestamp={getStartTime(span)} /> Duration: {getDurationMs(span)}
+			<Button onClick={() => addToDataSet(span)}>Add to DataSet</Button>
+			<pre>{JSON.stringify(span, null, 2)}</pre>
+			{children?.map(kid => <SpanTreeViewer key={kid.span.id} spanTree={kid} addToDataSet={addToDataSet} />)}			
+		</div>
+	);
+}
+
+function Timestamp({ timestamp }: { timestamp: Date|string }) {
+	if (typeof timestamp === 'string') {
+		timestamp = new Date(timestamp);
+	}
+	return <span className="text-muted">{timestamp.toLocaleString()}</span>;
+}
 
 export default TraceDetailsPage;
 

@@ -1,3 +1,5 @@
+import { Span } from "./common/types";
+
 export const API_BASE_URL = import.meta.env.VITE_AIQA_SERVER_URL || 'http://localhost:4001';
 
 // Token getter function - will be set by Auth0Provider wrapper
@@ -130,8 +132,7 @@ function addOrganisationParam(params: URLSearchParams, organisationId: string) {
 	params.append('organisation', organisationId);
 }
 
-// Span endpoints (require API key authentication)
-// Note: These would need API key handling in a real implementation
+// Span endpoints
 export async function searchSpans(args: {
 	organisationId: string;
 	isRoot?: boolean;
@@ -161,7 +162,24 @@ export async function searchSpans(args: {
 	});
 }
 
-export async function searchInputs(
+export async function createExampleFromSpan(args: {
+	organisationId:string,
+	datasetId:string,
+	span:Span
+}) {
+	const {organisationId, datasetId, span} = args;
+	let example = {...span};
+	example.organisation = organisationId;
+	example.dataset = datasetId;
+
+	return fetchWithAuth('/example', {
+		method: 'POST',
+		body: JSON.stringify(example),
+	});
+}
+
+
+export async function searchExamples(
 	args: {
 		organisationId: string;
 		datasetId?: string;
@@ -179,7 +197,7 @@ export async function searchInputs(
 	params.append('offset', offset.toString());
 
 	// Note: This endpoint requires API key authentication
-	return fetchWithAuth(`/input?${params.toString()}`);
+	return fetchWithAuth(`/example?${params.toString()}`);
 }
 
 // User endpoints

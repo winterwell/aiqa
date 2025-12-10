@@ -3,8 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { getDataset, listExperiments, searchInputs } from '../api';
-import { Dataset, Experiment, Span } from '../common/types';
+import { getDataset, listExperiments, searchExamples } from '../api';
+import { Dataset, Experiment } from '../common/types';
+import {Span, getSpanId} from '../common/types/Span';
+
 import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
 
 const DatasetDetailsPage: React.FC = () => {
@@ -27,7 +29,7 @@ const DatasetDetailsPage: React.FC = () => {
   });
 
   const loadSpansData = async (query: string): Promise<PageableData<Span>> => {
-    const result = await searchInputs(organisationId!, datasetId, query || undefined, 1000, 0);
+    const result = await searchExamples(organisationId!, datasetId, query || undefined, 1000, 0);
     return {
       hits: result.hits || [],
       offset: result.offset || 0,
@@ -35,27 +37,6 @@ const DatasetDetailsPage: React.FC = () => {
       total: result.total,
     };
   };
-
-  const getSpanId = (span: Span) => {
-    return (span as any).span?.id || (span as any).client_span_id || 'N/A';
-  };
-
-  const getTraceId = (span: Span) => {
-    return (span as any).trace?.id || (span as any).client_trace_id || 'N/A';
-  };
-
-  const getStartTime = (span: Span) => {
-    if (!(span as any).startTime) return null;
-    return new Date((span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000);
-  };
-
-  const getDuration = (span: Span) => {
-    if (!(span as any).startTime || !(span as any).endTime) return null;
-    const start = (span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000;
-    const end = (span as any).endTime[0] * 1000 + (span as any).endTime[1] / 1000000;
-    return end - start;
-  };
-
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
       {

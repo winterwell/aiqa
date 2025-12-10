@@ -4,19 +4,31 @@ export const getSpanId = (span: Span) => {
     return (span as any).span?.id || (span as any).client_span_id || 'N/A';
   };
 
+  const asTime = (time: number|[number, number]|Date) => {
+	if ( ! time) return null;
+	if (typeof time === 'number') {
+		return new Date(time);
+	}
+	if (Array.isArray(time)) {
+		return new Date(time[0] * 1000 + time[1] / 1000000);
+	}
+	if (time instanceof Date) {
+		return time;
+	}	
+	return new Date(time);
+  };
+
 export const getStartTime = (span: Span) => {
-    if (!(span as any).startTime) return null;
-    return new Date((span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000);
+	return asTime(span.startTime);
   };
 
 export const getEndTime = (span: Span) => {
-    if (!(span as any).endTime) return null;
-    return new Date((span as any).endTime[0] * 1000 + (span as any).endTime[1] / 1000000);
+	return asTime(span.endTime);
   };
 
-export const getDuration = (span: Span) => {
-    if (!(span as any).startTime || !(span as any).endTime) return null;
-    const start = (span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000;
-    const end = (span as any).endTime[0] * 1000 + (span as any).endTime[1] / 1000000;
-    return end - start;
+export const getDurationMs = (span: Span): number | null => {
+    const start = getStartTime(span);
+    const end = getEndTime(span);
+    if ( ! start || ! end) return null;
+    return end.getTime() - start.getTime();
   };

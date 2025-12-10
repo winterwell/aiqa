@@ -22,8 +22,7 @@ const LoginPage: React.FC = () => {
         // Fetch or create user in the database using email as the identifying key
         const dbUser = await getOrCreateUser(
           user.email,
-          user.name || user.email,
-		  user.sub
+		  user.name || user.email,
         );
         console.log("User fetched/created:", dbUser);
 
