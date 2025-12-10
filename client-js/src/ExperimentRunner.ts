@@ -11,7 +11,8 @@ interface ExperimentRunnerOptions {
 
 interface Example {
 	input: any;
-	[id: string]: any;
+	id: string;
+
 }
 
 interface ScoreResult {
@@ -71,16 +72,15 @@ export class ExperimentRunner {
 	 * Score an example result. Stores the score for later summary calculation.
 	 */
 	async score(example: Example, result: any): Promise<ScoreResult> {
-		// For now, return empty scores. In a real implementation, this would:
-		// 1. Extract metrics from the dataset configuration
-		// 2. Calculate scores based on example and result
-		// 3. Store scores for summary calculation
-		const scores: ScoreResult = {};
-
-		// Store the score for summary calculation
-		this.scores.push({ example, result, scores });
-
-		return scores;
+		const scores = await fetch(`${this.serverUrl}/dataset/${this.datasetId}/score`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `ApiKey ${this.apiKey}`
+			},
+			body: JSON.stringify({ example, result }),
+		});
+		return scores.json();
 	}
 
 	/**
