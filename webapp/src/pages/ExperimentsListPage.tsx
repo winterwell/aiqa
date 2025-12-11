@@ -43,8 +43,12 @@ const ExperimentsListPage: React.FC = () => {
     return sortedExperiments.map((exp: Experiment, index: number) => {
       const date = new Date(exp.created);
       // Use consistent date format with time to distinguish between experiments on same day
-      const dateLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + 
-                       ' ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const dateLabel = date.toLocaleString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
       const summary = exp.summary_results || {};
       
       // Extract common metrics from summary_results
@@ -69,8 +73,7 @@ const ExperimentsListPage: React.FC = () => {
   // Calculate column width based on number of metrics displayed
   const getChartColumnWidth = () => {
     const metricsCount = [hasLatency, hasCost, hasQuality].filter(Boolean).length;
-    if (metricsCount === 0) return 12;
-    if (metricsCount === 1) return 12;
+    if (metricsCount <= 1) return 12;
     if (metricsCount === 2) return 6;
     return 4; // 3 metrics
   };
