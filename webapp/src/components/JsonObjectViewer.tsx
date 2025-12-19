@@ -5,14 +5,16 @@
  * Small copy buttons to copy the JSON (or sub-objects) to the clipboard.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
+import CopyButton from './CopyButton';
 
 export default function JsonObjectViewer({ json }: { json: any }) {
-	const $copyButton = <button onClick={() => navigator.clipboard.writeText(JSON.stringify(json, null, 2))}>Copy JSON</button>;
+	const $copyButton = <CopyButton content={json} />
+	const [expanded, setExpanded] = useState(false);
 	if (Array.isArray(json)) {
 		return (
 			<div>
-				<h2>Array</h2>
+				{expanded && Object.entries(item => <JsonObjectViewer json={item} />)}
 				<pre>{JSON.stringify(json, null, 2)}</pre>
 				{$copyButton}
 			</div>
