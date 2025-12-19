@@ -8,3 +8,5 @@ client-js/node_modules
 .cursorignore
 client-js/.tap
 server/.tap
+server/pnpm-lock.yaml
+webapp/pnpm-lock.yaml
