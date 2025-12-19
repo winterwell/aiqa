@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge, Button, Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Label, Input } from 'reactstrap';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge, Button } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { getDataset, listExperiments, searchExamples, updateDataset } from '../api';
@@ -10,6 +10,7 @@ import { Metric } from '../common/types/Dataset';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 
 import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
+import MetricModal from '../components/MetricModal';
 
 // Helper to get the first span from an Example, or return the example itself if it has span-like fields
 function getFirstSpan(example: Example): Span | null {
@@ -36,13 +37,7 @@ const DatasetDetailsPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [newMetric, setNewMetric] = useState<Partial<Metric>>({
-    name: '',
-    description: '',
-    unit: '',
-    type: 'javascript',
-    parameters: {},
-  });
+  const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
 
   const { data: dataset, isLoading, error } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -225,7 +220,11 @@ const DatasetDetailsPage: React.FC = () => {
           <Card>
             <CardHeader className="d-flex justify-content-between align-items-center">
               <h5>Metrics</h5>
-              <Button color="primary" size="sm" onClick={() => setIsAddModalOpen(true)}>
+              <Button color="primary" size="sm" onClick={() => {
+                setEditingIndex(null);
+                setEditingMetric(undefined);
+                setIsAddModalOpen(true);
+              }}>
                 + Add Metric
               </Button>
             </CardHeader>
@@ -244,7 +243,7 @@ const DatasetDetailsPage: React.FC = () => {
                                 size="sm"
                                 onClick={() => {
                                   setEditingIndex(index);
-                                  setNewMetric({
+                                  setEditingMetric({
                                     name: metric.name,
                                     description: metric.description || '',
                                     unit: metric.unit || '',
@@ -298,122 +297,31 @@ const DatasetDetailsPage: React.FC = () => {
         </Col>
       </Row>
 
-      <Modal isOpen={isAddModalOpen} toggle={() => {
-        setIsAddModalOpen(false);
-        setEditingIndex(null);
-        setNewMetric({
-          name: '',
-          description: '',
-          unit: '',
-          type: 'javascript',
-          parameters: {},
-        });
-      }}>
-        <ModalHeader toggle={() => {
+      <MetricModal
+        isOpen={isAddModalOpen}
+        toggle={() => {
           setIsAddModalOpen(false);
           setEditingIndex(null);
-          setNewMetric({
-            name: '',
-            description: '',
-            unit: '',
-            type: 'javascript',
-            parameters: {},
-          });
-        }}>
-          {editingIndex !== null ? 'Edit Metric' : 'Add Metric'}
-        </ModalHeader>
-        <ModalBody>
-          <Form>
-            <FormGroup>
-              <Label for="metricName">Name *</Label>
-              <Input
-                id="metricName"
-                type="text"
-                value={newMetric.name}
-                onChange={(e) => setNewMetric({ ...newMetric, name: e.target.value })}
-                placeholder="e.g., latency"
-              />
-            </FormGroup>
-            <FormGroup>
-              <Label for="metricDescription">Description</Label>
-              <Input
-                id="metricDescription"
-                type="text"
-                value={newMetric.description || ''}
-                onChange={(e) => setNewMetric({ ...newMetric, description: e.target.value })}
-                placeholder="Optional description"
-              />
-            </FormGroup>
-            <FormGroup>
-              <Label for="metricUnit">Unit</Label>
-              <Input
-                id="metricUnit"
-                type="text"
-                value={newMetric.unit || ''}
-                onChange={(e) => setNewMetric({ ...newMetric, unit: e.target.value })}
-                placeholder="e.g., ms, USD, tokens"
-              />
-            </FormGroup>
-            <FormGroup>
-              <Label for="metricType">Type *</Label>
-              <Input
-                id="metricType"
-                type="select"
-                value={newMetric.type}
-                onChange={(e) => setNewMetric({ ...newMetric, type: e.target.value as 'javascript' | 'llm' })}
-              >
-                <option value="javascript">JavaScript</option>
-                <option value="llm">LLM</option>
-              </Input>
-            </FormGroup>
-          </Form>
-        </ModalBody>
-        <ModalFooter>
-          <Button color="secondary" onClick={() => {
-            setIsAddModalOpen(false);
-            setEditingIndex(null);
-            setNewMetric({
-              name: '',
-              description: '',
-              unit: '',
-              type: 'javascript',
-              parameters: {},
-            });
-          }}>
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            onClick={() => {
-              if (!newMetric.name || !newMetric.type) {
-                alert('Name and Type are required');
-                return;
-              }
-              let updatedMetrics: Metric[];
-              if (editingIndex !== null) {
-                // Edit existing metric
-                updatedMetrics = [...(dataset?.metrics || [])];
-                updatedMetrics[editingIndex] = newMetric as Metric;
-              } else {
-                // Add new metric
-                updatedMetrics = [...(dataset?.metrics || []), newMetric as Metric];
-              }
-              updateDatasetMutation.mutate({ metrics: updatedMetrics });
-              setIsAddModalOpen(false);
-              setEditingIndex(null);
-              setNewMetric({
-                name: '',
-                description: '',
-                unit: '',
-                type: 'javascript',
-                parameters: {},
-              });
-            }}
-          >
-            {editingIndex !== null ? 'Save Changes' : 'Add Metric'}
-          </Button>
-        </ModalFooter>
-      </Modal>
+          setEditingMetric(undefined);
+        }}
+        onSave={(metric) => {
+          let updatedMetrics: Metric[];
+          if (editingIndex !== null) {
+            // Edit existing metric
+            updatedMetrics = [...(dataset?.metrics || [])];
+            updatedMetrics[editingIndex] = metric;
+          } else {
+            // Add new metric
+            updatedMetrics = [...(dataset?.metrics || []), metric];
+          }
+          updateDatasetMutation.mutate({ metrics: updatedMetrics });
+          setIsAddModalOpen(false);
+          setEditingIndex(null);
+          setEditingMetric(undefined);
+        }}
+        initialMetric={editingMetric}
+        isEditing={editingIndex !== null}
+      />
 
       <Row className="mt-3">
         <Col>

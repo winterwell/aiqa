@@ -38,6 +38,17 @@ const ExperimentCodePage: React.FC = () => {
       <Row className="mt-4">
         <Col>
           <Card>
+            <div className="p-3 border-bottom">
+              <p className="mb-0">
+                <strong>For LLM-as-Judge metrics, you can choose:</strong>
+                <br />
+                Provide us with details, and our server will call the LLM.
+                <br />
+                or
+                <br />
+                Call the LLM yourself - the ExperimentRunner contains functions to help.
+              </p>
+            </div>
             <CardHeader>
               <Nav tabs>
                 <NavItem>

@@ -1,13 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
+import { Container, Row, Col } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
-import { ColumnDef } from '@tanstack/react-table';
 import { createExampleFromSpans, listDatasets, searchSpans } from '../api';
 import { Span } from '../common/types';
-import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
-import JsonObjectViewer from '../components/JsonObjectViewer';
+import TextWithStructureViewer from '../components/TextWithStructureViewer';
 
 interface SpanTree {
 	span: Span;
@@ -86,6 +84,8 @@ const TraceDetailsPage: React.FC = () => {
 };
 
 
+  const topSpan = spanTree?.span;
+
   return (
     <Container className="mt-4">
       <Row>
@@ -93,38 +93,97 @@ const TraceDetailsPage: React.FC = () => {
           <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
             ← Back to Traces
           </Link>
-          <h1>Trace Details:</h1>
-          <p className="text-muted">
-            Trace ID: <code>{traceId}</code>
-          </p>
+          {topSpan && (
+            <>
+              <h1>{(topSpan as any).name || 'Unnamed Span'}</h1>
+              <div className="mb-3">
+                <div>
+                  <strong>Date:</strong> {getStartTime(topSpan)?.toLocaleString() || 'N/A'}
+                </div>
+                <div>
+                  <strong>Duration:</strong> {getDurationMs(topSpan) ? `${getDurationMs(topSpan)}ms` : 'N/A'}
+                </div>
+                <div>
+                  <strong>Trace ID:</strong> <code>{traceId}</code>
+                </div>
+              </div>
+            </>
+          )}
+          {spanTree && <SpanTreeViewer spanTree={spanTree} addToDataSet={addToDataSet} />}
         </Col>
       </Row>
-
-	  <pre>
-		{spanTree && <SpanTreeViewer spanTree={spanTree} addToDataSet={addToDataSet} />}
-	  </pre>
     </Container>
   );
 };
 
 function SpanTreeViewer({ spanTree, addToDataSet }: { spanTree: SpanTree, addToDataSet: (spanTree: SpanTree) => Promise<void> }) {
-	let span = spanTree.span;
-	let children = spanTree.children;
+	const [expanded, setExpanded] = useState(true);
+	const span = spanTree.span;
+	const children = spanTree.children;
+	const spanId = getSpanId(span);
+	const input = (span as any).attributes?.input;
+	const output = (span as any).attributes?.output;
+
+	// Convert input/output to string for TextWithStructureViewer
+	const inputText = input !== undefined && input !== null 
+		? (typeof input === 'string' ? input : JSON.stringify(input, null, 2))
+		: null;
+	const outputText = output !== undefined && output !== null
+		? (typeof output === 'string' ? output : JSON.stringify(output, null, 2))
+		: null;
+
 	return (
-		<div>
-			{span.name} <Timestamp timestamp={getStartTime(span)} /> Duration: {getDurationMs(span)}
-			<Button onClick={() => addToDataSet(spanTree)}>Add to DataSet</Button>
-			<pre>{JSON.stringify(span, null, 2)}</pre>
-			{children?.map(kid => <SpanTreeViewer key={kid.span.id} spanTree={kid} addToDataSet={addToDataSet} />)}			
+		<div style={{ marginLeft: '20px', marginTop: '10px', borderLeft: '2px solid #ccc', paddingLeft: '10px' }}>
+			<div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+				{children.length > 0 && (
+					<button 
+						onClick={() => setExpanded(!expanded)}
+						style={{ 
+							background: 'none', 
+							border: 'none', 
+							cursor: 'pointer',
+							fontSize: '14px',
+							padding: '2px 5px'
+						}}
+					>
+						{expanded ? '▼' : '▶'}
+					</button>
+				)}
+				{children.length === 0 && <span style={{ width: '20px' }}></span>}
+				<div style={{ flex: 1 }}>
+					<div><strong>Span ID:</strong> {spanId}</div>
+					<div><strong>Name:</strong> {(span as any).name || 'Unnamed'}</div>
+					{inputText && (
+						<div style={{ marginTop: '10px' }}>
+							<strong>Input:</strong>
+							<div style={{ marginLeft: '10px', marginTop: '5px' }}>
+								<TextWithStructureViewer text={inputText} />
+							</div>
+						</div>
+					)}
+					{outputText && (
+						<div style={{ marginTop: '10px' }}>
+							<strong>Output:</strong>
+							<div style={{ marginLeft: '10px', marginTop: '5px' }}>
+								<TextWithStructureViewer text={outputText} />
+							</div>
+						</div>
+					)}
+				</div>
+			</div>
+			{expanded && children.length > 0 && (
+				<div>
+					{children.map(kid => (
+						<SpanTreeViewer 
+							key={getSpanId(kid.span)} 
+							spanTree={kid} 
+							addToDataSet={addToDataSet} 
+						/>
+					))}
+				</div>
+			)}
 		</div>
 	);
-}
-
-function Timestamp({ timestamp }: { timestamp: Date|string }) {
-	if (typeof timestamp === 'string') {
-		timestamp = new Date(timestamp);
-	}
-	return <span className="text-muted">{timestamp.toLocaleString()}</span>;
 }
 
 export default TraceDetailsPage;

@@ -9,7 +9,12 @@ export default interface Example {
 	organisation: string;
 	spans?: any[]; // Note: generate-schema.js fails if this is Span[]
 	/** Blank if spans are used. Alternative to Spans */
-	inputs?: any;
+	input?: any;
+	/** target good/bad outputs for similarity judgement */
+	outputs: {
+		good: any;
+		bad: any;
+	};
 	created: Date;
 	updated: Date;
 	/** Can be blank - only needed for per-example tests, e.g. "llm:this answer should be a joke about cats" */

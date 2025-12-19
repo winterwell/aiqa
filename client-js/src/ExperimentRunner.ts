@@ -2,10 +2,11 @@
  * ExperimentRunner - runs experiments on datasets and scores results
  */
 
-import { Example } from './common/types/Example';
+import Example from './common/types/Example';
 
 interface ExperimentRunnerOptions {
 	datasetId: string;
+	experimentId: string;
 	serverUrl?: string;
 	apiKey?: string;
 	organisationId?: string;
@@ -24,27 +25,28 @@ export class ExperimentRunner {
 	private serverUrl: string;
 	private apiKey: string;
 	private organisation?: string;
-	private experimentId?: string;
+	private experimentId: string;
 	private scores: Array<{ example: Example; result: any; scores: ScoreResult }> = [];
 
 	constructor(options: ExperimentRunnerOptions) {
 		this.datasetId = options.datasetId;
+		this.experimentId = options.experimentId;
 		this.serverUrl = (options.serverUrl || process.env.AIQA_SERVER_URL).replace(/\/$/, '');
 		this.apiKey = options.apiKey || process.env.AIQA_API_KEY || '';
-		this.organisation = options.organisation;
+		this.organisation = options.organisationId;
 	}
 	
 
 	/**
 	 * Fetch example inputs from the dataset
 	 */
-	async getExampleInputs(): Promise<Example[]> {
+	async getExampleInputs({limit = 10000}: {limit?: number} = {}): Promise<Example[]> {
 		const params = new URLSearchParams();
 		params.append('dataset_id', this.datasetId);
 		if (this.organisation) {
 			params.append('organisation', this.organisation);
 		}
-		params.append('limit', '10000'); // Fetch big - probably all the examples
+		params.append('limit', limit.toString()); // Fetch big - probably all the examples
 
 		const response = await fetch(`${this.serverUrl}/example?${params.toString()}`, {
 			method: 'GET',
@@ -65,37 +67,66 @@ export class ExperimentRunner {
 	}
 
 	/**
-	 * Score an example result. Stores the score for later summary calculation.
+	 * Ask the server to score an example result. Stores the score for later summary calculation.
 	 */
-	async score(example: Example, result: any): Promise<ScoreResult> {
-		const scores = await fetch(`${this.serverUrl}/dataset/${this.datasetId}/score`, {
+	async scoreAndStore(example: Example, result: any, scores: Record<string, number> = {}): Promise<ScoreResult> {
+		const response = await fetch(`${this.serverUrl}/experiment/${this.experimentId}/example/${example.id}/scoreAndStore`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': `ApiKey ${this.apiKey}`
 			},
-			body: JSON.stringify({ example, result }),
-		});
-		return scores.json();
+			body: JSON.stringify({ 
+				output: result,
+				traceId: example.traceId,
+				scores 
+			}),
+		}); 
+		return response.json();
 	}
 
 	/**
 	 * Run an engine function on all examples and score the results
 	 */
-	async run(engine: (input: any) => any | Promise<any>): Promise<void> {
+	async run(engine: (input: any) => any | Promise<any>, 
+	scorer?: (output: any, example: Example) => Promise<Record<string, number>>): Promise<void> 
+	{
 		const examples = await this.getExampleInputs();
 		
 		for (const example of examples) {
-			// Handle both spans array and inputs field
-			const input = example.inputs || (example.spans && example.spans.length > 0 ? example.spans[0].attributes?.input : undefined);
-			if (!input) {
-				console.warn('Example has no input field or spans with input attribute:', example);
-				continue;
+			const scores = await this.runExample(example, engine, scorer);
+			if (scores) {
+				this.scores.push({
+					example,
+					result: scores,
+					scores: scores,
+				});
 			}
-			const result = await Promise.resolve(engine(input));
-			await this.score(example, result);
 		}
 	}
+
+	private async runExample(example: Example, 
+		engine: (input: any) => any | Promise<any>, 
+		scorer: (output: any, example: Example) => Promise<Record<string, number>>): Promise<ScoreResult> 
+	{
+		// Handle both spans array and inputs field
+		const input = example.inputs || (example.spans && example.spans.length > 0 ? example.spans[0].attributes?.input : undefined);
+		if (!input) {
+			console.warn('Example has no input field or spans with input attribute:', example);
+			return null;
+		}
+		let start = Date.now();
+		let pOutput = engine(input);
+		let end = Date.now();
+		const output = pOutput instanceof Promise ? await pOutput : pOutput;
+		start = Date.now();
+		let scores = {}
+		if (scorer) {
+			scores = await scorer(output, example);
+		}
+		scores['duration'] = end - start;
+		return await this.scoreAndStore(example, output, scores);
+	}		
 
 	/**
 	 * Get summary results aggregated from all scored examples

@@ -15,14 +15,15 @@ function myEngine(input) {
 
 async function test_ExperimentRunner_stepwise() {
 	const datasetId = '123';
-	const options = {datasetId};
+	const experimentId = 'exp-123';
+	const options = {datasetId, experimentId};
     const experimentRunner = new ExperimentRunner(options);
     const exampleInputs = await experimentRunner.getExampleInputs();
 
 	for (const eg of exampleInputs) {
-		const input = eg.input;
+		const input = eg.inputs;
 		const result = myEngine(input);
-		let scores = await experimentRunner.score(eg, result);
+		let scores = await experimentRunner.scoreAndStore(eg, result);
 	}
 	const summaryResults = await experimentRunner.getSummaryResults();
 	console.log(summaryResults);
@@ -33,7 +34,8 @@ async function test_ExperimentRunner_stepwise() {
 
 async function test_ExperimentRunner_batch() {
 	const datasetId = '123';
-	const options = {datasetId};
+	const experimentId = 'exp-123';
+	const options = {datasetId, experimentId};
     const experimentRunner = new ExperimentRunner(options);
     await experimentRunner.run(myEngine);
 	const summaryResults = await experimentRunner.getSummaryResults();

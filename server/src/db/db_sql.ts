@@ -26,7 +26,7 @@ const TABLE_FIELDS: Record<string, Set<string>> = {
 	users: new Set(['email', 'name', 'sub']),
 	api_keys: new Set(['organisation', 'name', 'key_hash', 'rate_limit_per_hour', 'retention_period_days']),
 	datasets: new Set(['organisation', 'name', 'description', 'tags', 'input_schema', 'output_schema', 'metrics']),
-	experiments: new Set(['dataset', 'organisation', 'summary_results']),
+	experiments: new Set(['dataset', 'organisation', 'summary_results', 'results']),
 	models: new Set(['organisation', 'name', 'api_key', 'version', 'description']),
 };
 
@@ -592,6 +592,7 @@ function transformExperiment(row: any): Experiment {
 	return {
 		...row,
 		summary_results: typeof row.summary_results === 'string' ? JSON.parse(row.summary_results) : row.summary_results,
+		results: typeof row.results === 'string' ? JSON.parse(row.results) : (row.results || []),
 	};
 }
 
@@ -624,12 +625,13 @@ export async function listExperiments(organisationId: string, searchQuery?: Sear
 }
 
 /**
- * summary_results JSON field is automatically serialized.
+ * summary_results and results JSON fields are automatically serialized.
  */
 export async function updateExperiment(id: string, updates: Partial<Experiment>): Promise<Experiment | null> {
 	const item: Record<string, any> = {};
 
 	if (updates.summary_results !== undefined) item.summary_results = JSON.stringify(updates.summary_results);
+	if (updates.results !== undefined) item.results = JSON.stringify(updates.results);
 
 	return updateEntity<Experiment>('experiments', id, item, transformExperiment);
 }

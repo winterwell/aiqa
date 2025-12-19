@@ -86,8 +86,8 @@ export async function createDataset(dataset: {
 }) {
 	if (!dataset.metrics) {
 		dataset.metrics = [{
-			name: 'latency',
-			description: 'Latency of the dataset',
+			name: 'duration',
+			description: 'Duration of the dataset',
 			unit: 'ms',
 		}, {
 			name: 'cost',

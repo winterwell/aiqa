@@ -24,11 +24,6 @@ import {
   listDatasets,
   updateDataset,
   deleteDataset,
-  createExperiment,
-  getExperiment,
-  listExperiments,
-  updateExperiment,
-  deleteExperiment,
   addOrganisationMember,
   removeOrganisationMember,
   getOrganisationMembers,
@@ -43,6 +38,7 @@ import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest } fro
 import SearchQuery from './common/SearchQuery.js';
 import Span from './common/types/Span.js';
 import Example from './common/types/Example.js';
+import { registerExperimentRoutes } from './routes/experiments.js';
 
 dotenv.config();
 
@@ -441,54 +437,6 @@ fastify.get('/example', { preHandler: authenticate }, async (request: Authentica
   };
 });
 
-// ===== EXPERIMENT ENDPOINTS (PostgreSQL) =====
-fastify.post('/experiment', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  const experiment = await createExperiment(request.body as any);
-  return experiment;
-});
-
-fastify.get('/experiment/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  const { id } = request.params as { id: string };
-  const experiment = await getExperiment(id);
-  if (!experiment) {
-    reply.code(404).send({ error: 'Experiment not found' });
-    return;
-  }
-  return experiment;
-});
-
-fastify.get('/experiment', { preHandler: authenticate }, async (request, reply) => {
-  const organisationId = (request.query as any).organisation as string | undefined;
-  if (!organisationId) {
-    reply.code(400).send({ error: 'organisation query parameter is required' });
-    return;
-  }
-  const query = (request.query as any).q as string | undefined;
-  const searchQuery = query ? new SearchQuery(query) : null;
-  const experiments = await listExperiments(organisationId, searchQuery);
-  return experiments;
-});
-
-fastify.put('/experiment/:id', { preHandler: authenticate }, async (request, reply) => {
-  const { id } = request.params as { id: string };
-  const experiment = await updateExperiment(id, request.body as any);
-  if (!experiment) {
-    reply.code(404).send({ error: 'Experiment not found' });
-    return;
-  }
-  return experiment;
-});
-
-fastify.delete('/experiment/:id', { preHandler: authenticate }, async (request, reply) => {
-  const { id } = request.params as { id: string };
-  const deleted = await deleteExperiment(id);
-  if (!deleted) {
-    reply.code(404).send({ error: 'Experiment not found' });
-    return;
-  }
-  return { success: true };
-});
-
 // ===== ORGANISATION MEMBER ENDPOINTS =====
 fastify.post('/organisation/:organisationId/member/:userId',{ preHandler: authenticate }, async (request, reply) => {
   const { organisationId, userId } = request.params as { organisationId: string; userId: string };
@@ -530,6 +478,9 @@ const start = async () => {
     await fastify.register(cors, {
       origin: true,
     });
+    
+    // Register experiment routes
+    await registerExperimentRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4001');
     await fastify.listen({ port, host: '0.0.0.0' });
