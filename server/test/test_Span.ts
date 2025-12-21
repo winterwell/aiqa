@@ -1,8 +1,8 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
 import Fastify from 'fastify';
-import { initPool, createSchema as createSqlSchema, closePool, createOrganisation, createApiKey } from '../dist/db/db_sql.js';
-import { initClient, createSchema as createEsSchema, closeClient } from '../dist/db/db_es.js';
+import { initPool, createTables, closePool, createOrganisation, createApiKey } from '../dist/db/db_sql.js';
+import { initClient, createIndices, closeClient } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
 import type { AuthenticatedRequest } from '../src/server_auth.js';
 
@@ -23,8 +23,8 @@ tap.before(async () => {
   initClient(esUrl);
 
   // Create schemas
-  await createSqlSchema();
-  await createEsSchema();
+  await createTables();
+  await createIndices();
 
   // Create test server
   fastify = Fastify({

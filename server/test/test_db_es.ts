@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
-import { initClient, createSchema, closeClient, bulkInsertSpans, searchSpans, deleteIndex } from '../dist/db/db_es.js';
+import { initClient, createIndices, closeClient, bulkInsertSpans, searchSpans, deleteIndex } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
 
 dotenv.config();
@@ -15,7 +15,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
 //   await deleteIndex('spans');
 //   await deleteIndex('DATASET_EXAMPLES');
   
-  await createSchema();
+  await createIndices();
 
   // Insert a couple of spans
   const orgId = 'es_test_org_1';

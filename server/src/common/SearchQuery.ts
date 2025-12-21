@@ -97,16 +97,27 @@ SearchQuery.parse = (sq: SearchQuery) => {
 		}
 		let kv = bit.match(/^([a-zA-Z_0-9.]+):(.+)/);
 		if (kv) {
-			// Found a field:value pair - check if there are more words that should be part of the value
+			// Found a field:value pair
 			let value = kv[2];
-			let j = i + 1;
-			// Collect following non-field:value tokens as part of this value
-			while (j < bits.length && bits[j] !== op && !bits[j].match(/^[a-zA-Z_0-9.]+:/)) {
-				value += ' ' + bits[j];
-				j++;
+			// If value starts with a quote, collect tokens until we find the closing quote
+			if (value.startsWith('"')) {
+				let j = i + 1;
+				// Collect following tokens until we find the closing quote
+				while (j < bits.length && !value.endsWith('"')) {
+					value += ' ' + bits[j];
+					j++;
+				}
+				// Remove quotes from the value
+				if (value.startsWith('"') && value.endsWith('"')) {
+					value = value.slice(1, -1);
+				}
+				bits2.push({[kv[1]]: value});
+				i = j;
+			} else {
+				// Value doesn't start with quote, so it's just this token (no spaces in unquoted values)
+				bits2.push({[kv[1]]: value});
+				i++;
 			}
-			bits2.push({[kv[1]]: value});
-			i = j;
 		} else {
 			bits2.push(bit);
 			i++;

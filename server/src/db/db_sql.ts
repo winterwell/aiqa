@@ -167,6 +167,7 @@ export async function createTables(): Promise<void> {
 	await applyMigrations();
 }
 
+
 async function applyMigrations(): Promise<void> {
 	// Add sub column to users table if it doesn't exist (migration)
 	await doQuery(`

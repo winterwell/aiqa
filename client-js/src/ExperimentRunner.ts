@@ -221,6 +221,12 @@ export class ExperimentRunner {
 		// This loop should not be parallelized - it should run sequentially, one after the other - to avoid creating interference between the runs.
 		for (const parameters of parametersLoop) {
 			const parametersHere = { ...parametersFixed, ...parameters };
+			// set env vars from parametersHere
+			for (const [key, value] of Object.entries(parametersHere)) {
+				if (value) {
+					process.env[key] = value.toString();
+				}
+			}
 			const start = Date.now();
 			let pOutput = engine(input, parametersHere);
 			const output = pOutput instanceof Promise ? await pOutput : pOutput;
