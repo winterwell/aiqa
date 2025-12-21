@@ -4,7 +4,7 @@ import { Container, Row, Col } from 'reactstrap';
 import { ColumnDef } from '@tanstack/react-table';
 import { searchSpans } from '../api';
 import { Span } from '../common/types';
-import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
+import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 
 const getTraceId = (span: Span) => {
   return (span as any).client_trace_id || (span as any).traceId || (span as any).spanContext?.()?.traceId || '';

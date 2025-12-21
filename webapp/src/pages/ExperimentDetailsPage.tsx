@@ -42,8 +42,8 @@ const ExperimentDetailsPage: React.FC = () => {
         <div className="alert alert-danger">
           <h4>Error</h4>
           <p>Failed to load experiment: {error instanceof Error ? error.message : 'Unknown error'}</p>
-          <Link to={`/organisation/${organisationId}/dataset/${datasetId}`} className="btn btn-primary">
-            Back to Dataset
+          <Link to={`/organisation/${organisationId}/experiments`} className="btn btn-primary">
+            Back to Experiments List
           </Link>
         </div>
       </Container>

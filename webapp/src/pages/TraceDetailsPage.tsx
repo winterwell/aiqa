@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createExampleFromSpans, listDatasets, searchSpans } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
-import TextWithStructureViewer from '../components/TextWithStructureViewer';
+import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 
 interface SpanTree {
 	span: Span;

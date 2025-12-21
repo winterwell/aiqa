@@ -40,7 +40,7 @@ tap.test('test_ExperimentRunner_stepwise_local', async t => {
 	console.log(`Found ${metrics.length} metrics in dataset:`, metrics.map(m => m.name));
 	
 	// Create scorer that scores all metrics from the dataset
-	async function scorer(output: any, example: any) {
+	async function scorer(output: any, example: any, parameters?: any) {
 		return await scoreAllMetrics(metrics, output, example);
 	}
 	
@@ -49,15 +49,14 @@ tap.test('test_ExperimentRunner_stepwise_local', async t => {
 
 	for (const eg of exampleInputs) {
 		const result = await experimentRunner.runExample(eg, myEngine, scorer);
-		if (result) {
-			console.log(`Scored example ${eg.id}:`, result);
+		if (result && result.length > 0) {
+			console.log(`Scored example ${eg.id}:`, JSON.stringify(result, null, 2));
+		} else {
+			console.log(`No results for example ${eg.id}`);
 		}
 	}
 	const summaryResults = await experimentRunner.getSummaryResults();
-	console.log('Summary results:', summaryResults);
-	for (const result of summaryResults) {
-		console.log(result);
-	}
+	console.log('Summary results:', JSON.stringify(summaryResults, null, 2));
 	
 	t.pass('Test completed successfully');
 	t.end();

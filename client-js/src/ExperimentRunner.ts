@@ -33,6 +33,11 @@ interface MetricStats {
 	_sumSq: number; // sum of squared differences from mean
 }
 
+/**
+ * The ExperimentRunner is the main class for running experiments on datasets.
+ * It can create an experiment, run it, and score the results.
+ * Handles setting up environment variables and passing parameters to the engine function.
+ */
 export class ExperimentRunner {
 	private datasetId: string;
 	private serverUrl: string;
@@ -75,7 +80,7 @@ export class ExperimentRunner {
 	/**
 	 * Fetch example inputs from the dataset
 	 */
-	async getExampleInputs({limit = 10000}: {limit?: number} = {}): Promise<Example[]> {
+	async getExampleInputs({ limit = 10000 }: { limit?: number } = {}): Promise<Example[]> {
 		const params = new URLSearchParams();
 		params.append('dataset_id', this.datasetId);
 		if (this.organisation) {
@@ -89,7 +94,7 @@ export class ExperimentRunner {
 				'Content-Type': 'application/json',
 				'Authorization': `ApiKey ${this.apiKey}`
 			}
-			},
+		},
 		);
 
 		if (!response.ok) {
@@ -104,16 +109,16 @@ export class ExperimentRunner {
 	/**
 	 * Create an experiment if one does not exist.
 	 * @param experiment - optional setup for the experiment object. You may wish to set: 
-	 * - name
+	 * - name (recommended for labelling the experiment)
 	 * - parameters
 	 * - comparison_parameters
 	 * @returns the created experiment object
 	 */
 	async createExperiment(experimentSetup?: Partial<Experiment>): Promise<Experiment> {
-		if ( ! this.organisation || ! this.datasetId) {
+		if (!this.organisation || !this.datasetId) {
 			throw new Error('Organisation and dataset ID are required to create an experiment');
 		}
-		if ( ! experimentSetup) {
+		if (!experimentSetup) {
 			experimentSetup = {} as Partial<Experiment>;
 		}
 		// fill in if not set
@@ -150,34 +155,39 @@ export class ExperimentRunner {
 	 */
 	async scoreAndStore(example: Example, result: any, scores: Record<string, number> = {}): Promise<ScoreResult> {
 		// Do we have an experiment ID? If not, we need to create the experiment first
-		if ( ! this.experimentId) {
+		if (!this.experimentId) {
 			await this.createExperiment();
 		}
 		console.log('Scoring and storing example:', example.id);
+		console.log('Scores:', scores);
 		const response = await fetch(`${this.serverUrl}/experiment/${this.experimentId}/example/${example.id}/scoreAndStore`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				'Authorization': `ApiKey ${this.apiKey}`
 			},
-			body: JSON.stringify({ 
+			body: JSON.stringify({
 				output: result,
 				traceId: example.traceId,
-				scores 
+				scores
 			}),
-		}); 
-		console.log('Response:', response);
-		return response.json();
+		});
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => 'Unknown error');
+			throw new Error(`Failed to score and store: ${response.status} ${response.statusText} - ${errorText}`);
+		}
+		const jsonResult = await response.json();
+		console.log('scoreAndStore response:', jsonResult);
+		return jsonResult;
 	}
 
 	/**
 	 * Run an engine function on all examples and score the results
 	 */
-	async run(engine: (input: any) => any | Promise<any>, 
-	scorer?: (output: any, example: Example) => Promise<Record<string, number>>): Promise<void> 
-	{
+	async run(engine: (input: any) => any | Promise<any>,
+		scorer?: (output: any, example: Example) => Promise<Record<string, number>>): Promise<void> {
 		const examples = await this.getExampleInputs();
-		
+
 		for (const example of examples) {
 			const scores = await this.runExample(example, engine, scorer);
 			if (scores) {
@@ -192,15 +202,15 @@ export class ExperimentRunner {
 
 	/**
 	 * Run the engine on an example with the given parameters (looping over comparison parameters), and score the result.
+	 * Also calls scoreAndStore to store the result in the server.
 	 * @param example 
 	 * @param engine 
 	 * @param scorer 
 	 * @returns one set of scores for each comparison parameter set. If no comparison parameters, returns an array of one.
 	 */
-	async runExample(example: Example, 
-		engine: (input: any, parameters: Record<string, any>) => any | Promise<any>, 
-		scorer: (output: any, example: Example, parameters: Record<string, any>) => Promise<Record<string, number>>): Promise<ScoreResult[]> 
-	{
+	async runExample(example: Example,
+		engine: (input: any, parameters: Record<string, any>) => any | Promise<any>,
+		scorer: (output: any, example: Example, parameters: Record<string, any>) => Promise<Record<string, number>>): Promise<ScoreResult[]> {
 		// Ensure experiment exists
 		if (!this.experiment) {
 			await this.createExperiment();
@@ -210,7 +220,8 @@ export class ExperimentRunner {
 		}
 		// make the parameters
 		let parametersFixed = this.experiment.parameters || {};
-		let parametersLoop = this.experiment.comparison_parameters || [];
+		// If comparison_parameters is empty/undefined, default to [{}] so we run at least once
+		let parametersLoop = this.experiment.comparison_parameters || [{}];
 		// Handle both spans array and input field
 		const input = example.input || (example.spans && example.spans.length > 0 ? example.spans[0].attributes?.input : undefined);
 		if (!input) {
@@ -219,8 +230,9 @@ export class ExperimentRunner {
 		}
 		let allScores: ScoreResult[] = [];
 		// This loop should not be parallelized - it should run sequentially, one after the other - to avoid creating interference between the runs.
-		for (const parameters of parametersLoop) {
+		for (const parameters of parametersLoop) {			
 			const parametersHere = { ...parametersFixed, ...parameters };
+			console.log('Running with parameters:', parametersHere);
 			// set env vars from parametersHere
 			for (const [key, value] of Object.entries(parametersHere)) {
 				if (value) {
@@ -230,44 +242,38 @@ export class ExperimentRunner {
 			const start = Date.now();
 			let pOutput = engine(input, parametersHere);
 			const output = pOutput instanceof Promise ? await pOutput : pOutput;
+			console.log('Output:', output);
 			const end = Date.now();
 			const duration = end - start;
-			
+
 			let scores = {}
 			if (scorer) {
 				scores = await scorer(output, example, parametersHere);
 			}
 			scores['duration'] = duration;
 			// TODO this call as async and wait for all to complete before returning
+			console.log('Call scoreAndStore ... for example:', example.id, 'with scores:', scores);
 			const result = await this.scoreAndStore(example, output, scores);
+			console.log('scoreAndStore returned:', result);
 			allScores.push(result);
 		}
 		return allScores;
-	}		
+	}
 
-	/**
-	 * Get summary results aggregated from all scored examples
-	 */
-	async getSummaryResults(): Promise<SummaryResult[]> {
-		// Calculate summary statistics from all scores
-		// For now, return a simple summary. In a real implementation, this would:
-		// 1. Aggregate metrics across all examples
-		// 2. Calculate statistics (mean, median, etc.)
-		// 3. Return structured summary results
-
-		if (this.scores.length === 0) {
-			return [];
+	async getSummaryResults(): Promise<Record<string, MetricStats>> {
+		const response = await fetch(`${this.serverUrl}/experiment/${this.experimentId}`, {
+			method: 'GET',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `ApiKey ${this.apiKey}`
+			}
+		});
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => 'Unknown error');
+			throw new Error(`Failed to fetch summary results: ${response.status} ${response.statusText} - ${errorText}`);
 		}
-
-		// Simple summary: count of examples
-		const summary: SummaryResult = {
-			total_examples: this.scores.length,
-			scored_examples: this.scores.length,
-		};
-
-		// If we have an experiment ID, we could fetch it from the server
-		// For now, return the local summary
-		return [summary];
+		const experiment2 = await response.json() as Experiment;
+		return experiment2.summary_results || {};
 	}
 }
 

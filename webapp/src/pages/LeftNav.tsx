@@ -43,9 +43,9 @@ const LeftNav: React.FC = () => {
 		},
 		{
 			label: 'Experiment Results',
-			path: `/organisation/${organisationId}/experiments`,
+			path: `/organisation/${organisationId}/experiment`,
 			disabled: !organisationId,
-		},
+		}
 	];
 
 	const isActive = (path: string) => {

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listExperiments, createExperiment, listDatasets } from '../api';
 import { Experiment } from '../common/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import MetricsDashboard from '../components/MetricsDashboard';
 
 
 const ExperimentsListPage: React.FC = () => {
@@ -12,18 +13,10 @@ const ExperimentsListPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [selectedDatasetId, setSelectedDatasetId] = useState('');
 
   const { data: experiments, isLoading, error } = useQuery({
     queryKey: ['experiments', organisationId, searchQuery],
     queryFn: () => listExperiments(organisationId!, searchQuery || undefined),
-    enabled: !!organisationId,
-  });
-
-  const { data: datasets } = useQuery({
-    queryKey: ['datasets', organisationId],
-    queryFn: () => listDatasets(organisationId!),
     enabled: !!organisationId,
   });
 
@@ -108,9 +101,6 @@ const ExperimentsListPage: React.FC = () => {
     <Container className="mt-4">
       <Row>
         <Col>
-          <Link to={`/organisation/${organisationId}`} className="btn btn-link mb-3">
-            ← Back to Organisation
-          </Link>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <div>
               <h1>Experiment Results</h1>
@@ -119,6 +109,7 @@ const ExperimentsListPage: React.FC = () => {
         </Col>
       </Row>
 
+      <MetricsDashboard experiments={filteredExperiments} />
 
       <Row className="mt-3">
         <Col>
@@ -226,12 +217,15 @@ const ExperimentsListPage: React.FC = () => {
                       <th>Dataset ID</th>
                       <th>Created</th>
                       <th>Updated</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredExperiments.map((experiment: Experiment) => (
-                      <tr key={experiment.id}>
+                      <tr 
+                        key={experiment.id}
+                        onClick={() => navigate(`/organisation/${organisationId}/dataset/${experiment.dataset}/experiment/${experiment.id}`)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <td>
                           <strong>{experiment.id.substring(0, 8)}...</strong>
                         </td>
@@ -242,14 +236,6 @@ const ExperimentsListPage: React.FC = () => {
                         </td>
                         <td>{new Date(experiment.created).toLocaleString()}</td>
                         <td>{new Date(experiment.updated).toLocaleString()}</td>
-                        <td>
-                          <Link
-                            to={`/organisation/${organisationId}/dataset/${experiment.dataset}/experiment/${experiment.id}`}
-                            className="btn btn-sm btn-primary"
-                          >
-                            View
-                          </Link>
-                        </td>
                       </tr>
                     ))}
                   </tbody>

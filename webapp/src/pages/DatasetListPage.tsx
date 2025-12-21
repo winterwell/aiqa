@@ -160,12 +160,15 @@ const DatasetListPage: React.FC = () => {
                       <th>Tags</th>
                       <th>Created</th>
                       <th>Updated</th>
-                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredDatasets.map((dataset: Dataset) => (
-                      <tr key={dataset.id}>
+                      <tr 
+                        key={dataset.id}
+                        onClick={() => navigate(`/organisation/${organisationId}/dataset/${dataset.id}`)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <td>
                           <strong>{dataset.name}</strong>
                         </td>
@@ -185,14 +188,6 @@ const DatasetListPage: React.FC = () => {
                         </td>
                         <td>{new Date(dataset.created).toLocaleString()}</td>
                         <td>{new Date(dataset.updated).toLocaleString()}</td>
-                        <td>
-                          <Link
-                            to={`/organisation/${organisationId}/dataset/${dataset.id}`}
-                            className="btn btn-sm btn-primary"
-                          >
-                            View
-                          </Link>
-                        </td>
                       </tr>
                     ))}
                   </tbody>

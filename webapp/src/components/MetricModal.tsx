@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Button } from 'reactstrap';
 import { Metric } from '../common/types/Dataset';
-import PropInput from './PropInput';
+import PropInput from './generic/PropInput';
 import {useRerender} from 'rerenderer'
 
 interface MetricModalProps {

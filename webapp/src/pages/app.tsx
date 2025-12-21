@@ -182,7 +182,7 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
-        path="/organisation/:organisationId/experiments"
+        path="/organisation/:organisationId/experiment"
         element={
           <ProtectedRoute>
             <ExperimentsListPage />
@@ -190,7 +190,7 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
-        path="/organisation/:organisationId/dataset/:datasetId/experiment/:experimentId"
+        path="/organisation/:organisationId/experiment/:experimentId"
         element={
           <ProtectedRoute>
             <ExperimentDetailsPage />

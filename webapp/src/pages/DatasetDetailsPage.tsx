@@ -10,9 +10,9 @@ import { Metric } from '../common/types/Dataset';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 
-import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
+import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import MetricModal from '../components/MetricModal';
-import CopyButton from '../components/CopyButton';
+import CopyButton from '../components/generic/CopyButton';
 
 // Helper to get the first span from an Example, or return the example itself if it has span-like fields
 function getFirstSpan(example: Example): Span | null {

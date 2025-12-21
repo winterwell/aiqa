@@ -4,7 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupIt
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listApiKeys, createApiKey, deleteApiKey, API_BASE_URL } from '../api';
 import { useToast } from '../utils/toast';
-import CopyButton from '../components/CopyButton';
+import CopyButton from '../components/generic/CopyButton';
 
 // Generate a secure random API key
 function generateApiKey(): string {
