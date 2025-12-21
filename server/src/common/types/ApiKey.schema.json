@@ -12,6 +12,18 @@
         "id": {
           "type": "string"
         },
+        "key": {
+          "description": "The actual API key. This is NOT stored in the database. Only present temporarily in the frontend when generating a new key.",
+          "type": "string"
+        },
+        "key_hash": {
+          "description": "Only the hash of the API key is stored in the database. This is used to authenticate requests. Hash algorithm: sha256",
+          "type": "string"
+        },
+        "name": {
+          "description": "Optional name for the API key (for easier identification).",
+          "type": "string"
+        },
         "organisation": {
           "type": "string"
         },
@@ -20,9 +32,6 @@
         },
         "retention_period_days": {
           "type": "number"
-        },
-        "key_hash": {
-          "type": "string"
         },
         "updated": {
           "format": "date-time",

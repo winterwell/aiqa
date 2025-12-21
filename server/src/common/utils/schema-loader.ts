@@ -106,7 +106,8 @@ function typeNameToTableName(typeName: string): string {
 }
 
 /**
- * Convert JSON Schema to PostgreSQL CREATE TABLE statement
+ * Convert JSON Schema to PostgreSQL CREATE TABLE statement.
+ * Does not run the CREATE TABLE statement, just returns the SQL.
  */
 export function generatePostgresTable(
   typeName: string,

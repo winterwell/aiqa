@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import JsonObjectViewer from './JsonObjectViewer';
 import XmlObjectViewer from './XmlObjectViewer';
+import ExpandCollapseButton from './ExpandCollapseButton';
 
 export type Block = {
 	type: 'text' | 'xml' | 'json';
@@ -22,7 +23,7 @@ export function extractBlocks(text: string): Block[] {
 	// Blocks must start on a new line.
 	// Look for xml blocks which start a line with <tag and end with </tag> 
 	// or json blocks	
-	const blockStart = /^<[a-zA-Z][a-zA-Z0-9_]*|{|\[/gm;
+	const blockStart = /^(<[a-zA-Z][a-zA-Z0-9_]*|{|\[)/gm;
 	const matches = Array.from(text.matchAll(blockStart));
 	
 	if (matches.length === 0) {
@@ -144,11 +145,15 @@ export default function TextWithStructureViewer({text}) {
 		{blocks.map((block) => {
 			return <div key={block.id}>
 				{block.type === 'text' && <TextViewer text={block.text!} />}
-				{block.type === 'xml' && <XmlObjectViewer xml={block.xml!} />}
-				{block.type === 'json' && <JsonObjectViewer json={block.json} />}
+				{block.type === 'xml' && <XmlObjectViewer xml={block.xml!} textComponent={TextWithStructureViewer} />}
+				{block.type === 'json' && <JsonObjectViewer json={block.json} textComponent={TextWithStructureViewer} />}
 			</div>
 		})}
 	</div>
+}
+
+function format(text: string) {
+	return text.replace(/\r?\n/g, '<br />');
 }
 
 /**
@@ -156,8 +161,20 @@ export default function TextWithStructureViewer({text}) {
  */
 function TextViewer({ text }: { text: string }) {
 	const [expanded, setExpanded] = useState(false);
-	if (text.length > 1000 && !expanded) {
-		return <div>{text.slice(0, 1000) + '...'} <button onClick={() => setExpanded(true)}>Expand</button></div>
+	if (text.length > 1000) {
+		return (
+			<div>
+				<div className="d-flex align-items-center mb-1">
+					<span className="text-muted fst-italic me-2">Text ({text.length} characters)</span>
+					<ExpandCollapseButton expanded={expanded} onClick={() => setExpanded(!expanded)} />
+				</div>
+				{expanded ? (
+					<div dangerouslySetInnerHTML={{ __html: format(text) }} />
+				) : (
+					<div dangerouslySetInnerHTML={{ __html: format(text.slice(0, 1000)) + '...' }} />
+				)}
+			</div>
+		);
 	}
-	return <div>{text}</div>
+	return <div dangerouslySetInnerHTML={{ __html: format(text) }} />
 }

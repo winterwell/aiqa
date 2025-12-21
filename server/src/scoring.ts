@@ -1,6 +1,6 @@
-import { Metric } from './types/Dataset.js';
-import Model from './types/Model.js';
-import { getModel } from '../db/db_sql.js';
+import { Metric } from './common/types/Dataset.js';
+import Model from './common/types/Model.js';
+import { getModel } from './db/db_sql.js';
 
 /**
  * Score a metric based on its type.
@@ -50,7 +50,7 @@ return new Promise<number>((resolve, reject) => {
 		let finished = false;
 		// Provide only output, example, and a restricted global context
 		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-
+ 
 		// Prepare our function
 		let userFn: any;
 		try {

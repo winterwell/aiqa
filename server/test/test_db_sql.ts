@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import tap from 'tap';
 import {
   initPool,
-  createSchema,
+  createTables,
   closePool,
   getClient,
   createOrganisation,
@@ -10,6 +10,13 @@ import {
   listOrganisations,
   updateOrganisation,
   deleteOrganisation,
+  createDataset,
+  getDataset,
+  createExperiment,
+  getExperiment,
+  listExperiments,
+  updateExperiment,
+  deleteExperiment,
 } from '../dist/db/db_sql.js';
 
 dotenv.config();
@@ -22,7 +29,7 @@ tap.before(async () => {
   initPool(pgConnectionString);
   
   // Create schema (tables and indexes)
-  await createSchema();
+  await createTables();
 });
 
 tap.after(async () => {
@@ -249,5 +256,359 @@ tap.test('full CRUD workflow', async (t) => {
   // Verify deletion
   const retrievedAfterDelete = await getOrganisation(org.id);
   t.equal(retrievedAfterDelete, null, 'organisation should be deleted');
+});
+
+// Experiment tests
+tap.test('create experiment', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset',
+    description: 'Test dataset for experiments',
+  });
+  
+  const experiment = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'Test Experiment',
+    parameters: { model: 'gpt-4', temperature: 0.7 },
+    comparison_parameters: [
+      { model: 'gpt-4o', temperature: 0.5 },
+      { model: 'gpt-4o-mini', temperature: 0.5 },
+    ],
+    summary_results: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
+    results: [
+      {
+        exampleId: 'example-1',
+        scores: { accuracy: 0.9, f1: 0.85 },
+      },
+    ],
+  });
+  
+  t.ok(experiment.id, 'should have an id');
+  t.equal(experiment.name, 'Test Experiment', 'should have correct name');
+  t.equal(experiment.dataset, dataset.id, 'should have correct dataset');
+  t.equal(experiment.organisation, org.id, 'should have correct organisation');
+  t.same(experiment.parameters, { model: 'gpt-4', temperature: 0.7 }, 'should have correct parameters');
+  t.same(experiment.comparison_parameters, [
+    { model: 'gpt-4o', temperature: 0.5 },
+    { model: 'gpt-4o-mini', temperature: 0.5 },
+  ], 'should have correct comparison_parameters');
+  t.same(experiment.summary_results, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have correct summary_results');
+  t.ok(Array.isArray(experiment.results), 'results should be an array');
+  t.equal(experiment.results!.length, 1, 'should have one result');
+  t.equal(experiment.results![0].exampleId, 'example-1', 'result should have correct exampleId');
+  t.ok(experiment.created instanceof Date, 'should have created timestamp');
+  t.ok(experiment.updated instanceof Date, 'should have updated timestamp');
+});
+
+tap.test('get experiment by id', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for Get Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for Get',
+  });
+  
+  const created = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'Get Test Experiment',
+    parameters: { model: 'gpt-4' },
+    summary_results: { accuracy: { average: 0.9 } },
+  });
+  
+  // Retrieve it
+  const retrieved = await getExperiment(created.id);
+  
+  t.ok(retrieved, 'should retrieve experiment');
+  t.equal(retrieved!.id, created.id, 'should have matching id');
+  t.equal(retrieved!.name, 'Get Test Experiment', 'should have correct name');
+  t.same(retrieved!.parameters, { model: 'gpt-4' }, 'should have correct parameters');
+  t.same(retrieved!.summary_results, { accuracy: { average: 0.9 } }, 'should have correct summary_results');
+  
+  // Test non-existent experiment
+  const nonExistent = await getExperiment('00000000-0000-0000-0000-000000000000');
+  t.equal(nonExistent, null, 'should return null for non-existent experiment');
+});
+
+tap.test('list experiments', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for List Experiments',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for List',
+  });
+  
+  const uniqueId = Date.now().toString();
+  const exp1Name = `List Experiment Alpha ${uniqueId}`;
+  const exp2Name = `List Experiment Beta ${uniqueId}`;
+  
+  const exp1 = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: exp1Name,
+  });
+  
+  const exp2 = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: exp2Name,
+  });
+  
+  // List all experiments for organisation
+  const allExps = await listExperiments(org.id);
+  t.ok(Array.isArray(allExps), 'should return an array');
+  t.ok(allExps.length >= 2, 'should have at least 2 experiments');
+  
+  // Find our test experiments in the list
+  const foundExp1 = allExps.find(e => e.id === exp1.id);
+  const foundExp2 = allExps.find(e => e.id === exp2.id);
+  
+  t.ok(foundExp1, 'should find exp1 in list');
+  t.ok(foundExp2, 'should find exp2 in list');
+  t.equal(foundExp1!.name, exp1Name, 'exp1 should have correct name');
+  t.equal(foundExp2!.name, exp2Name, 'exp2 should have correct name');
+});
+
+tap.test('update experiment', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for Update Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for Update',
+  });
+  
+  const created = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'Update Test Experiment',
+    parameters: { model: 'gpt-4' },
+    summary_results: { accuracy: { average: 0.8 } },
+  });
+  
+  const originalUpdated = created.updated;
+  
+  // Wait a bit to ensure updated timestamp changes
+  await new Promise(resolve => setTimeout(resolve, 10));
+  
+  // Update name, parameters, and summary_results
+  const updated = await updateExperiment(created.id, {
+    name: 'Updated Experiment Name',
+    parameters: { model: 'gpt-4o', temperature: 0.9 },
+    summary_results: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
+  });
+  
+  t.ok(updated, 'should return updated experiment');
+  t.equal(updated!.id, created.id, 'should have same id');
+  t.equal(updated!.name, 'Updated Experiment Name', 'should have updated name');
+  t.same(updated!.parameters, { model: 'gpt-4o', temperature: 0.9 }, 'should have updated parameters');
+  t.same(updated!.summary_results, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have updated summary_results');
+  t.ok(updated!.updated.getTime() > originalUpdated.getTime(), 'updated timestamp should change');
+  
+  // Update comparison_parameters
+  const updatedWithComparison = await updateExperiment(created.id, {
+    comparison_parameters: [
+      { model: 'gpt-4o', temperature: 0.5 },
+      { model: 'gpt-4o-mini', temperature: 0.3 },
+    ],
+  });
+  
+  t.same(updatedWithComparison!.comparison_parameters, [
+    { model: 'gpt-4o', temperature: 0.5 },
+    { model: 'gpt-4o-mini', temperature: 0.3 },
+  ], 'should update comparison_parameters');
+  
+  // Test updating non-existent experiment
+  const nonExistent = await updateExperiment('00000000-0000-0000-0000-000000000000', {
+    name: 'Should Not Exist',
+  });
+  t.equal(nonExistent, null, 'should return null for non-existent experiment');
+});
+
+tap.test('delete experiment', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for Delete Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for Delete',
+  });
+  
+  const created = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'Delete Test Experiment',
+  });
+  
+  // Verify it exists
+  const beforeDelete = await getExperiment(created.id);
+  t.ok(beforeDelete, 'experiment should exist before delete');
+  
+  // Delete it
+  const deleted = await deleteExperiment(created.id);
+  t.equal(deleted, true, 'should return true when deleting existing experiment');
+  
+  // Verify it's gone
+  const afterDelete = await getExperiment(created.id);
+  t.equal(afterDelete, null, 'experiment should not exist after delete');
+  
+  // Test deleting non-existent experiment
+  const nonExistent = await deleteExperiment('00000000-0000-0000-0000-000000000000');
+  t.equal(nonExistent, false, 'should return false when deleting non-existent experiment');
+});
+
+tap.test('experiment JSON fields handling', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for JSON Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for JSON',
+  });
+  
+  // Test creating with complex JSON structures
+  const complexParams = {
+    model: 'gpt-4',
+    temperature: 0.7,
+    max_tokens: 1000,
+    system_prompt: 'You are a helpful assistant',
+    nested: {
+      key: 'value',
+      array: [1, 2, 3],
+    },
+  };
+  
+  const complexComparison = [
+    { model: 'gpt-4o', config: { temp: 0.5 } },
+    { model: 'gpt-4o-mini', config: { temp: 0.3 } },
+  ];
+  
+  const created = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'JSON Test Experiment',
+    parameters: complexParams,
+    comparison_parameters: complexComparison,
+    summary_results: {
+      accuracy: { average: 0.95, min: 0.8, max: 1.0, variance: 0.01 },
+      f1: { average: 0.92, count: 100 },
+    },
+    results: [
+      {
+        exampleId: 'ex1',
+        scores: { accuracy: 0.9, f1: 0.85 },
+        errors: { metric1: 'some error' },
+      },
+      {
+        exampleId: 'ex2',
+        scores: { accuracy: 1.0, f1: 0.95 },
+      },
+    ],
+  });
+  
+  // Verify JSON fields are correctly stored and retrieved
+  t.same(created.parameters, complexParams, 'complex parameters should be preserved');
+  t.same(created.comparison_parameters, complexComparison, 'complex comparison_parameters should be preserved');
+  t.equal(created.results!.length, 2, 'should have 2 results');
+  t.equal(created.results![0].exampleId, 'ex1', 'first result should have correct exampleId');
+  t.same(created.results![0].scores, { accuracy: 0.9, f1: 0.85 }, 'first result should have correct scores');
+  t.same(created.results![0].errors, { metric1: 'some error' }, 'first result should have correct errors');
+  
+  // Retrieve and verify again
+  const retrieved = await getExperiment(created.id);
+  t.same(retrieved!.parameters, complexParams, 'retrieved parameters should match');
+  t.same(retrieved!.comparison_parameters, complexComparison, 'retrieved comparison_parameters should match');
+  t.equal(retrieved!.results!.length, 2, 'retrieved should have 2 results');
+  
+  // Test updating with null/undefined
+  const updated = await updateExperiment(created.id, {
+    parameters: null,
+    comparison_parameters: undefined, // Should not update
+  });
+  
+  t.equal(updated!.parameters, undefined, 'parameters should be null/undefined after update');
+  t.same(updated!.comparison_parameters, complexComparison, 'comparison_parameters should remain unchanged when undefined');
+});
+
+tap.test('experiment full CRUD workflow', async (t) => {
+  // Create organisation and dataset first
+  const org = await createOrganisation({
+    name: 'Test Org for CRUD Experiment',
+    rate_limit_per_hour: 1000,
+    members: [],
+  });
+  
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for CRUD',
+  });
+  
+  // Create
+  const experiment = await createExperiment({
+    dataset: dataset.id,
+    organisation: org.id,
+    name: 'CRUD Test Experiment',
+    parameters: { model: 'gpt-4' },
+    summary_results: { accuracy: { average: 0.9 } },
+  });
+  
+  t.ok(experiment.id, 'should create experiment with id');
+  
+  // Read
+  const retrieved = await getExperiment(experiment.id);
+  t.ok(retrieved, 'should retrieve created experiment');
+  t.equal(retrieved!.name, 'CRUD Test Experiment', 'should have correct name');
+  
+  // Update
+  const updated = await updateExperiment(experiment.id, {
+    name: 'CRUD Test Experiment Updated',
+    parameters: { model: 'gpt-4o', temperature: 0.8 },
+    summary_results: { accuracy: { average: 0.95 } },
+  });
+  t.equal(updated!.name, 'CRUD Test Experiment Updated', 'should update name');
+  t.same(updated!.parameters, { model: 'gpt-4o', temperature: 0.8 }, 'should update parameters');
+  
+  // Verify update persisted
+  const retrievedAfterUpdate = await getExperiment(experiment.id);
+  t.equal(retrievedAfterUpdate!.name, 'CRUD Test Experiment Updated', 'update should persist');
+  t.same(retrievedAfterUpdate!.parameters, { model: 'gpt-4o', temperature: 0.8 }, 'parameters update should persist');
+  
+  // Delete
+  const deleted = await deleteExperiment(experiment.id);
+  t.equal(deleted, true, 'should delete experiment');
+  
+  // Verify deletion
+  const retrievedAfterDelete = await getExperiment(experiment.id);
+  t.equal(retrievedAfterDelete, null, 'experiment should be deleted');
 });
 

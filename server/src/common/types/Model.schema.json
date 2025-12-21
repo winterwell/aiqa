@@ -20,9 +20,21 @@
           "type": "string"
         },
         "name": {
+          "description": "e.g. gpt-4o This is the name as used by the provider's API",
           "type": "string"
         },
         "organisation": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "openai",
+            "anthropic",
+            "google",
+            "azure",
+            "bedrock",
+            "other"
+          ],
           "type": "string"
         },
         "updated": {
@@ -36,6 +48,7 @@
       "required": [
         "id",
         "organisation",
+        "provider",
         "name",
         "api_key",
         "created",

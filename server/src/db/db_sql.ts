@@ -26,7 +26,7 @@ const TABLE_FIELDS: Record<string, Set<string>> = {
 	users: new Set(['email', 'name', 'sub']),
 	api_keys: new Set(['organisation', 'name', 'key_hash', 'rate_limit_per_hour', 'retention_period_days']),
 	datasets: new Set(['organisation', 'name', 'description', 'tags', 'input_schema', 'output_schema', 'metrics']),
-	experiments: new Set(['dataset', 'organisation', 'summary_results', 'results']),
+	experiments: new Set(['dataset', 'organisation', 'name', 'parameters', 'comparison_parameters', 'summary_results', 'results']),
 	models: new Set(['organisation', 'name', 'api_key', 'version', 'description']),
 };
 
@@ -99,7 +99,8 @@ export async function getClient(): Promise<PoolClient> {
 	return pool.connect();
 }
 
-export async function query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+export async function doQuery<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+	console.log('doQuery', text, params);
 	if (!pool) {
 		throw new Error('Database pool not initialized. Call initPool() first.');
 	}
@@ -128,47 +129,47 @@ export async function createTables(): Promise<void> {
 	const experimentSchema = loadSchema('Experiment');
 
 	// Create organisations table
-	await query(generatePostgresTable('Organisation', organisationSchema, {}, []));
+	await doQuery(generatePostgresTable('Organisation', organisationSchema, {}, []));
 
 	// Create users table
-	await query(generatePostgresTable('User', userSchema, {}, []));
+	await doQuery(generatePostgresTable('User', userSchema, {}, []));
 
 	// Create api_keys table
-	await query(generatePostgresTable('ApiKey', apiKeySchema, {
+	await doQuery(generatePostgresTable('ApiKey', apiKeySchema, {
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, []));
 
 	// Create models table
-	await query(generatePostgresTable('Model', modelSchema, {
+	await doQuery(generatePostgresTable('Model', modelSchema, {
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, []));
 
 	// Create datasets table
-	await query(generatePostgresTable('Dataset', datasetSchema, {
+	await doQuery(generatePostgresTable('Dataset', datasetSchema, {
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, [
 		'UNIQUE(organisation, name)'
 	]));
 
 	// Create experiments table
-	await query(generatePostgresTable('Experiment', experimentSchema, {
+	await doQuery(generatePostgresTable('Experiment', experimentSchema, {
 		dataset: 'UUID NOT NULL REFERENCES datasets(id) ON DELETE CASCADE',
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, []));
 
 	// Create indexes
-		await query(`CREATE INDEX IF NOT EXISTS idx_api_keys_organisation ON api_keys(organisation)`);
-	await query(`CREATE INDEX IF NOT EXISTS idx_models_organisation ON models(organisation)`);
-	await query(`CREATE INDEX IF NOT EXISTS idx_datasets_organisation ON datasets(organisation)`);
-	await query(`CREATE INDEX IF NOT EXISTS idx_experiments_dataset ON experiments(dataset)`);
-	await query(`CREATE INDEX IF NOT EXISTS idx_experiments_organisation ON experiments(organisation)`);
+		await doQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_organisation ON api_keys(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_models_organisation ON models(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_datasets_organisation ON datasets(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_dataset ON experiments(dataset)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_organisation ON experiments(organisation)`);
 
 	await applyMigrations();
 }
 
 async function applyMigrations(): Promise<void> {
 	// Add sub column to users table if it doesn't exist (migration)
-	await query(`
+	await doQuery(`
 		DO $$ 
 		BEGIN
 		  IF NOT EXISTS (
@@ -182,7 +183,7 @@ async function applyMigrations(): Promise<void> {
 	  `);
 	
 		// Allow NULL emails in users table (migration)
-		await query(`
+		await doQuery(`
 		DO $$ 
 		BEGIN
 		  IF EXISTS (
@@ -197,7 +198,7 @@ async function applyMigrations(): Promise<void> {
 	  `);
 	
 	// Add key_hash column to api_keys table if it doesn't exist (migration)
-	await query(`
+	await doQuery(`
 		DO $$ 
 		BEGIN
 		  IF NOT EXISTS (
@@ -210,7 +211,7 @@ async function applyMigrations(): Promise<void> {
 	  `);
 	
 	// Add name column to api_keys table if it doesn't exist (migration)
-	await query(`
+	await doQuery(`
 		DO $$ 
 		BEGIN
 		  IF NOT EXISTS (
@@ -218,6 +219,66 @@ async function applyMigrations(): Promise<void> {
 			WHERE table_name = 'api_keys' AND column_name = 'name'
 		  ) THEN
 			ALTER TABLE api_keys ADD COLUMN name VARCHAR(255);
+		  END IF;
+		END $$;
+	  `);
+	  // add results (json string) column to experiments table if it doesn't exist (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'results'
+		  ) THEN
+			ALTER TABLE experiments ADD COLUMN results JSONB;
+		  END IF;
+		END $$;
+	  `);
+	  // add summary_results (json string) column to experiments table if it doesn't exist (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'summary_results'
+		  ) THEN
+			ALTER TABLE experiments ADD COLUMN summary_results JSONB;
+		  END IF;
+		END $$;
+	  `);
+	  // add name column to experiments table if it doesn't exist (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'name'
+		  ) THEN
+			ALTER TABLE experiments ADD COLUMN name VARCHAR(255);
+		  END IF;
+		END $$;
+	  `);
+	  // add parameters (json object) column to experiments table if it doesn't exist (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'parameters'
+		  ) THEN
+			ALTER TABLE experiments ADD COLUMN parameters JSONB;
+		  END IF;
+		END $$;
+	  `);
+	  // add comparison_parameters (json array) column to experiments table if it doesn't exist (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'comparison_parameters'
+		  ) THEN
+			ALTER TABLE experiments ADD COLUMN comparison_parameters JSONB;
 		  END IF;
 		END $$;
 	  `);
@@ -239,7 +300,7 @@ async function getById<T extends QueryResultRow>(
 	id: string,
 	transform?: (row: any) => T
 ): Promise<T | null> {
-	const result = await query<T>(`SELECT * FROM ${tableName} WHERE id = $1`, [id]);
+	const result = await doQuery<T>(`SELECT * FROM ${tableName} WHERE id = $1`, [id]);
 	if (!result.rows[0]) return null;
 	return transform ? transform(result.rows[0]) : result.rows[0];
 }
@@ -259,7 +320,7 @@ async function listEntities<T extends QueryResultRow>(
 	}
 
 	const sql = `SELECT * FROM ${tableName} WHERE ${whereClause} ORDER BY created DESC`;
-	const result = await query<T>(sql, params.length > 0 ? params : undefined);
+	const result = await doQuery<T>(sql, params.length > 0 ? params : undefined);
 	return transform ? result.rows.map(transform) : result.rows;
 }
 
@@ -289,7 +350,7 @@ async function createEntity<T extends QueryResultRow>(
 		return value;
 	});
 	const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
-	const result = await query<T>(
+	const result = await doQuery<T>(
 		`INSERT INTO ${tableName} (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
 		values
 	);
@@ -329,7 +390,7 @@ async function updateEntity<T extends QueryResultRow>(
 
 	const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
 	const idParam = `$${fields.length + 1}`;
-	const result = await query<T>(
+	const result = await doQuery<T>(
 		`UPDATE ${tableName} SET ${setClause}, updated = NOW() WHERE id = ${idParam} RETURNING *`,
 		[...values, id]
 	);
@@ -338,7 +399,7 @@ async function updateEntity<T extends QueryResultRow>(
 }
 
 async function deleteEntity(tableName: string, id: string): Promise<boolean> {
-	const result = await query(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
+	const result = await doQuery(`DELETE FROM ${tableName} WHERE id = $1`, [id]);
 	return (result.rowCount ?? 0) > 0;
 }
 
@@ -516,7 +577,7 @@ export async function getOrganisationMembers(organisationId: string): Promise<Us
 		return [];
 	}
 
-	const result = await query<User>(
+	const result = await doQuery<User>(
 		`SELECT * FROM users WHERE id = ANY($1)`,
 		[org.members]
 	);
@@ -528,7 +589,7 @@ export async function getOrganisationMembers(organisationId: string): Promise<Us
  * Returns empty array if user is not a member of any organisation.
  */
 export async function getOrganisationsForUser(userId: string): Promise<Organisation[]> {
-	const result = await query<Organisation>(
+	const result = await doQuery<Organisation>(
 		`SELECT * FROM organisations WHERE $1 = ANY(members)`,
 		[userId]
 	);
@@ -589,10 +650,21 @@ export async function deleteDataset(id: string): Promise<boolean> {
 
 // Helper function to transform Experiment JSON fields
 function transformExperiment(row: any): Experiment {
+	let results = row.results;
+	if (typeof results === 'string') {
+		results = JSON.parse(results);
+	}
+	// Ensure results is always an array
+	if (!Array.isArray(results)) {
+		results = [];
+	}
+	
 	return {
 		...row,
 		summary_results: typeof row.summary_results === 'string' ? JSON.parse(row.summary_results) : row.summary_results,
-		results: typeof row.results === 'string' ? JSON.parse(row.results) : (row.results || []),
+		parameters: row.parameters !== null && row.parameters !== undefined ? (typeof row.parameters === 'string' ? JSON.parse(row.parameters) : row.parameters) : undefined,
+		comparison_parameters: row.comparison_parameters !== null && row.comparison_parameters !== undefined ? (typeof row.comparison_parameters === 'string' ? JSON.parse(row.comparison_parameters) : row.comparison_parameters) : undefined,
+		results,
 	};
 }
 
@@ -602,6 +674,9 @@ function transformExperiment(row: any): Experiment {
  * summary_results JSON field is automatically serialized.
  */
 export async function createExperiment(experiment: Omit<Experiment, 'id' | 'created' | 'updated'>): Promise<Experiment> {
+	// fill in any missing fields with defaults
+	if ( ! experiment.summary_results) experiment.summary_results = {};
+	if ( ! experiment.results) experiment.results = [];
 	return createEntity<Experiment>(
 		'experiments',
 		experiment,
@@ -625,13 +700,17 @@ export async function listExperiments(organisationId: string, searchQuery?: Sear
 }
 
 /**
- * summary_results and results JSON fields are automatically serialized.
+ * summary_results, results, parameters, and comparison_parameters JSON fields are automatically serialized.
  */
 export async function updateExperiment(id: string, updates: Partial<Experiment>): Promise<Experiment | null> {
+	// TODO more reflection less custom code - sending any extra fields is not an issue, and updateEntity should handle updates generically (except for if an array should be converted to json), converting {} to json by default
 	const item: Record<string, any> = {};
 
+	if (updates.name !== undefined) item.name = updates.name;
 	if (updates.summary_results !== undefined) item.summary_results = JSON.stringify(updates.summary_results);
 	if (updates.results !== undefined) item.results = JSON.stringify(updates.results);
+	if (updates.parameters !== undefined) item.parameters = updates.parameters !== null && updates.parameters !== undefined ? JSON.stringify(updates.parameters) : null;
+	if (updates.comparison_parameters !== undefined) item.comparison_parameters = updates.comparison_parameters !== null && updates.comparison_parameters !== undefined ? JSON.stringify(updates.comparison_parameters) : null;
 
 	return updateEntity<Experiment>('experiments', id, item, transformExperiment);
 }

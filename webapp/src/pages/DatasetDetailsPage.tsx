@@ -8,9 +8,11 @@ import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
 import { Metric } from '../common/types/Dataset';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
+import { useToast } from '../utils/toast';
 
 import TableUsingAPI, { PageableData } from '../components/TableUsingAPI';
 import MetricModal from '../components/MetricModal';
+import CopyButton from '../components/CopyButton';
 
 // Helper to get the first span from an Example, or return the example itself if it has span-like fields
 function getFirstSpan(example: Example): Span | null {
@@ -35,6 +37,7 @@ const getTraceId = (example: Example) => {
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
@@ -185,7 +188,15 @@ const DatasetDetailsPage: React.FC = () => {
           <h1>{dataset.name}</h1>
 		  <ListGroup flush>
 			<ListGroupItem>
-				<strong>Dataset ID:</strong> {dataset.id}
+				<div className="d-flex align-items-center gap-2">
+					<strong>Dataset ID:</strong> <code>{dataset.id}</code>
+					<CopyButton
+						content={dataset.id}
+						className="btn btn-outline-secondary btn-sm"
+						showToast={showToast}
+						successMessage="Dataset ID copied to clipboard!"
+					/>
+				</div>
 			</ListGroupItem>
                 <ListGroupItem>
                   <strong>Description:</strong>{' '}

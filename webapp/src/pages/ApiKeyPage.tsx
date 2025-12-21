@@ -4,6 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupIt
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listApiKeys, createApiKey, deleteApiKey, API_BASE_URL } from '../api';
 import { useToast } from '../utils/toast';
+import CopyButton from '../components/CopyButton';
 
 // Generate a secure random API key
 function generateApiKey(): string {
@@ -172,22 +173,13 @@ const ApiKeyPage: React.FC = () => {
                     <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', wordBreak: 'break-all', margin: 0 }}>
                       {newlyGeneratedKey}
                     </pre>
-                    <Button
-                      color="info"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(newlyGeneratedKey);
-                          showToast('API key copied to clipboard!', 'success');
-                        } catch (err) {
-                          console.error('Failed to copy:', err);
-                          showToast('Failed to copy API key', 'error');
-                        }
-                      }}
-                      title="Copy to clipboard"
-                    >
-                      Copy
-                    </Button>
+                    <CopyButton
+                      content={newlyGeneratedKey}
+                      className="btn btn-info btn-sm"
+                      showToast={showToast}
+                      successMessage="API key copied to clipboard!"
+             
+                    />
                   </div>
                   <Button
                     color="secondary"

@@ -7,22 +7,42 @@ exports.ExperimentRunner = void 0;
 class ExperimentRunner {
     constructor(options) {
         this.scores = [];
+        this.summaryResults = {};
         this.datasetId = options.datasetId;
+        this.experimentId = options.experimentId;
         this.serverUrl = (options.serverUrl || process.env.AIQA_SERVER_URL).replace(/\/$/, '');
         this.apiKey = options.apiKey || process.env.AIQA_API_KEY || '';
-        this.organisationId = options.organisationId;
+        this.organisation = options.organisationId;
+    }
+    /**
+     * Fetch the dataset to get its metrics
+     */
+    async getDataset() {
+        const response = await fetch(`${this.serverUrl}/dataset/${this.datasetId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `ApiKey ${this.apiKey}`
+            },
+        });
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            throw new Error(`Failed to fetch dataset: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        const dataset = await response.json();
+        return dataset;
     }
     /**
      * Fetch example inputs from the dataset
      */
-    async getExampleInputs() {
+    async getExampleInputs({ limit = 10000 } = {}) {
         const params = new URLSearchParams();
         params.append('dataset_id', this.datasetId);
-        if (this.organisationId) {
-            params.append('organisation_id', this.organisationId);
+        if (this.organisation) {
+            params.append('organisation', this.organisation);
         }
-        params.append('limit', '10000'); // Fetch big - probably all the examples
-        const response = await fetch(`${this.serverUrl}/input?${params.toString()}`, {
+        params.append('limit', limit.toString()); // Fetch big - probably all the examples
+        const response = await fetch(`${this.serverUrl}/example?${params.toString()}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -36,29 +56,90 @@ class ExperimentRunner {
         const data = await response.json();
         return data.hits || [];
     }
+    async createExperiment() {
+        if (!this.organisation || !this.datasetId) {
+            throw new Error('Organisation and dataset ID are required to create an experiment');
+        }
+        console.log('Creating experiment');
+        const response = await fetch(`${this.serverUrl}/experiment`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `ApiKey ${this.apiKey}`
+            },
+            body: JSON.stringify({
+                organisation: this.organisation,
+                dataset: this.datasetId,
+                results: [],
+                summary_results: {},
+            }),
+        });
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            throw new Error(`Failed to create experiment: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        const experiment = await response.json();
+        this.experimentId = experiment.id;
+        return experiment;
+    }
     /**
-     * Score an example result. Stores the score for later summary calculation.
+     * Ask the server to score an example result. Stores the score for later summary calculation.
      */
-    async score(example, result) {
-        // For now, return empty scores. In a real implementation, this would:
-        // 1. Extract metrics from the dataset configuration
-        // 2. Calculate scores based on example and result
-        // 3. Store scores for summary calculation
-        const scores = {};
-        // Store the score for summary calculation
-        this.scores.push({ example, result, scores });
-        return scores;
+    async scoreAndStore(example, result, scores = {}) {
+        // Do we have an experiment ID? If not, we need to create the experiment first
+        if (!this.experimentId) {
+            await this.createExperiment();
+        }
+        console.log('Scoring and storing example:', example.id);
+        const response = await fetch(`${this.serverUrl}/experiment/${this.experimentId}/example/${example.id}/scoreAndStore`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `ApiKey ${this.apiKey}`
+            },
+            body: JSON.stringify({
+                output: result,
+                traceId: example.traceId,
+                scores
+            }),
+        });
+        console.log('Response:', response);
+        return response.json();
     }
     /**
      * Run an engine function on all examples and score the results
      */
-    async run(engine) {
+    async run(engine, scorer) {
         const examples = await this.getExampleInputs();
         for (const example of examples) {
-            const input = example.input;
-            const result = await Promise.resolve(engine(input));
-            await this.score(example, result);
+            const scores = await this.runExample(example, engine, scorer);
+            if (scores) {
+                this.scores.push({
+                    example,
+                    result: scores,
+                    scores: scores,
+                });
+            }
         }
+    }
+    async runExample(example, engine, scorer) {
+        // Handle both spans array and input field
+        const input = example.input || (example.spans && example.spans.length > 0 ? example.spans[0].attributes?.input : undefined);
+        if (!input) {
+            console.warn('Example has no input field or spans with input attribute:', example);
+            return null;
+        }
+        const start = Date.now();
+        let pOutput = engine(input);
+        const output = pOutput instanceof Promise ? await pOutput : pOutput;
+        const end = Date.now();
+        const duration = end - start;
+        let scores = {};
+        if (scorer) {
+            scores = await scorer(output, example);
+        }
+        scores['duration'] = duration;
+        return await this.scoreAndStore(example, output, scores);
     }
     /**
      * Get summary results aggregated from all scored examples

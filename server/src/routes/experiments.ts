@@ -10,7 +10,143 @@ import {
 import { searchExamples } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
-import { scoreMetric } from '../common/scoring.js';
+import { scoreMetric } from '../scoring.js';
+
+interface MetricStats {
+	mean: number;
+	min: number;
+	max: number;
+	var: number;
+	count: number;
+}
+
+/**
+ * Recalculates summary results from all results.
+ * This is used when updating existing results to ensure accuracy.
+ */
+function recalculateSummaryResults(results: Array<{ scores: Record<string, number> }>): Record<string, MetricStats> {
+	const summary: Record<string, MetricStats> = {};
+	
+	for (const result of results) {
+		if (!result.scores) {
+			continue;
+		}
+		for (const [metricName, value] of Object.entries(result.scores)) {
+			// Skip non-numeric values
+			if (typeof value !== 'number' || !isFinite(value)) {
+				continue;
+			}
+			
+			const existing = summary[metricName];
+			if (!existing) {
+				summary[metricName] = {
+					mean: value,
+					min: value,
+					max: value,
+					var: 0,
+					count: 1,
+				};
+			} else {
+				const oldCount = existing.count;
+				const newCount = oldCount + 1;
+				const oldMean = existing.mean;
+				const delta = value - oldMean;
+				const newMean = oldMean + delta / newCount;
+				
+				// Calculate variance using Welford's algorithm
+				// M2 (sum of squared differences) = variance * (n - 1)
+				// When oldCount = 1, existing.var = 0, so M2_old = 0
+				// M2_new = M2_old + delta * (value - newMean)
+				// variance_new = M2_new / (newCount - 1)
+				let newVar: number;
+				if (oldCount === 1) {
+					// Special case: going from 1 to 2 values
+					// M2_old = 0 (variance of 1 value is 0)
+					// M2_new = 0 + delta * (value - newMean)
+					newVar = (delta * (value - newMean)) / (newCount - 1);
+				} else {
+					// General case: M2_old = existing.var * (oldCount - 1)
+					const m2Old = existing.var * (oldCount - 1);
+					const m2New = m2Old + delta * (value - newMean);
+					newVar = m2New / (newCount - 1);
+				}
+				
+				summary[metricName] = {
+					mean: newMean,
+					min: Math.min(existing.min, value),
+					max: Math.max(existing.max, value),
+					var: newVar,
+					count: newCount,
+				};
+			}
+		}
+	}
+	
+	return summary;
+}
+
+/**
+ * Updates summary results with new scores using rolling updates.
+ * Uses Welford's online algorithm for variance calculation.
+ */
+function updateSummaryResults(summaryResults: Record<string, MetricStats> | undefined, scores: Record<string, number>): Record<string, MetricStats> {
+	const updated = summaryResults ? { ...summaryResults } : {};
+
+	for (const [metricName, value] of Object.entries(scores)) {
+		// Skip non-numeric values
+		if (typeof value !== 'number' || !isFinite(value)) {
+			continue;
+		}
+
+		const existing = updated[metricName];
+		
+		if (!existing) {
+			// First value for this metric
+			updated[metricName] = {
+				mean: value,
+				min: value,
+				max: value,
+				var: 0,
+				count: 1,
+			};
+		} else {
+			// Rolling update using Welford's algorithm
+			const oldCount = existing.count;
+			const newCount = oldCount + 1;
+			const oldMean = existing.mean;
+			const delta = value - oldMean;
+			const newMean = oldMean + delta / newCount;
+			
+			// Calculate variance using Welford's algorithm
+			// M2 (sum of squared differences) = variance * (n - 1)
+			// When oldCount = 1, existing.var = 0, so M2_old = 0
+			// M2_new = M2_old + delta * (value - newMean)
+			// variance_new = M2_new / (newCount - 1)
+			let newVar: number;
+			if (oldCount === 1) {
+				// Special case: going from 1 to 2 values
+				// M2_old = 0 (variance of 1 value is 0)
+				// M2_new = 0 + delta * (value - newMean)
+				newVar = (delta * (value - newMean)) / (newCount - 1);
+			} else {
+				// General case: M2_old = existing.var * (oldCount - 1)
+				const m2Old = existing.var * (oldCount - 1);
+				const m2New = m2Old + delta * (value - newMean);
+				newVar = m2New / (newCount - 1);
+			}
+			
+			updated[metricName] = {
+				mean: newMean,
+				min: Math.min(existing.min, value),
+				max: Math.max(existing.max, value),
+				var: newVar,
+				count: newCount,
+			};
+		}
+	}
+
+	return updated;
+}
 
 /**
  * Register experiment endpoints with Fastify
@@ -69,7 +205,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   });
 
   /**
-   * Score an example result for an experiment.
+   * Score an example result for an experiment. You must first create the experiment with the createExperiment endpoint.
    * POST body: { output, traceId, scores }
    * For each metric (from dataset or example), if scores has a value, use it;
    * otherwise the server runs scoring for that metric.
@@ -84,12 +220,16 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       reply.code(400).send({ error: 'output is required in request body' });
       return;
     }
+	if ( ! experimentId || ! organisation) {
+		reply.code(400).send({ error: 'experimentId and organisation are required' });
+		return;
+	}
 
     // Get experiment
     const experiment = await getExperiment(experimentId);
     if (!experiment) {
-      reply.code(404).send({ error: 'Experiment not found' });
-      return;
+		reply.code(404).send({ error: 'Experiment not found' });
+		return;
     }
 
     // Verify organisation matches
@@ -129,6 +269,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
     // Compute scores for each metric
     const computedScores: Record<string, number> = {};
+    const computedErrors: Record<string, string> = {};
     for (const { metric } of allMetrics) {
       const metricName = metric.name;
       
@@ -140,35 +281,52 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         try {
           computedScores[metricName] = await scoreMetric(organisation, metric, body.output, example);
         } catch (error) {
+          // Record error for this metric but continue processing other metrics
           const message = error instanceof Error ? error.message : String(error);
-          reply.code(500).send({ 
-            error: `Failed to score metric "${metricName}": ${message}` 
-          });
-          return;
+          computedErrors[metricName] = message;
         }
       }
     }
 
-    // Update experiment results
-    const results = experiment.results || [];
+    // Update experiment results - ensure it's always an array
+    const results = Array.isArray(experiment.results) ? experiment.results : [];
     const existingResultIndex = results.findIndex(r => r.exampleId === exampleId);
+    const isUpdate = existingResultIndex >= 0;
     
-    if (existingResultIndex >= 0) {
+    if (isUpdate) {
       // Update existing result
       results[existingResultIndex].scores = {
         ...results[existingResultIndex].scores,
         ...computedScores,
       };
+      // Merge errors, keeping existing ones unless overwritten
+      results[existingResultIndex].errors = {
+        ...(results[existingResultIndex].errors || {}),
+        ...computedErrors,
+      };
     } else {
       // Add new result
-      results.push({
+      const newResult: any = {
         exampleId,
         scores: computedScores,
-      });
+      };
+      if (Object.keys(computedErrors).length > 0) {
+        newResult.errors = computedErrors;
+      }
+      results.push(newResult);
     }
 
-    // Update experiment with new results
-    const updatedExperiment = await updateExperiment(experimentId, { results });
+    // Update summary results
+    // For new results, use rolling update. For updates, recalculate from all results to ensure accuracy.
+    const updatedSummaryResults = isUpdate 
+      ? recalculateSummaryResults(results)
+      : updateSummaryResults(experiment.summary_results, computedScores);
+
+    // Update experiment with new results and summary
+    const updatedExperiment = await updateExperiment(experimentId, { 
+      results,
+      summary_results: updatedSummaryResults,
+    });
     if (!updatedExperiment) {
       reply.code(500).send({ error: 'Failed to update experiment' });
       return;
@@ -177,6 +335,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     return {
       success: true,
       scores: computedScores,
+      errors: Object.keys(computedErrors).length > 0 ? computedErrors : undefined,
       exampleId,
     };
   });
