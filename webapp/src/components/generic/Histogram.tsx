@@ -92,3 +92,4 @@ export default function Histogram({ values, data, numBins = 8, height = 300 }: H
 
 
 
+
