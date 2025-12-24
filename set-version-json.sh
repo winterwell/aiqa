@@ -5,7 +5,7 @@ VERSION="0.0.3"
 
 # This should be auto-run
 # How to set this in git hooks:
-# The pre-commit hook should simply run: ./set-version-json.sh
+# The post?? pre-commit hook should simply run: ./set-version-json.sh
 # The script will automatically stage the modified version.json files if run in a git repository.
 
 
