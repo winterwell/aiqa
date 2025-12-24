@@ -1,6 +1,7 @@
 #!/bin/bash
 
-VERSION="0.0.2"
+# Bump this version when you make a change to the codebase
+VERSION="0.0.3"
 
 # This should be auto-run
 # How to set this in git hooks:
