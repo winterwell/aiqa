@@ -41,8 +41,8 @@ jobs:
       #   run: java -jar jerbil-all.jar
 
       - name: Compile LESS to CSS
-        working-directory: ./website
         run: |
+          cd website
           mkdir -p webroot/style
           lessc style/main.less webroot/style/main.css
 
