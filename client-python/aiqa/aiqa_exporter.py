@@ -158,8 +158,8 @@ class AIQASpanExporter(SpanExporter):
             "duration": self._time_to_tuple(span.end_time - span.start_time) if span.end_time else None,
             "ended": span.end_time is not None,
             "instrumentationLibrary": {
-                "name": span.instrumentation_info.name if hasattr(span, "instrumentation_info") else "",
-                "version": span.instrumentation_info.version if hasattr(span, "instrumentation_info") else None,
+                "name": self._get_instrumentation_name(),
+                "version": self._get_instrumentation_version(),
             },
         }
 
@@ -168,6 +168,19 @@ class AIQASpanExporter(SpanExporter):
         seconds = int(nanoseconds // 1_000_000_000)
         nanos = int(nanoseconds % 1_000_000_000)
         return (seconds, nanos)
+    
+    def _get_instrumentation_name(self) -> str:
+        """Get instrumentation library name - always 'aiqa-tracer'."""
+        from .client import AIQA_TRACER_NAME
+        return AIQA_TRACER_NAME
+    
+    def _get_instrumentation_version(self) -> Optional[str]:
+        """Get instrumentation library version from __version__."""
+        try:
+            from . import __version__
+            return __version__
+        except (ImportError, AttributeError):
+            return None
 
     def _build_request_headers(self) -> Dict[str, str]:
         """Build HTTP headers for span requests."""
