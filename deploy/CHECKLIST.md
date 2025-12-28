@@ -14,23 +14,26 @@ Use this checklist to verify your deployment setup is complete.
 
 ## GitHub Secrets / Variables Configuration
 
+**Variables** (Settings → Secrets and variables → Actions → Variables tab):
 - [ ] `DEPLOY_HOST` - Server IP/hostname
 - [ ] `DEPLOY_USER` - SSH username
-- [ ] `DEPLOY_SSH_KEY` - Private SSH key (full content)
 - [ ] `DEPLOY_PORT` - SSH port (optional, defaults to 22)
 - [ ] `VITE_AIQA_SERVER_URL` - Server API URL for webapp
 - [ ] `VITE_AUTH0_DOMAIN` - Auth0 domain
-- [ ] `VITE_AUTH0_CLIENT_ID` - Auth0 client ID
 - [ ] `VITE_AUTH0_AUDIENCE` - Auth0 audience
+
+**Secrets** (Settings → Secrets and variables → Actions → Secrets tab):
+- [ ] `DEPLOY_SSH_KEY` - Private SSH key (full content)
+- [ ] `VITE_AUTH0_CLIENT_ID` - Auth0 client ID
 
 ## Server Setup
 
 - [ ] Run `./deploy/setup.sh` on the server (or follow manual steps)
 - [ ] Created `/opt/aiqa/server/.env` with database credentials
 - [ ] Server service file installed: `/etc/systemd/system/aiqa-server.service`
-- [ ] Nginx config installed: `/etc/nginx/sites-available/webapp`
+- [ ] Nginx config installed: `/etc/nginx/sites-available/webapp` (from `deploy/aiqa-webapp.nginx.conf`)
 - [ ] Nginx config symlinked: `/etc/nginx/sites-enabled/webapp`
-- [ ] Website nginx config installed (optional): `/etc/nginx/sites-available/website`
+- [ ] Website nginx config installed (optional): `/etc/nginx/sites-available/website` (from `deploy/aiqa-website.nginx.conf`)
 - [ ] Website nginx config symlinked (optional): `/etc/nginx/sites-enabled/website`
 - [ ] Default nginx site disabled (if exists)
 - [ ] Nginx config tested: `sudo nginx -t`

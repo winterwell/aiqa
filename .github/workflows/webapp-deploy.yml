@@ -44,10 +44,10 @@ jobs:
       - name: Deploy to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: $DEPLOY_HOST }}
-          username: $DEPLOY_USER
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: $DEPLOY_PORT || 22
+          port: ${{ vars.DEPLOY_PORT || 22 }}
           source: "webapp/dist"
           target: "/opt/aiqa/webapp"
           strip_components: 1
@@ -56,10 +56,10 @@ jobs:
       - name: Restart webapp service
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          port: ${{ vars.DEPLOY_PORT || 22 }}
           script: |
             sudo mkdir -p /opt/aiqa/webapp/dist
             sudo chown -R www-data:www-data /opt/aiqa/webapp

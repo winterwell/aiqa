@@ -28,7 +28,7 @@ sudo chown -R $USER:$USER /opt/aiqa
 sudo cp deploy/aiqa-server.service /etc/systemd/system/
 
 # For webapp, use standard nginx service (recommended)
-sudo cp deploy/webapp.nginx.conf /etc/nginx/sites-available/webapp
+sudo cp deploy/aiqa-webapp.nginx.conf /etc/nginx/sites-available/webapp
 sudo ln -s /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/
 sudo nginx -t  # Test configuration
 
@@ -45,20 +45,21 @@ nano /opt/aiqa/server/.env
 # Edit with your database credentials, port, etc.
 ```
 
-### 4. Set up GitHub Secrets
+### 4. Set up GitHub Secrets and Variables
 
-In your GitHub repository, go to Settings → Secrets and variables → Actions, and add:
+In your GitHub repository, go to Settings → Secrets and variables → Actions:
 
+**Add as Variables** (Settings → Secrets and variables → Actions → Variables tab):
 - `DEPLOY_HOST`: Your server's IP address or hostname
 - `DEPLOY_USER`: SSH username (e.g., `ubuntu` or `deploy`)
-- `DEPLOY_SSH_KEY`: Private SSH key for authentication
 - `DEPLOY_PORT`: SSH port (optional, defaults to 22)
-
-For webapp deployment, also add:
 - `VITE_AIQA_SERVER_URL`: Server API URL (e.g., `http://your-server:4001` or `https://api.yourdomain.com`)
 - `VITE_AUTH0_DOMAIN`: Your Auth0 domain
-- `VITE_AUTH0_CLIENT_ID`: Your Auth0 client ID
 - `VITE_AUTH0_AUDIENCE`: Your Auth0 audience
+
+**Add as Secrets** (Settings → Secrets and variables → Actions → Secrets tab):
+- `DEPLOY_SSH_KEY`: Private SSH key for authentication
+- `VITE_AUTH0_CLIENT_ID`: Your Auth0 client ID (sensitive)
 
 To generate an SSH key pair if you don't have one:
 
@@ -156,7 +157,7 @@ sudo systemctl status nginx
 ### Port conflicts
 
 - Server defaults to port 4001 (set via `PORT` in `.env`)
-- Webapp defaults to port 4000 (configured in `webapp.nginx.conf`)
+- Webapp defaults to port 4000 (configured in `aiqa-webapp.nginx.conf`)
 - Check if ports are in use: `sudo netstat -tulpn | grep :4000`
 
 ### Permission issues
@@ -193,11 +194,15 @@ Workflows trigger on:
 
 ### Webapp Environment Variables
 
-The webapp build requires environment variables to be set in GitHub Secrets:
+The webapp build requires environment variables to be set in GitHub Variables and Secrets:
+
+**GitHub Variables:**
 - `VITE_AIQA_SERVER_URL`: The URL where the server API is accessible (e.g., `http://your-server-ip:4001` or `https://api.yourdomain.com`)
 - `VITE_AUTH0_DOMAIN`: Your Auth0 domain
-- `VITE_AUTH0_CLIENT_ID`: Your Auth0 client ID  
 - `VITE_AUTH0_AUDIENCE`: Your Auth0 audience
+
+**GitHub Secrets:**
+- `VITE_AUTH0_CLIENT_ID`: Your Auth0 client ID (sensitive)
 
 These are baked into the build at compile time, so you need to rebuild and redeploy if they change.
 

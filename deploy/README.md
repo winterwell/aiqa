@@ -6,9 +6,9 @@ This directory contains all files needed for 24x7 deployment of the AIQA server 
 
 ### Service Files
 - **aiqa-server.service** - Systemd service file for the server (auto-restart on failure)
-- **webapp.nginx.conf** - Nginx site configuration for serving the webapp (recommended)
-- **website.nginx.conf** - Nginx site configuration for serving the website
-- **aiqa-webapp.service** - Alternative systemd service (optional, uses custom nginx config)
+- **aiqa-webapp.nginx.conf** - Nginx site configuration for serving the webapp (recommended)
+- **aiqa-website.nginx.conf** - Nginx site configuration for serving the website
+- **aiqa-webapp.optional.service** - Alternative systemd service (optional, uses custom nginx config)
 
 ### CI/CD Workflows
 - **.github/workflows/server-deploy.yml** - Auto-deploys server on changes to `server/`
@@ -26,9 +26,9 @@ This directory contains all files needed for 24x7 deployment of the AIQA server 
    ./deploy/setup.sh
    ```
 
-2. **Configure GitHub Secrets** (Settings → Secrets → Actions):
-   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`
-   - `VITE_AIQA_SERVER_URL`, `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, `VITE_AUTH0_AUDIENCE`
+2. **Configure GitHub Secrets and Variables** (Settings → Secrets and variables → Actions):
+   - **Variables**: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT`, `VITE_AIQA_SERVER_URL`, `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_AUDIENCE`
+   - **Secrets**: `DEPLOY_SSH_KEY`, `VITE_AUTH0_CLIENT_ID`
 
 3. **Create `/opt/aiqa/server/.env`** with your database credentials
 
