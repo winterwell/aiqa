@@ -42,6 +42,7 @@ import SearchQuery from './common/SearchQuery.js';
 import Example from './common/types/Example.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
+import versionData from './version.json';
 
 dotenv.config();
 
@@ -89,6 +90,11 @@ fastify.addHook('onRequest', async (request, reply) => {
 // Health check
 fastify.get('/health', async () => {
   return { status: 'ok' };
+});
+
+// Version endpoint
+fastify.get('/version', async () => {
+  return versionData;
 });
 
 // ===== ORGANISATION ENDPOINTS (PostgreSQL) =====

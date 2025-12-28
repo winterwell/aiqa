@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bump this version when you make a change to the codebase
-VERSION="0.3.1"
+VERSION="0.3.2"
 
 # Ideally this should be auto-run (fiddly with git hooks)
 
@@ -26,7 +26,7 @@ echo "{
 }" > $VERSION_INFO_FILE
 
 # Copy out to dirs
-FILES=(client-go/version.json client-js/version.json server/version.json webapp/.well-known/version.json)
+FILES=(client-go/version.json client-js/version.json server/src/version.json webapp/.well-known/version.json website/webroot/.well-known/version.json)
 
 for FILE in ${FILES[@]}; do
     DIR=$(dirname "$FILE")
