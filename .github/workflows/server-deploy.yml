@@ -117,7 +117,7 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           envs: SERVER_PORT,DATABASE_URL,PGHOST,PGDATABASE,PGUSER,PGPASSWORD,PGSSLMODE,PGCHANNELBINDING,ELASTICSEARCH_URL,SPANS_INDEX,SPANS_INDEX_ALIAS,DATASET_EXAMPLES_INDEX,DATASET_EXAMPLES_INDEX_ALIAS,AUTH0_DOMAIN,AUTH0_AUDIENCE,AZURE_OPENAI_ENDPOINT
           script: |
-            cd /opt/aiqa/server
+            # Create .env file in temp location first, then move with sudo
             {
               echo "ENVIRONMENT=production"
               echo "PORT=${SERVER_PORT:-4001}"
@@ -130,16 +130,16 @@ jobs:
               echo "PGCHANNELBINDING=${PGCHANNELBINDING:-require}"
               echo "ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://localhost:9200}"
               echo "SPANS_INDEX=${SPANS_INDEX:-aiqa_spans}"
-              echo "SPANS_INDEX_ALIAS=${SPANS_INDEX_AL
-              IAS:-aiqa_spans_alias}"
+              echo "SPANS_INDEX_ALIAS=${SPANS_INDEX_ALIAS:-aiqa_spans_alias}"
               echo "DATASET_EXAMPLES_INDEX=${DATASET_EXAMPLES_INDEX:-aiqa_dataset_examples}"
               echo "DATASET_EXAMPLES_INDEX_ALIAS=${DATASET_EXAMPLES_INDEX_ALIAS:-aiqa_dataset_examples_alias}"
               echo "AUTH0_DOMAIN=${AUTH0_DOMAIN}"
               echo "AUTH0_AUDIENCE=${AUTH0_AUDIENCE}"
               [ -n "${AZURE_OPENAI_ENDPOINT}" ] && echo "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}"
-            } > .env
-            sudo chown www-data:www-data .env
-            sudo chmod 600 .env
+            } > /tmp/aiqa-server.env
+            sudo mv /tmp/aiqa-server.env /opt/aiqa/server/.env
+            sudo chown www-data:www-data /opt/aiqa/server/.env
+            sudo chmod 600 /opt/aiqa/server/.env
 
       - name: Install dependencies on remote server
         uses: appleboy/ssh-action@v1.0.3
