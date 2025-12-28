@@ -1,17 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, Button, Form, FormGroup, Label, Input, Table, Alert } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { PlusIcon } from '@phosphor-icons/react';
 import { listOrganisations, createOrganisation, getOrCreateUser } from '../api';
-import { Organisation } from '../common/types/Organisation';
+import Organisation from '../common/types/Organisation';
 
 const OrganisationListPage: React.FC = () => {
   const { user: auth0User } = useAuth0();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [orgName, setOrgName] = useState('');
+
+  // Get active organisation ID from URL
+  const pathBits = location.pathname.split('/');
+  const orgIndex = pathBits.indexOf('organisation');
+  const activeOrganisationId = orgIndex !== -1 && pathBits[orgIndex + 1] ? pathBits[orgIndex + 1] : null;
 
   // Get or create the database user to get their ID
   const { data: dbUser, isLoading: isLoadingUser } = useQuery({
@@ -29,22 +36,16 @@ const OrganisationListPage: React.FC = () => {
   // Fetch all organizations
   const { data: allOrganisations, isLoading: isLoadingOrgs, error } = useQuery({
     queryKey: ['organisations'],
-    queryFn: () => listOrganisations("members:" + dbUser?.id),
-	enabled: !!dbUser?.id,
+    queryFn: () => listOrganisations(),
+    enabled: !!dbUser?.id,
   });
+  
   useEffect(() => {
-    if (allOrganisations && allOrganisations.length === 1) {
+    // Auto-navigate to the only organisation if there's exactly one
+    if (allOrganisations && allOrganisations.length === 1 && !activeOrganisationId) {
       navigate(`/organisation/${allOrganisations[0].id}`);
     }
-  }, [allOrganisations, navigate]);
-
-  // Filter organizations where the user is a member
-  const userOrganisations = React.useMemo(() => {
-    if (!allOrganisations || !dbUser) return [];
-    return allOrganisations.filter((org: Organisation) => 
-      org.members && org.members.includes(dbUser.id)
-    );
-  }, [allOrganisations, dbUser]);
+  }, [allOrganisations, navigate, activeOrganisationId]);
 
   // Create organisation mutation
   const createOrgMutation = useMutation({
@@ -93,7 +94,7 @@ const OrganisationListPage: React.FC = () => {
   }
 
   // Show create form if no organizations
-  if (userOrganisations.length === 0 && !showCreateForm) {
+  if (allOrganisations && allOrganisations.length === 0 && !showCreateForm) {
     return (
       <Container className="mt-4">
         <Row className="justify-content-center">
@@ -144,6 +145,7 @@ const OrganisationListPage: React.FC = () => {
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h1>Organizations</h1>
             <Button color="primary" onClick={() => setShowCreateForm(true)}>
+              <PlusIcon size={20} className="me-1" />
               Create Organization
             </Button>
           </div>
@@ -197,7 +199,7 @@ const OrganisationListPage: React.FC = () => {
         <Col>
           <Card>
             <CardBody>
-              {userOrganisations.length === 0 ? (
+              {!allOrganisations || allOrganisations.length === 0 ? (
                 <p className="text-muted">No organizations found.</p>
               ) : (
                 <Table hover>
@@ -210,24 +212,36 @@ const OrganisationListPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {userOrganisations.map((org: Organisation) => (
-                      <tr key={org.id}>
-                        <td>
-                          <strong>{org.name}</strong>
-                        </td>
-                        <td>{org.members?.length || 0}</td>
-                        <td>{new Date(org.created).toLocaleString()}</td>
-                        <td>
-                          <Button
-                            color="primary"
-                            size="sm"
-                            onClick={() => navigate(`/organisation/${org.id}`)}
-                          >
-                            View
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {allOrganisations.map((org: Organisation) => {
+                      const isActive = activeOrganisationId === org.id;
+                      return (
+                        <tr 
+                          key={org.id}
+                          className={isActive ? 'table-active' : ''}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => navigate(`/organisation/${org.id}`)}
+                        >
+                          <td>
+                            <strong>{org.name}</strong>
+                            {isActive && <span className="badge bg-primary ms-2">Active</span>}
+                          </td>
+                          <td>{org.members?.length || 0}</td>
+                          <td>{new Date(org.created).toLocaleString()}</td>
+                          <td>
+                            <Button
+                              color={isActive ? "success" : "primary"}
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/organisation/${org.id}`);
+                              }}
+                            >
+                              {isActive ? 'Active' : 'Select'}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </Table>
               )}

@@ -10,7 +10,7 @@ export function useStepCompletionModal(organisationId: string | undefined) {
   const completion = useStepCompletion(organisationId);
   const [showModal, setShowModal] = useState(false);
   const [completedStep, setCompletedStep] = useState<StepId | null>(null);
-  const previousCompletion = useRef<Record<StepId, boolean>>({});
+  const previousCompletion = useRef<Partial<Record<StepId, boolean>>>({});
   const isInitialized = useRef(false);
   const initializationTimer = useRef<NodeJS.Timeout | null>(null);
 

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import './CelebrationModal.css';
 
 interface CelebrationModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   stepLabel: string;
   nextStepPath?: string;
   onClose: () => void;
