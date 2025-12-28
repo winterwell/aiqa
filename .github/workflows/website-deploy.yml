@@ -17,6 +17,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: 
+            patterns:
+              - website/
 
       # - name: Setup Java
       #   uses: actions/setup-java@v4
@@ -32,6 +36,18 @@ jobs:
       - name: Install LESS compiler
         run: npm install -g less
 
+      - name: Verify website directory exists
+        run: |
+          pwd
+          ls -la
+          if [ ! -d "website" ]; then
+            echo "Warning: website directory not found, listing all directories:"
+            find . -maxdepth 2 -type d | head -20
+            exit 1
+          fi
+          echo "Website directory found, contents:"
+          ls -la website/
+
       # - name: Download Jerbil
       #   working-directory: ./website
       #   run: wget -q https://www.winterwell.com/software/jerbil-all.jar
@@ -42,9 +58,15 @@ jobs:
 
       - name: Compile LESS to CSS
         run: |
-          cd website
-          mkdir -p webroot/style
-          lessc style/main.less webroot/style/main.css
+          ls -la
+          if [ -d "website" ]; then
+            cd website
+            mkdir -p webroot/style
+            lessc style/main.less webroot/style/main.css
+          else
+            echo "Error: website directory not found"
+            exit 1
+          fi
 
       - name: Deploy to server
         uses: appleboy/scp-action@v0.1.7
