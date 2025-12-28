@@ -21,14 +21,27 @@ if [ -f /etc/nginx/sites-available/webapp ]; then
     echo "✓ Config file exists: /etc/nginx/sites-available/webapp"
 else
     echo "✗ Config file MISSING: /etc/nginx/sites-available/webapp"
-    echo "  Run: sudo cp deploy/app.aiqa.nginx.conf /etc/nginx/sites-available/webapp"
+    # Try to find the source file
+    if [ -f "$(dirname "$0")/app.aiqa.nginx.conf" ]; then
+        source_file="$(dirname "$0")/app.aiqa.nginx.conf"
+        echo "  Source file found: $source_file"
+        echo "  Run: sudo cp $source_file /etc/nginx/sites-available/webapp"
+    elif [ -f "deploy/app.aiqa.nginx.conf" ]; then
+        echo "  Source file found: deploy/app.aiqa.nginx.conf"
+        echo "  Run: sudo cp deploy/app.aiqa.nginx.conf /etc/nginx/sites-available/webapp"
+    else
+        echo "  Source file: deploy/app.aiqa.nginx.conf (copy from repo to server)"
+        echo "  Run: sudo cp deploy/app.aiqa.nginx.conf /etc/nginx/sites-available/webapp"
+    fi
 fi
 
 if [ -L /etc/nginx/sites-enabled/webapp ]; then
     echo "✓ Config is enabled (symlinked)"
-else
+elif [ -f /etc/nginx/sites-available/webapp ]; then
     echo "✗ Config is NOT enabled (missing symlink)"
     echo "  Run: sudo ln -s /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/webapp"
+else
+    echo "✗ Config is NOT enabled (config file doesn't exist yet)"
 fi
 echo ""
 
@@ -86,36 +99,9 @@ echo ""
 
 # Check recent nginx error logs
 echo "9. Recent nginx error logs (last 20 lines)..."
-if [ -f /var/log/nginx/app.aiqa.winterwell.c# 1. Run the diagnostic script first
-cd /path/to/aiqa/repo  # or wherever you have the repo
-./deploy/diagnose-app-aiqa.sh
-
-# 2. If nginx config is missing, install it:
-sudo cp deploy/app.aiqa.nginx.conf /etc/nginx/sites-available/webapp
-sudo ln -s /etc/nginx/sites-available/webapp /etc/nginx/sites-enabled/webapp
-
-# 3. Create log directories if missing:
-sudo mkdir -p /var/log/nginx/app.aiqa.winterwell.com
-sudo chown -R www-data:www-data /var/log/nginx/
-
-# 4. Test nginx config:
-sudo nginx -t
-
-# 5. If webapp files are missing, deploy them:
-# Either via GitHub Actions (push to webapp/ directory)
-# Or manually:
-cd webapp
-pnpm install
-pnpm run build
-sudo cp -r dist/* /opt/aiqa/webapp/dist/
-
-# 6. If SSL certificate is missing:
-sudo certbot certonly --nginx -d app.aiqa.winterwell.com
-
-# 7. Reload/restart nginx:
-sudo systemctl reload nginx
-# or if that doesn't work:
-sudo systemctl restart nginx
+if [ -f /var/log/nginx/app.aiqa.winterwell.com/error.log ]; then
+    sudo tail -20 /var/log/nginx/app.aiqa.winterwell.com/error.log
+elif [ -f /var/log/nginx/error.log ]; then
     sudo tail -20 /var/log/nginx/error.log | grep -i app.aiqa || echo "No app.aiqa errors in main log"
 else
     echo "No error log found"
