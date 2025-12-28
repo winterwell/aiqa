@@ -64,6 +64,18 @@ jobs:
             exit 1
           fi
 
+      # - name: Nuke remote server directory
+      #   uses: appleboy/ssh-action@v1.0.3
+      #   with:
+      #     host: ${{ vars.DEPLOY_HOST }}
+      #     username: ${{ vars.DEPLOY_USER }}
+      #     key: ${{ secrets.DEPLOY_SSH_KEY }}
+      #     port: ${{ vars.DEPLOY_PORT || 22 }}
+      #     script: |
+      #       sudo mkdir -p /opt/aiqa/website/webroot
+      #       sudo chown -R $USER:$USER /opt/aiqa/website
+      #       rm -rf /opt/aiqa/website/webroot/*
+
       - name: Deploy to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -74,7 +86,6 @@ jobs:
           source: "website/webroot"
           target: "/opt/aiqa/website"
           strip_components: 1
-          rm: true
 
       - name: Restart nginx
         uses: appleboy/ssh-action@v1.0.3
