@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./server
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build server
         working-directory: ./server

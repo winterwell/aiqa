@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./webapp
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build webapp
         working-directory: ./webapp
