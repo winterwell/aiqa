@@ -22,3 +22,6 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 
+# one liner update:
+# sudo cp ./deploy/aiqa-server.service /etc/systemd/system/aiqa-server.service && sudo rm -rf /etc/systemd/system/aiqa-server.service.d && sudo systemctl daemon-reload && sudo systemctl reset-failed aiqa-server.service && sudo systemctl restart aiqa-server.service && systemctl status aiqa-server.service --no-pager
+

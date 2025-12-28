@@ -165,10 +165,19 @@ fastify.get('/user/:id', async (request, reply) => {
 	let jwtToken = await authenticateWithJwtFromHeader(request);
   let { id } = request.params as { id: string };
   if (id === "jwt") {
+    if (!jwtToken) {
+      reply.code(401).send({ error: 'Invalid JWT token' });
+      return;
+    }
     const sub = jwtToken.userId;
+    if (!sub) {
+      reply.code(401).send({ error: 'JWT token missing user ID' });
+      return;
+    }
 	const users = await listUsers(new SearchQuery(`sub:${sub}`));
 	if (users.length === 0) {
-		reply.code(404).send({ error: 'User not found with sub: '+sub });		
+		reply.code(404).send({ error: 'User not found with sub: '+sub });
+		return;
 	}
 	return users[0];
   }
