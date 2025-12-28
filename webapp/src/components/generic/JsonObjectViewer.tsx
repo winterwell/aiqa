@@ -1,22 +1,20 @@
-/**
- * A component to display a JSON object in a readable format, 
- * with expandable/collapsable sections for each key.
- * Large value shown truncated with a link to expand.
- * Small copy buttons to copy the JSON (or sub-objects) to the clipboard.
- */
+
 
 import React, { useState } from 'react';
 import CopyButton from './CopyButton';
 import ExpandCollapseControl from './ExpandCollapseControl';
 
-function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComponent?: React.ComponentType<{ text: string, depth?: number }>, depth?: number }) {
-	const otherKVs = { ...json };
-	delete otherKVs.role;
-	delete otherKVs.content;
+/**
+ * A component to display a JSON object in a readable format.
+ * with expandable/collapsable sections for each key.
+ * Content: can handle string, object, xml, and json/xml-in-string provided TextComponent=TextWithStructureViewer.
+ * Small copy buttons to copy the JSON (or sub-objects) to the clipboard.
+ */
+function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComponent?: React.ComponentType<{ text: string, depth?: number }>, depth?: number }) {	
 	const TextComponent = textComponent;
 	const [expanded, setExpanded] = useState(false);
 	const $copyButton = <CopyButton content={json} logToConsole />
-	let content = json.content;
+	let content = json.content || json.choices[0].message?.content;
 	// unwrap common chat message formats
 	if (Array.isArray(content) && content.length === 1) {
 		content = content[0];
@@ -24,10 +22,25 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	if (typeof content === "object" && content.type === "text") {
 		content = content.text;
 	}
+	const otherKVs = { ...json };
+	delete otherKVs.role;
+	delete otherKVs.content;
+	if (json.choices && json.choices.length === 1 && json.choices[0].message) {
+		delete otherKVs.choices;
+	}
 	//
 	return <div className="my-2" style={{ marginLeft: '20px', border: '2px solid #ccc', borderRadius: '5px', padding: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
 		<div className="d-flex align-items-center mb-1 w-100">			
-			<div><b className="ms-2 me-2">Role:</b> <span>{json.role}</span></div>
+			<div>
+				<b className="ms-2 me-2">Role:</b>
+				<span>
+					{json.role === 'user' && <>🧑 </>}
+					{json.role === 'assistant' && <>🤖 </>}
+					{json.role === 'system' && <>📜 </>}
+					{json.role === 'tool' && <>🛠️ </>}
+					{json.role}
+				</span>
+			</div>
 			<span className="ms-auto">{$copyButton}</span>
 		</div>
 		<div className="my-1">
