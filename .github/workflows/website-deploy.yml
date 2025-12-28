@@ -18,11 +18,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+      # - name: Setup Java
+      #   uses: actions/setup-java@v4
+      #   with:
+      #     distribution: 'temurin'
+      #     java-version: '17'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,13 +32,19 @@ jobs:
       - name: Install LESS compiler
         run: npm install -g less
 
-      - name: Download Jerbil
-        working-directory: ./website
-        run: wget -q https://www.winterwell.com/software/jerbil-all.jar
+      # - name: Download Jerbil
+      #   working-directory: ./website
+      #   run: wget -q https://www.winterwell.com/software/jerbil-all.jar
 
-      - name: Build website with Jerbil
+      # - name: Build website with Jerbil
+      #   working-directory: ./website
+      #   run: java -jar jerbil-all.jar
+
+      - name: Compile LESS to CSS
         working-directory: ./website
-        run: java -jar jerbil-all.jar
+        run: |
+          mkdir -p webroot/style
+          lessc style/main.less webroot/style/main.css
 
       - name: Deploy to server
         uses: appleboy/scp-action@v0.1.7
