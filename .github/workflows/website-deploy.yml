@@ -84,5 +84,8 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ vars.DEPLOY_PORT || 22 }}
           script: |
+            sudo mkdir -p /opt/aiqa/website/webroot
+            sudo chown -R www-data:www-data /opt/aiqa/website
+            ls -la /opt/aiqa/website/webroot/ | head -20
             sudo systemctl reload nginx
             sudo systemctl status nginx
