@@ -166,10 +166,10 @@ export async function searchEntities<T>(
 
   // Add source filtering if specified
   if (sourceIncludes && sourceIncludes.length > 0) {
-    searchParams.source_includes = sourceIncludes;
+    searchParams._source_includes = sourceIncludes;
   }
   if (sourceExcludes && sourceExcludes.length > 0) {
-    searchParams.source_excludes = sourceExcludes;
+    searchParams._source_excludes = sourceExcludes;
   }
 
   const result = await client.search<T>(searchParams);
@@ -185,9 +185,33 @@ export async function searchEntities<T>(
     }
     return hit;
   });
+  // convert attributes.input, attributes.output from json string to object (if they are a json object)
+  hits = hits.map((hit: any) => {
+	if (isJsonString(hit.attributes?.input)) {
+		try {
+			hit.attributes.input = JSON.parse(hit.attributes.input);
+		} catch (e) {
+			console.warn(`Error parsing input for hit ${hit.id}: ${e}`);
+		}
+	}
+	if (isJsonString(hit.attributes?.output)) {
+		try {
+			hit.attributes.output = JSON.parse(hit.attributes.output);
+		} catch (e) {
+			console.warn(`Error parsing output for hit ${hit.id}: ${e}`);
+		}
+	}
+	return hit;
+  });
 
   const total = extractTotal(result.hits.total as number | { value: number });
 
   return { hits, total };
 }
 
+/**
+ * Quick but not foolproof check if a string is a JSON object or array.
+ */
+function isJsonString(str?: string): boolean {
+  return str && typeof str === 'string' && (str[0] == '{' || str[0] == '[');
+}

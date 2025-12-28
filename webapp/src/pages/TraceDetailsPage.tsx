@@ -17,13 +17,30 @@ interface SpanTree {
 	children: SpanTree[];
 }
 
+// Common styles
+const containerStyle: React.CSSProperties = { maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' };
+const textBoxStyle: React.CSSProperties = { 
+	marginTop: '10px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', 
+	borderRadius: '4px', overflowX: 'auto', maxWidth: '100%', minWidth: 0, 
+	wordBreak: 'break-all', overflowWrap: 'anywhere' 
+};
+
+// Helper functions
+const getSpanName = (span: Span): string => (span as any).name || '';
+const convertToText = (value: any): string | null => {
+	if (value === undefined || value === null) return null;
+	return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+};
+
 function collectSpansFromTree(spanTree: SpanTree): Span[] {
-	const spans: Span[] = [];
-	spans.push(spanTree.span);
-	spanTree.children.forEach(child => {
-		spans.push(...collectSpansFromTree(child));
-	});
-	return spans;
+	return [spanTree.span, ...spanTree.children.flatMap(child => collectSpansFromTree(child))];
+}
+
+// Unified filter matching logic
+function treeMatchesFilter(tree: SpanTree, filterLower: string): boolean {
+	const name = getSpanName(tree.span);
+	if (name.toLowerCase().includes(filterLower)) return true;
+	return tree.children.some(child => treeMatchesFilter(child, filterLower));
 }
 
 function getParentSpanId(span: Span): string | null {
@@ -163,38 +180,40 @@ const TraceDetailsPage: React.FC = () => {
   
   // Auto-expand nodes that contain matching spans when filter is applied
   useEffect(() => {
-    if (!debouncedFilter || !spanTree) {
-      return;
-    }
+    if (!debouncedFilter || !spanTree) return;
     
-    const filterLower = debouncedFilter.toLowerCase();
+    const filterLower = debouncedFilter.toLowerCase().trim();
+    if (!filterLower) return;
+    
     const spansToExpand = new Set<string>();
     
-    // Recursively find all spans that match or have matching descendants
-    function findMatchingSpans(tree: SpanTree): boolean {
-      const spanName = (tree.span as any).name || '';
-      const matches = spanName.toLowerCase().includes(filterLower);
+    // Recursively find matching nodes and expand all nodes on path to matches
+    function findMatchesAndExpandPath(tree: SpanTree, pathFromRoot: string[]): boolean {
+      const spanId = getSpanId(tree.span);
+      const currentPath = [...pathFromRoot, spanId];
       
+      const spanName = getSpanName(tree.span).toLowerCase();
+      const matches = spanName.includes(filterLower);
+      
+      // Check if any descendant matches
       let hasMatchingDescendant = false;
       for (const child of tree.children) {
-        if (findMatchingSpans(child)) {
+        if (findMatchesAndExpandPath(child, currentPath)) {
           hasMatchingDescendant = true;
         }
       }
       
-      // If this span matches or has a matching descendant, expand its path
+      // If this node matches or has a matching descendant, expand the entire path from root
       if (matches || hasMatchingDescendant) {
-        spansToExpand.add(getSpanId(tree.span));
-        // Also expand all ancestors by adding parent spans
-        // We'll expand all nodes in the path to matching spans
+        // Expand all nodes in the path from root to this node (including this node)
+        currentPath.forEach(id => spansToExpand.add(id));
       }
       
       return matches || hasMatchingDescendant;
     }
     
-    findMatchingSpans(spanTree);
+    findMatchesAndExpandPath(spanTree, []);
     
-    // Update expanded spans to include all paths to matching spans
     setExpandedSpanIds(prev => {
       const next = new Set(prev);
       spansToExpand.forEach(id => next.add(id));
@@ -220,11 +239,7 @@ const TraceDetailsPage: React.FC = () => {
   const toggleExpanded = useCallback((spanId: string) => {
     setExpandedSpanIds(prev => {
       const next = new Set(prev);
-      if (next.has(spanId)) {
-        next.delete(spanId);
-      } else {
-        next.add(spanId);
-      }
+      next.has(spanId) ? next.delete(spanId) : next.add(spanId);
       return next;
     });
   }, []);
@@ -248,98 +263,59 @@ const TraceDetailsPage: React.FC = () => {
 
   const selectedSpan = useMemo(() => {
     if (!selectedSpanId) return null;
-    
-    // First try to find in the tree
     if (spanTree) {
       const foundInTree = findSpanById(spanTree, selectedSpanId);
-      if (foundInTree) {
-        return foundInTree;
-      }
+      if (foundInTree) return foundInTree;
     }
-    
-    // Fallback: search in original spans array
-    if (traceSpans) {
-      const foundInSpans = traceSpans.find(span => {
-        const spanId = getSpanId(span);
-        return spanId === selectedSpanId;
-      });
-      if (foundInSpans) {
-        return foundInSpans;
-      }
-    }
-    
-    return null;
+    return traceSpans?.find(span => getSpanId(span) === selectedSpanId) || null;
   }, [spanTree, selectedSpanId, traceSpans]);
 
-  // Show loading spinner while fetching spans
-  if (isLoadingSpans) {
-    return (
-      <div className="mt-4" style={{ maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
-        <Row>
-          <Col>
-            <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
-              ← Back to Traces
-            </Link>
-            <h1>Trace: <code>{traceId}</code></h1>
-          </Col>
-        </Row>
-        <Row>
-          <Col>
-            <div className="text-center" style={{ padding: '40px' }}>
-              <div className="spinner-border" role="status">
-                <span className="visually-hidden">Loading...</span>
-              </div>
-              <div style={{ marginTop: '15px' }}>
-                <strong>Loading spans data...</strong>
-              </div>
+  // Shared header component
+  const PageHeader = () => (
+    <Row>
+      <Col>
+        <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
+          ← Back to Traces
+        </Link>
+        <h1>Trace: <code>{traceId}</code></h1>
+      </Col>
+    </Row>
+  );
+
+  // Loading spinner component
+  const LoadingSpinner = ({ message, subtitle }: { message: string; subtitle?: string }) => (
+    <div className="mt-4" style={containerStyle}>
+      <PageHeader />
+      <Row>
+        <Col>
+          <div className="text-center" style={{ padding: '40px' }}>
+            <div className="spinner-border" role="status">
+              <span className="visually-hidden">Loading...</span>
             </div>
-          </Col>
-        </Row>
-      </div>
-    );
+            <div style={{ marginTop: '15px' }}>
+              <strong>{message}</strong>
+              {subtitle && <div className="text-muted" style={{ marginTop: '5px' }}>{subtitle}</div>}
+            </div>
+          </div>
+        </Col>
+      </Row>
+    </div>
+  );
+
+  if (isLoadingSpans) {
+    return <LoadingSpinner message="Loading spans data..." />;
   }
 
-  // Show processing spinner while organizing spans into tree
   if (isProcessingSpans) {
-    return (
-      <div className="mt-4" style={{ maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
-        <Row>
-          <Col>
-            <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
-              ← Back to Traces
-            </Link>
-            <h1>Trace: <code>{traceId}</code></h1>
-          </Col>
-        </Row>
-        <Row>
-          <Col>
-            <div className="text-center" style={{ padding: '40px' }}>
-              <div className="spinner-border" role="status">
-                <span className="visually-hidden">Processing...</span>
-              </div>
-              <div style={{ marginTop: '15px' }}>
-                <strong>Processing spans data...</strong>
-                <div className="text-muted" style={{ marginTop: '5px' }}>
-                  Organizing {traceSpans?.length || 0} spans into tree structure
-                </div>
-              </div>
-            </div>
-          </Col>
-        </Row>
-      </div>
-    );
+    return <LoadingSpinner 
+      message="Processing spans data..." 
+      subtitle={`Organizing ${traceSpans?.length || 0} spans into tree structure`}
+    />;
   }
 
   return (
-    <div className="mt-4" style={{ maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
-      <Row>
-        <Col>
-          <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
-            ← Back to Traces
-          </Link>
-          <h1>Trace: <code>{traceId}</code></h1>
-        </Col>
-      </Row>
+    <div className="mt-4" style={containerStyle}>
+      <PageHeader />
       <Row>
         <Col md={4} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
           <h3>Span Tree</h3>
@@ -365,12 +341,12 @@ const TraceDetailsPage: React.FC = () => {
               onSelectSpan={handleSelectSpan}
               onToggleExpanded={toggleExpanded}
               durationUnit={durationUnit}
-              filter={debouncedFilter}
+              filter={debouncedFilter || undefined}
             />
           )}
         </Col>
         <Col md={8} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
-          <h3>Span Details: {selectedSpan?.name || selectedSpanId}</h3>
+          <h3>Span Details: {selectedSpan ? getSpanName(selectedSpan) : selectedSpanId}</h3>
           {selectedSpan ? (
             <SpanDetails span={selectedSpan} />
           ) : (
@@ -460,42 +436,38 @@ function SpanTreeViewer({
 	durationUnit: 'ms' | 's' | 'm' | 'h' | 'd' | null | undefined;
 	filter?: string;
 }) {
-	const span = spanTree.span;
-	const children = spanTree.children;
+	const { span, children } = spanTree;
 	const spanId = getSpanId(span);
 	const isExpanded = expandedSpanIds.has(spanId);
 	const isSelected = selectedSpanId === spanId;
 	
-	// Helper function to check if a tree node or any of its descendants match the filter
-	const treeMatchesFilter = useCallback((tree: SpanTree, filterLower: string): boolean => {
-		const name = (tree.span as any).name || '';
-		if (name.toLowerCase().includes(filterLower)) {
-			return true;
+	// Filter matching logic - treat undefined/empty/whitespace as no filter
+	const hasFilter = Boolean(filter && filter.trim().length > 0);
+	const filterLower = hasFilter ? filter!.toLowerCase().trim() : '';
+	
+	// Apply filtering if filter is active
+	let shouldShow = true;
+	let filteredChildren = children;
+	
+	if (hasFilter) {
+		const spanNameLower = getSpanName(span).toLowerCase();
+		const matchesFilter = spanNameLower.includes(filterLower);
+		const hasMatchingDescendant = children.some(child => treeMatchesFilter(child, filterLower));
+		
+		// Only show this node if it matches or has a matching descendant
+		shouldShow = matchesFilter || hasMatchingDescendant;
+		
+		// Filter children:
+		// - If this node matches: show ALL children (full context)
+		// - If this node doesn't match but has matching descendants: only show children on path to matches
+		if (shouldShow) {
+			filteredChildren = matchesFilter 
+				? children  // Show all children when parent matches
+				: children.filter(child => treeMatchesFilter(child, filterLower)); // Only show path to matches
 		}
-		return tree.children.some(child => treeMatchesFilter(child, filterLower));
-	}, []);
-	
-	// Check if this span matches the filter
-	const spanName = (span as any).name || '';
-	const matchesFilter = !filter || spanName.toLowerCase().includes(filter.toLowerCase());
-	
-	// Recursively check if any descendant matches
-	const hasMatchingDescendant = useMemo(() => {
-		if (!filter) return true; // Show all when no filter
-		return children.some(child => treeMatchesFilter(child, filter.toLowerCase()));
-	}, [filter, children, treeMatchesFilter]);
-	
-	// Only show this node if it matches or has a matching descendant
-	if (filter && !matchesFilter && !hasMatchingDescendant) {
-		return null;
 	}
 	
-	// Filter children to only show those that match or have matching descendants
-	const filteredChildren = useMemo(() => {
-		if (!filter) return children;
-		const filterLower = filter.toLowerCase();
-		return children.filter(child => treeMatchesFilter(child, filterLower));
-	}, [children, filter, treeMatchesFilter]);
+	if (!shouldShow) return null;
 
 	const handleSelect = (e: React.MouseEvent) => {
 		e.preventDefault();
@@ -504,6 +476,7 @@ function SpanTreeViewer({
 	};
 
 	const spanAny = span as any;
+	const spanName = getSpanName(span);
 	const spanSummary = spanAny.attributes?.input?.message 
 		? <div>Message: {JSON.stringify(spanAny.attributes.input.message).substring(0,100)}</div>
 		: null;
@@ -528,16 +501,15 @@ function SpanTreeViewer({
 					}}
 					onClick={handleSelect}
 				>									
-					{(span as any).name && <div>Name: {(span as any).name}</div>}
+					{spanName && <div>Name: {spanName}</div>}
 					{spanSummary}
 					<div>Span ID: {spanId}</div>
 					<div>Duration: <span>{durationString(getDurationMs(span), durationUnit)}</span></div>
-				<div style={{ position: 'absolute', right: '20px', top: '10px' }}>
-					<CopyButton content={span} logToConsole />
-				</div>
+					<div style={{ position: 'absolute', right: '20px', top: '10px' }}>
+						<CopyButton content={span} logToConsole />
+					</div>
 				</div>
 			</div>
-			{/* Only render children when expanded - this is the key optimization */}
 			{isExpanded && filteredChildren.length > 0 && (
 				<div>
 					{filteredChildren.map(kid => (
@@ -560,42 +532,36 @@ function SpanTreeViewer({
 
 function SpanDetails({ span }: { span: Span }) {
 	const spanId = getSpanId(span);
-	const input = (span as any).attributes?.input;
-	const output = (span as any).attributes?.output;
-
-	// Convert input/output to string for TextWithStructureViewer
-	const inputText = input !== undefined && input !== null 
-		? (typeof input === 'string' ? input : JSON.stringify(input, null, 2))
-		: null;
-	const outputText = output !== undefined && output !== null
-		? (typeof output === 'string' ? output : JSON.stringify(output, null, 2))
-		: null;
+	const spanAny = span as any;
+	const input = spanAny.attributes?.input;
+	const output = spanAny.attributes?.output;
+	const durationMs = getDurationMs(span);
 
 	return (
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
 			<div style={{ marginBottom: '15px' }}>
 				<div><strong>Span ID:</strong> {spanId}</div>
-				<div><strong>Name:</strong> {(span as any).name || 'Unnamed Span'}</div>
+				<div><strong>Name:</strong> {getSpanName(span) || 'Unnamed Span'}</div>
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
-				<div><strong>Duration:</strong> {getDurationMs(span) ? `${getDurationMs(span)}ms` : 'N/A'}</div>
+				<div><strong>Duration:</strong> {durationMs ? `${durationMs}ms` : 'N/A'}</div>
 			</div>
-			{inputText && (
+			{input && (
 				<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Input:</strong>
-					<div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px', overflowX: 'auto', maxWidth: '100%', minWidth: 0, wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
-						<TextWithStructureViewer text={inputText} />
+					<div style={textBoxStyle}>
+						{typeof input === 'string' ? <TextWithStructureViewer text={input} /> : <JsonObjectViewer json={input} textComponent={TextWithStructureViewer} />}
 					</div>
 				</div>
 			)}
-			{outputText && (
+			{output && (
 				<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Output:</strong>
-					<div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px', overflowX: 'auto', maxWidth: '100%', minWidth: 0, wordBreak: 'break-all', overflowWrap: 'anywhere' }}>
-						<TextWithStructureViewer text={outputText} />
+					<div style={textBoxStyle}>
+					{typeof output === 'string' ? <TextWithStructureViewer text={output} /> : <JsonObjectViewer json={output} textComponent={TextWithStructureViewer} />}
 					</div>
 				</div>
 			)}
-			{!inputText && !outputText && (
+			{!input && !output && (
 				<div style={{ marginTop: '15px', color: '#666', fontStyle: 'italic' }}>
 					No input or output data available for this span.
 				</div>
@@ -607,12 +573,14 @@ function SpanDetails({ span }: { span: Span }) {
 
 
 function OtherAttributes({ span }: { span: Span }) {
-	if ( ! span || ! span.attributes ) {
+	const spanAny = span as any;
+	if ( ! span || ! spanAny.attributes ) {
 		return null;
 	}
-	const attributes2 = {...span.attributes};	
+	const attributes2 = {...spanAny.attributes};	
 	delete attributes2.input;
 	delete attributes2.output;
+	delete attributes2.attributes; // In case of badly nested attributes (which suggests a client bug)
 	return (
 	<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Other Attributes:</strong>

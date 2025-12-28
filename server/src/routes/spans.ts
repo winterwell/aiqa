@@ -90,7 +90,6 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
     // Pass sourceFields to Elasticsearch for efficient field filtering at the source
     const result = await searchSpans(searchQuery, organisationId, limit, offset, _source_includes, _source_excludes);
-    
     return {
       hits: result.hits,
       total: result.total,

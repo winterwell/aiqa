@@ -18,6 +18,7 @@ import okhttp3.HttpUrl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -31,6 +32,7 @@ public class Tracing {
     private static OpenTelemetry openTelemetry;
     private static Tracer tracer;
     private static String componentTag = System.getenv("AIQA_COMPONENT_TAG");
+    private static String organisationId = System.getenv("AIQA_ORGANISATION_ID");
     private static final AttributeKey<String> COMPONENT_KEY = AttributeKey.stringKey("component");
     private static final AttributeKey<String> INPUT_KEY = AttributeKey.stringKey("input");
     private static final AttributeKey<String> OUTPUT_KEY = AttributeKey.stringKey("output");
@@ -115,6 +117,25 @@ public class Tracing {
      */
     public static void setComponentTag(String tag) {
         componentTag = tag;
+    }
+
+    /**
+     * Set the organisation ID that will be used for API requests.
+     * This can also be set via the AIQA_ORGANISATION_ID environment variable.
+     *
+     * @param orgId The organisation ID
+     */
+    public static void setOrganisationId(String orgId) {
+        organisationId = orgId;
+    }
+
+    /**
+     * Get the current organisation ID.
+     *
+     * @return The organisation ID, or null if not set
+     */
+    public static String getOrganisationId() {
+        return organisationId;
     }
 
     /**
@@ -301,30 +322,29 @@ public class Tracing {
      * Get a span by its ID from the AIQA server.
      *
      * @param spanId The span ID as a hexadecimal string (16 characters) or client span ID
-     * @param organisationId Optional organisation ID. If null, will try to get from AIQA_ORGANISATION_ID
-     *   environment variable. The organisation is typically extracted from the API key during
-     *   authentication, but the API requires it as a query parameter.
      * @return The span data as a Map, or null if not found
      * @throws IOException if the request failed
      *
      * Example:
-     *   Map<String, Object> span = Tracing.getSpan("abc123...", null);
+     *   // Set organisation ID once (or via AIQA_ORGANISATION_ID environment variable)
+     *   Tracing.setOrganisationId("my-org-id");
+     *   
+     *   Map<String, Object> span = Tracing.getSpan("abc123...");
      *   if (span != null) {
      *       System.out.println("Found span: " + span.get("name"));
      *   }
      */
-    public static Map<String, Object> getSpan(String spanId, String organisationId) throws IOException {
+    public static Map<String, Object> getSpan(String spanId) throws IOException {
         String serverUrl = System.getenv("AIQA_SERVER_URL");
         String apiKey = System.getenv("AIQA_API_KEY");
-        String orgId = organisationId != null ? organisationId : System.getenv("AIQA_ORGANISATION_ID");
         
         if (serverUrl == null || serverUrl.isEmpty()) {
             logger.warn("AIQA_SERVER_URL is not set. Cannot retrieve span.");
             return null;
         }
         
-        if (orgId == null || orgId.isEmpty()) {
-            logger.warn("Organisation ID is required. Provide it as parameter or set AIQA_ORGANISATION_ID environment variable.");
+        if (organisationId == null || organisationId.isEmpty()) {
+            logger.warn("Organisation ID is required. Set it via Tracing.setOrganisationId() or AIQA_ORGANISATION_ID environment variable.");
             return null;
         }
         
@@ -338,7 +358,7 @@ public class Tracing {
                 HttpClient httpClient = new HttpClient(serverUrl, apiKey);
                 HttpUrl.Builder urlBuilder = httpClient.urlBuilder("/span")
                     .addQueryParameter("q", queryField + ":" + spanId)
-                    .addQueryParameter("organisation", orgId)
+                    .addQueryParameter("organisation", organisationId)
                     .addQueryParameter("limit", "1");
                 
                 Map<String, Object> response = httpClient.get(urlBuilder.build().toString(), Map.class);

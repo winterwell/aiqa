@@ -297,7 +297,7 @@ def safe_json_dumps(value: Any) -> str:
         try:
             json_str = json.dumps(value, default=json_default_handler_factory(set()))
             if len(json_str) > max_size_chars:
-                return f"<object too large: {len(json_str)} chars (limit: {max_size_chars} chars)>"
+                return f"<object {type(value)} too large: {len(json_str)} chars (limit: {max_size_chars} chars) begins: {json_str[:100]}... conversion error: {e}>"
             return json_str
         except Exception:
             return safe_str_repr(value)
@@ -307,7 +307,7 @@ def safe_json_dumps(value: Any) -> str:
         json_str = json.dumps(converted, default=json_default_handler_factory(set()))
         # Check size
         if len(json_str) > max_size_chars:
-            return f"<object too large: {len(json_str)} chars (limit: {max_size_chars} chars)>"
+            return f"<object {type(value)} too large: {len(json_str)} chars (limit: {max_size_chars} chars) begins: {json_str[:100]}...>"
         return json_str
     except Exception:
         # Final fallback

@@ -130,17 +130,22 @@ class TracingOptions:
 
 
 def _prepare_input(args: tuple, kwargs: dict) -> Any:
-    """Prepare input for span attributes."""
+    """Prepare input for span attributes.
+    
+    Note: This function does NOT serialize values - it just structures the data.
+    Serialization happens later via serialize_for_span() to avoid double-encoding
+    (e.g., converting messages to JSON string, then encoding that string again).
+    """
     if not args and not kwargs:
         return None
     if len(args) == 1 and not kwargs:
-        return serialize_for_span(args[0])
+        return args[0]  # Don't serialize here - will be serialized later
     # Multiple args or kwargs - combine into dict
     result = {}
     if args:
-        result["args"] = [serialize_for_span(arg) for arg in args]
+        result["args"] = list(args)  # Keep as-is, will be serialized later
     if kwargs:
-        result["kwargs"] = {k: serialize_for_span(v) for k, v in kwargs.items()}
+        result["kwargs"] = dict(kwargs)  # Keep as-is, will be serialized later
     return result
 
 
@@ -1109,9 +1114,11 @@ def extract_trace_context(carrier: dict) -> Any:
         return None
 
 
-async def get_span(span_id: str, organisation_id: Optional[str] = None) -> Optional[dict]:
+def get_span(span_id: str, organisation_id: Optional[str] = None, exclude: Optional[List[str]] = None) -> Optional[dict]:
     """
     Get a span by its ID from the AIQA server.
+    
+    Expected usage is: re-playing a specific function call in a unit test (either a developer debugging an issue, or as part of a test suite).
     
     Args:
         span_id: The span ID as a hexadecimal string (16 characters) or client span ID
@@ -1119,6 +1126,7 @@ async def get_span(span_id: str, organisation_id: Optional[str] = None) -> Optio
             AIQA_ORGANISATION_ID environment variable. The organisation is typically
             extracted from the API key during authentication, but the API requires it
             as a query parameter.
+        exclude: Optional list of fields to exclude from the span data. By default this function WILL return 'attributes' (often large).
     
     Returns:
         The span data as a dictionary, or None if not found
@@ -1126,24 +1134,24 @@ async def get_span(span_id: str, organisation_id: Optional[str] = None) -> Optio
     Example:
         from aiqa import get_span
         
-        span = await get_span('abc123...')
+        span = get_span('abc123...')
         if span:
             print(f"Found span: {span['name']}")
+            my_function(**span['input'])
     """
     import os
-    import aiohttp
+    import requests
     
     server_url = os.getenv("AIQA_SERVER_URL", "").rstrip("/")
     api_key = os.getenv("AIQA_API_KEY", "")
     org_id = organisation_id or os.getenv("AIQA_ORGANISATION_ID", "")
     
     if not server_url:
-        logger.warning("AIQA_SERVER_URL is not set. Cannot retrieve span.")
-        return None
-    
+        raise ValueError("AIQA_SERVER_URL is not set. Cannot retrieve span.")    
     if not org_id:
-        logger.warning("Organisation ID is required. Provide it as parameter or set AIQA_ORGANISATION_ID environment variable.")
-        return None
+        raise ValueError("Organisation ID is required. Provide it as parameter or set AIQA_ORGANISATION_ID environment variable.")
+    if not api_key:
+        raise ValueError("API key is required. Set AIQA_API_KEY environment variable.")
     
     # Try both spanId and clientSpanId queries
     for query_field in ["spanId", "clientSpanId"]:
@@ -1152,30 +1160,27 @@ async def get_span(span_id: str, organisation_id: Optional[str] = None) -> Optio
             "q": f"{query_field}:{span_id}",
             "organisation": org_id,
             "limit": "1",
+            "exclude": ",".join(exclude) if exclude else None,
+            "fields": "*" if not exclude else None,
         }
         
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"ApiKey {api_key}"
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params, headers=headers) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        hits = result.get("hits", [])
-                        if hits:
-                            return hits[0]
-                    elif response.status == 400:
-                        # Try next query field
-                        continue
-                    else:
-                        error_text = await response.text()
-                        logger.warning(f"Failed to get span: {response.status} - {error_text[:200]}")
-        except Exception as e:
-            logger.warning(f"Error getting span: {e}")
+        response = requests.get(url, params=params, headers=headers)
+        if response.status_code == 200:
+            result = response.json()
+            hits = result.get("hits", [])
+            if hits and len(hits) > 0:
+                return hits[0]
+        elif response.status_code == 404:
+            # Try next query field
             continue
-    
+        else:
+            error_text = response.text
+            raise ValueError(f"Failed to get span: {response.status_code} - {error_text[:500]}")        
+    # not found
     return None
 
 
