@@ -1,16 +1,31 @@
 import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
-import { getOrganisation } from '../api';
+import { useAuth0 } from '@auth0/auth0-react';
+import { getOrganisation, getOrCreateUser } from '../api';
+import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
 
 const OrganisationPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
+  const { user: auth0User } = useAuth0();
 
   const { data: organisation, isLoading, error } = useQuery({
     queryKey: ['organisation', organisationId],
     queryFn: () => getOrganisation(organisationId!),
     enabled: !!organisationId,
+  });
+
+  const { data: dbUser } = useQuery({
+    queryKey: ['user', auth0User?.email],
+    queryFn: async () => {
+      if (!auth0User?.email) return null;
+      return getOrCreateUser(
+        auth0User.email,
+        auth0User.name || auth0User.email
+      );
+    },
+    enabled: !!auth0User?.email,
   });
 
   if (isLoading) {
@@ -40,8 +55,13 @@ const OrganisationPage: React.FC = () => {
     <Container className="mt-4">
       <Row>
         <Col>
-          <h1>{organisation.name}</h1>
-          <p className="text-muted">Organisation ID: {organisation.id}</p>
+          <div className="d-flex justify-content-between align-items-center">
+            <div>
+              <h1>{organisation.name}</h1>
+              <p className="text-muted">Organisation ID: {organisation.id}</p>
+            </div>
+            {dbUser?.id && <CreateOrganisationButton dbUserId={dbUser.id} />}
+          </div>
         </Col>
       </Row>
 

@@ -1,19 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Button, Form, FormGroup, Label, Input, Table, Alert } from 'reactstrap';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PlusIcon } from '@phosphor-icons/react';
-import { listOrganisations, createOrganisation, getOrCreateUser } from '../api';
+import { Container, Row, Col, Card, CardBody, Button, Table, Alert } from 'reactstrap';
+import { useQuery } from '@tanstack/react-query';
+import { listOrganisations, getOrCreateUser } from '../api';
 import Organisation from '../common/types/Organisation';
+import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
 
 const OrganisationListPage: React.FC = () => {
   const { user: auth0User } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [orgName, setOrgName] = useState('');
 
   // Get active organisation ID from URL
   const pathBits = location.pathname.split('/');
@@ -47,29 +44,6 @@ const OrganisationListPage: React.FC = () => {
     }
   }, [allOrganisations, navigate, activeOrganisationId]);
 
-  // Create organisation mutation
-  const createOrgMutation = useMutation({
-    mutationFn: async (orgData: { name: string; members: string[] }) => {
-      return createOrganisation(orgData);
-    },
-    onSuccess: (newOrg) => {
-      queryClient.invalidateQueries({ queryKey: ['organisations'] });
-      setShowCreateForm(false);
-      setOrgName('');
-      navigate(`/organisation/${newOrg.id}`);
-    },
-  });
-
-  const handleCreateOrg = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dbUser || !orgName.trim()) return;
-
-    createOrgMutation.mutate({
-      name: orgName.trim(),
-      members: [dbUser.id],
-    });
-  };
-
   if (isLoadingUser || isLoadingOrgs) {
     return (
       <Container className="mt-4">
@@ -94,41 +68,17 @@ const OrganisationListPage: React.FC = () => {
   }
 
   // Show create form if no organizations
-  if (allOrganisations && allOrganisations.length === 0 && !showCreateForm) {
+  if (allOrganisations && allOrganisations.length === 0 && dbUser?.id) {
     return (
       <Container className="mt-4">
         <Row className="justify-content-center">
           <Col md={8}>
             <Card>
-              <CardHeader>
-                <h3>Welcome to AIQA</h3>
-              </CardHeader>
               <CardBody>
+                <h3>Welcome to AIQA</h3>
                 <p className="lead">You're not a member of any organization yet.</p>
                 <p>Create your first organization to get started:</p>
-                <Form onSubmit={handleCreateOrg}>
-                  <FormGroup>
-                    <Label for="orgName">Organization Name</Label>
-                    <Input
-                      type="text"
-                      id="orgName"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="Enter organization name"
-                      required
-                    />
-                  </FormGroup>
-                  <div className="d-flex gap-2">
-                    <Button color="primary" type="submit" disabled={createOrgMutation.isPending}>
-                      {createOrgMutation.isPending ? 'Creating...' : 'Create Organization'}
-                    </Button>
-                  </div>
-                  {createOrgMutation.isError && (
-                    <Alert color="danger" className="mt-3">
-                      Failed to create organization: {createOrgMutation.error instanceof Error ? createOrgMutation.error.message : 'Unknown error'}
-                    </Alert>
-                  )}
-                </Form>
+                <CreateOrganisationButton dbUserId={dbUser.id} showFormInline={true} />
               </CardBody>
             </Card>
           </Col>
@@ -138,62 +88,24 @@ const OrganisationListPage: React.FC = () => {
   }
 
   // Show list of organizations
+  if (!dbUser?.id) {
+    return (
+      <Container className="mt-4">
+        <Alert color="warning">Loading user information...</Alert>
+      </Container>
+    );
+  }
+
   return (
     <Container className="mt-4">
       <Row>
         <Col>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h1>Organizations</h1>
-            <Button color="primary" onClick={() => setShowCreateForm(true)}>
-              <PlusIcon size={20} className="me-1" />
-              Create Organization
-            </Button>
+            <CreateOrganisationButton dbUserId={dbUser.id} />
           </div>
         </Col>
       </Row>
-
-      {showCreateForm && (
-        <Row className="mb-4">
-          <Col>
-            <Card>
-              <CardHeader>
-                <h5>Create New Organization</h5>
-              </CardHeader>
-              <CardBody>
-                <Form onSubmit={handleCreateOrg}>
-                  <FormGroup>
-                    <Label for="orgName">Organization Name</Label>
-                    <Input
-                      type="text"
-                      id="orgName"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="Enter organization name"
-                      required
-                    />
-                  </FormGroup>
-                  <div className="d-flex gap-2">
-                    <Button color="primary" type="submit" disabled={createOrgMutation.isPending}>
-                      {createOrgMutation.isPending ? 'Creating...' : 'Create Organization'}
-                    </Button>
-                    <Button color="secondary" onClick={() => {
-                      setShowCreateForm(false);
-                      setOrgName('');
-                    }}>
-                      Cancel
-                    </Button>
-                  </div>
-                  {createOrgMutation.isError && (
-                    <Alert color="danger" className="mt-3">
-                      Failed to create organization: {createOrgMutation.error instanceof Error ? createOrgMutation.error.message : 'Unknown error'}
-                    </Alert>
-                  )}
-                </Form>
-              </CardBody>
-            </Card>
-          </Col>
-        </Row>
-      )}
 
       <Row>
         <Col>
