@@ -337,6 +337,36 @@ await doQuery(`
 	END $$;
   `);
 
+	// Add role column to api_keys table if it doesn't exist (migration)
+	// First, drop read/write columns if they exist (from previous migration)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' AND column_name = 'read'
+		  ) THEN
+			ALTER TABLE api_keys DROP COLUMN IF EXISTS read;
+			ALTER TABLE api_keys DROP COLUMN IF EXISTS write;
+		  END IF;
+		END $$;
+	  `);
+	
+	// Add role column
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' AND column_name = 'role'
+		  ) THEN
+			ALTER TABLE api_keys ADD COLUMN role VARCHAR(20) DEFAULT 'developer';
+			-- default all old keys to developer
+			UPDATE api_keys SET role = 'developer' WHERE role IS NULL;
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**
@@ -577,6 +607,7 @@ export async function updateApiKey(id: string, updates: Partial<ApiKey>): Promis
 	if (updates.name !== undefined) item.name = updates.name;
 	if (updates.rate_limit_per_hour !== undefined) item.rate_limit_per_hour = updates.rate_limit_per_hour;
 	if (updates.retention_period_days !== undefined) item.retention_period_days = updates.retention_period_days;
+	if (updates.role !== undefined) item.role = updates.role;
 
 	return updateEntity<ApiKey>('api_keys', id, item, transformApiKey);
 }

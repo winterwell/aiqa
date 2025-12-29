@@ -530,12 +530,42 @@ async function migrationAddUnindexedAttributesToIndex(indexName: string): Promis
 }
 
 /**
+ * Apply migration to ensure starred field is indexed in spans index.
+ */
+async function migrationEnsureStarredField(indexName: string): Promise<void> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  const indexExists = await client.indices.exists({ index: indexName });
+  if (!indexExists) return;
+
+  try {
+    const currentMapping = await client.indices.getMapping({ index: indexName });
+    const mappingKey = Object.keys(currentMapping)[0];
+    const properties = currentMapping[mappingKey]?.mappings?.properties;
+    
+    // Check if starred field exists and is properly mapped
+    if (!properties?.starred) {
+      await client.indices.putMapping({
+        index: indexName,
+        properties: { starred: { type: 'boolean' } }
+      });
+      console.log(`Added starred field to ${indexName}`);
+    }
+  } catch (error: any) {
+    console.warn(`Could not apply starred field migration to ${indexName}:`, error.message);
+  }
+}
+
+/**
  * Apply migrations to Elasticsearch indices. Safe to call multiple times.
  * Updates mappings for existing indices.
  */
 async function applyMigrations(): Promise<void> {
   await migrationAddUnindexedAttributesToIndex(SPAN_INDEX);
   await migrationAddUnindexedAttributesToIndex(DATASET_EXAMPLES_INDEX);
+  await migrationEnsureStarredField(SPAN_INDEX);
 }
 
 /**
@@ -586,6 +616,78 @@ export async function searchSpans(
     _source_includes,
     _source_excludes
   );
+}
+
+/**
+ * Update a span by ID in ElasticSearch. Performs partial update (only updates provided fields).
+ * @param spanId - The ID of the span to update (used as document _id in ElasticSearch, as set during bulk insert)
+ * @param updates - Partial span object with fields to update
+ * @param organisationId - Optional organisation ID to verify ownership
+ * @returns The updated span, or null if not found
+ */
+export async function updateSpan(
+  spanId: string,
+  updates: Partial<Span>,
+  organisationId?: string
+): Promise<Span | null> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  try {
+    // Get the current document to verify it exists and belongs to the organisation
+    const getResponse = await client.get({
+      index: SPAN_INDEX_ALIAS,
+      id: spanId,
+    });
+
+    const currentSpan = getResponse._source as any;
+    
+    // Verify organisation if provided
+    if (organisationId && currentSpan.organisation !== organisationId) {
+      return null; // Span doesn't belong to this organisation
+    }
+
+    // Prepare update document - only include fields that are being updated
+    const updateDoc: any = {};
+    Object.keys(updates).forEach(key => {
+      if (updates[key as keyof Span] !== undefined) {
+        updateDoc[key] = updates[key as keyof Span];
+      }
+    });
+
+    if (Object.keys(updateDoc).length === 0) {
+      // No updates to apply, return current span
+      return currentSpan as Span;
+    }
+
+    // Transform the update document if needed (for fields like startTime, endTime)
+    // For starred, we can update directly
+    const transformedUpdate = { ...updateDoc };
+    
+    // Update the document by its _id
+    await client.update({
+      index: SPAN_INDEX_ALIAS,
+      id: spanId,
+      body: {
+        doc: transformedUpdate,
+      },
+      refresh: 'wait_for', // Make update immediately visible
+    });
+
+    // Fetch and return the updated document
+    const updatedResponse = await client.get({
+      index: SPAN_INDEX_ALIAS,
+      id: spanId,
+    });
+
+    return updatedResponse._source as Span;
+  } catch (error: any) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**

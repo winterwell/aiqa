@@ -33,6 +33,11 @@
         "retention_period_days": {
           "type": "number"
         },
+        "role": {
+          "description": "Role of the API key: 'trace' (can only post spans), 'developer' (most endpoints), or 'admin' (all endpoints)",
+          "enum": ["trace", "developer", "admin"],
+          "type": "string"
+        },
         "updated": {
           "format": "date-time",
           "type": "string"
@@ -42,6 +47,7 @@
         "id",
         "organisation",
         "key_hash",
+        "role",
         "created",
         "updated"
       ],

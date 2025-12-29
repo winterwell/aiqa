@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button, Input, Modal, ModalHeader, ModalBody, ModalFooter, Label } from 'reactstrap';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button, Input, Modal, ModalHeader, ModalBody, ModalFooter, Label, FormGroup } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listApiKeys, createApiKey, deleteApiKey, API_BASE_URL } from '../api';
+import { listApiKeys, createApiKey, updateApiKey, deleteApiKey, API_BASE_URL } from '../api';
 import { useToast } from '../utils/toast';
 import CopyButton from '../components/generic/CopyButton';
 
@@ -56,6 +56,7 @@ const ApiKeyPage: React.FC = () => {
         organisation: organisationId!,
         name: name || undefined,
         key_hash: keyHash,
+        role: 'developer',
       });
       queryClient.invalidateQueries({ queryKey: ['apiKeys', organisationId] });
       setShowCreateModal(false);
@@ -70,6 +71,13 @@ const ApiKeyPage: React.FC = () => {
     const newKey = generateApiKey();
     handleCreateApiKey(newKey, newKeyName.trim() || undefined);
   }, [newKeyName, handleCreateApiKey]);
+
+  const updateApiKeyMutation = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: { role?: 'trace' | 'developer' | 'admin' } }) => updateApiKey(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['apiKeys', organisationId] });
+    },
+  });
 
   const deleteApiKeyMutation = useMutation({
     mutationFn: (id: string) => deleteApiKey(id),
@@ -205,6 +213,28 @@ const ApiKeyPage: React.FC = () => {
                               <strong>Retention Period:</strong> {apiKey.retention_period_days} days
                             </div>
                           )}
+                          <div className="mt-3">
+                            <FormGroup>
+                              <Label for={`role-${apiKey.id}`}>Role:</Label>
+                              <Input
+                                type="select"
+                                id={`role-${apiKey.id}`}
+                                value={apiKey.role || 'developer'}
+                                onChange={(e) => {
+                                  updateApiKeyMutation.mutate({
+                                    id: apiKey.id,
+                                    updates: { role: e.target.value as 'trace' | 'developer' | 'admin' }
+                                  });
+                                }}
+                                disabled={updateApiKeyMutation.isPending}
+                                style={{ maxWidth: '200px' }}
+                              >
+                                <option value="trace">Trace (can only post spans)</option>
+                                <option value="developer">Developer (most endpoints)</option>
+                                <option value="admin">Admin (all endpoints)</option>
+                              </Input>
+                            </FormGroup>
+                          </div>
                           <div className="text-muted small mt-2">
                             Created: {new Date(apiKey.created).toLocaleString()}
                           </div>

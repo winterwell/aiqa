@@ -18,6 +18,8 @@ export default interface Span extends ReadableSpan {
   tags?: Record<string, any>;
   /** Hash of the input for looking up same-input spans */
   inputHash?: string;
+  /** If true, the span is starred by a user */
+  starred: boolean;
 }
 
 export function getSpanInput(span:Span) {

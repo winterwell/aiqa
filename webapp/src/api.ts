@@ -180,6 +180,13 @@ export async function searchSpans(args: {
 	});
 }
 
+export async function updateSpan(spanId: string, updates: { starred?: boolean }) {
+	return fetchWithAuth(`/span/${encodeURIComponent(spanId)}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
+	});
+}
+
 export async function createExampleFromSpans(args: {
 	organisationId:string,
 	datasetId:string,
@@ -290,10 +297,23 @@ export async function createApiKey(apiKey: {
 	key_hash: string;
 	rate_limit_per_hour?: number;
 	retention_period_days?: number;
+	role?: 'trace' | 'developer' | 'admin';
 }) {
 	return fetchWithAuth('/api-key', {
 		method: 'POST',
 		body: JSON.stringify(apiKey),
+	});
+}
+
+export async function updateApiKey(id: string, updates: {
+	name?: string;
+	rate_limit_per_hour?: number;
+	retention_period_days?: number;
+	role?: 'trace' | 'developer' | 'admin';
+}) {
+	return fetchWithAuth(`/api-key/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
 	});
 }
 

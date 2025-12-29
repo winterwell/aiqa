@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { bulkInsertSpans, searchSpans } from '../db/db_es.js';
-import { authenticate, AuthenticatedRequest } from '../server_auth.js';
+import { bulkInsertSpans, searchSpans, updateSpan } from '../db/db_es.js';
+import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Span from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
@@ -12,6 +12,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
   // ===== SPAN ENDPOINTS (ElasticSearch) =====
   // Security: Authenticated users only. Organisation set from authenticate middleware (request.organisation). Spans stored with organisation field.
   fastify.post('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['trace', 'developer', 'admin'])) return;
     const organisation = request.organisation!;
     const spans = request.body as Span | Span[];
 
@@ -44,6 +45,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in Elasticsearch (searchSpans).
    */
   fastify.get('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const organisationId = (request.query as any).organisation as string | undefined;
     if (!organisationId) {
       reply.code(400).send({ error: 'organisation query parameter is required' });
@@ -98,6 +100,41 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       limit,
       offset,
     };
+  });
+
+  /**
+   * Update a span by ID. Supports partial updates.
+   * 
+   * Path parameters:
+   * - id: required - span ID (used as document _id in ElasticSearch)
+   * 
+   * Body: Partial span object with fields to update (e.g., { starred: true })
+   * 
+   * Security: Authenticated users only. Organisation membership verified by authenticate middleware. 
+   * Updates are scoped to the authenticated user's organisation.
+   */
+  fastify.put('/span/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    const organisation = request.organisation!;
+    const { id } = request.params as { id: string };
+    const updates = request.body as Partial<Span>;
+
+    // Validate that updates only contain allowed fields (for now, just starred)
+    const allowedFields = ['starred'];
+    const updateKeys = Object.keys(updates);
+    const invalidFields = updateKeys.filter(key => !allowedFields.includes(key));
+    if (invalidFields.length > 0) {
+      reply.code(400).send({ error: `Invalid fields for update: ${invalidFields.join(', ')}. Allowed fields: ${allowedFields.join(', ')}` });
+      return;
+    }
+
+    const updatedSpan = await updateSpan(id, updates, organisation);
+    if (!updatedSpan) {
+      reply.code(404).send({ error: 'Span not found or does not belong to your organisation' });
+      return;
+    }
+
+    return updatedSpan;
   });
 }
 

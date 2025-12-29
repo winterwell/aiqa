@@ -8,6 +8,7 @@ import { Span } from '../common/types';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
 import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost } from '../utils/span-utils';
+import StarButton from '../components/generic/StarButton';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
@@ -396,6 +397,30 @@ const TracesListPage: React.FC = () => {
 
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
+		{
+			id: 'starred',
+			header: '',
+			cell: ({ row }) => {
+			  return (
+				<StarButton 
+				  span={row.original} 
+				  size="sm"
+				  onUpdate={(updatedSpan) => {
+					// Update the span in the enriched spans map
+					const traceId = getTraceId(updatedSpan);
+					if (traceId) {
+					  setEnrichedSpans(prev => {
+						const next = new Map(prev);
+						next.set(traceId, updatedSpan);
+						return next;
+					  });
+					}
+				  }}
+				/>
+			  );
+			},
+			enableSorting: false,
+		},
 		{
 			id: 'startTime',
 			header: 'Start Time',

@@ -18,6 +18,8 @@ export default interface ApiKey {
   key_hash: string;
   rate_limit_per_hour?: number;
   retention_period_days?: number;
+  /** Role of the API key: 'trace' (can only post spans), 'developer' (most endpoints), or 'admin' (all endpoints) */
+  role: 'trace' | 'developer' | 'admin';
   created: Date;
   updated: Date;
 }

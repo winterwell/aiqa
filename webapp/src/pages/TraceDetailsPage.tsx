@@ -11,6 +11,7 @@ import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
 import { useToast } from '../utils/toast';
 import { durationString } from '../utils/span-utils';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
+import StarButton from '../components/generic/StarButton';
 
 interface SpanTree {
 	span: Span;
@@ -110,7 +111,7 @@ const TraceDetailsPage: React.FC = () => {
   const { organisationId, traceId } = useParams<{ organisationId: string; traceId: string }>();
 
   // Load all spans
-  const { data: traceSpans, isLoading: isLoadingSpans } = useQuery({
+  const { data: traceSpans, isLoading: isLoadingSpans, refetch: refetchSpans } = useQuery({
     queryKey: ['spans', organisationId, traceId],
     queryFn: async () => {
       const result = await searchSpans({ organisationId: organisationId!, query: `traceId:${traceId}`, limit: 1000, offset: 0, fields: '*' }); // Need attributes for input/output display
@@ -118,6 +119,22 @@ const TraceDetailsPage: React.FC = () => {
     },
     enabled: !!organisationId && !!traceId,
   });
+
+  // Callback to update a span when it's starred/unstarred
+  const handleSpanUpdate = useCallback((updatedSpan: Span) => {
+    if (!traceSpans) return;
+    // Update the span in the traceSpans array
+    const updatedSpans = traceSpans.map(span => {
+      const spanId = getSpanId(span);
+      const updatedSpanId = getSpanId(updatedSpan);
+      if (spanId === updatedSpanId) {
+        return { ...span, starred: updatedSpan.starred };
+      }
+      return span;
+    });
+    // Refetch to ensure consistency
+    refetchSpans();
+  }, [traceSpans, refetchSpans]);
   // organise the traceSpans into a tree of spans, with the root span at the top
   // MEMOIZE THIS - it's O(n²) and runs on every render without memoization!
   const spanTree = useMemo(() => {
@@ -342,6 +359,7 @@ const TraceDetailsPage: React.FC = () => {
               onToggleExpanded={toggleExpanded}
               durationUnit={durationUnit}
               filter={debouncedFilter || undefined}
+              onSpanUpdate={handleSpanUpdate}
             />
           )}
         </Col>
@@ -426,7 +444,8 @@ function SpanTreeViewer({
 	onSelectSpan,
 	onToggleExpanded,
 	durationUnit,
-	filter
+	filter,
+	onSpanUpdate
 }: { 
 	spanTree: SpanTree;
 	selectedSpanId: string | null;
@@ -435,6 +454,7 @@ function SpanTreeViewer({
 	onToggleExpanded: (spanId: string) => void;
 	durationUnit: 'ms' | 's' | 'm' | 'h' | 'd' | null | undefined;
 	filter?: string;
+	onSpanUpdate?: (span: Span) => void;
 }) {
 	const { span, children } = spanTree;
 	const spanId = getSpanId(span);
@@ -501,29 +521,34 @@ function SpanTreeViewer({
 					}}
 					onClick={handleSelect}
 				>									
-					{spanName && <div>Name: {spanName}</div>}
+					{spanName && <div>{spanName}</div>}
 					{spanSummary}
-					<div>Span ID: {spanId}</div>
-					<div>Duration: <span>{durationString(getDurationMs(span), durationUnit)}</span></div>
-					<div style={{ position: 'absolute', right: '20px', top: '10px' }}>
-						<CopyButton content={span} logToConsole />
+					<div><small>Span ID: {spanId}</small></div>
+					<div><small>Duration: <span>{durationString(getDurationMs(span), durationUnit)}</span></small></div>
+					<div style={{ position: 'absolute', right: '20px', top: '10px', display: 'flex', gap: '5px', alignItems: 'center' }}>
+						<StarButton span={span} size="sm" onUpdate={onSpanUpdate} />
+						<CopyButton content={span} logToConsole size="xs" />
 					</div>
 				</div>
 			</div>
 			{isExpanded && filteredChildren.length > 0 && (
 				<div>
-					{filteredChildren.map(kid => (
-						<SpanTreeViewer 
-							key={getSpanId(kid.span)} 
-							spanTree={kid}
-							selectedSpanId={selectedSpanId}
-							expandedSpanIds={expandedSpanIds}
-							onSelectSpan={onSelectSpan}
-							onToggleExpanded={onToggleExpanded}
-							durationUnit={durationUnit}
-							filter={filter}
-						/>
-					))}
+					{filteredChildren.map(kid => {
+						const kidSpanId = getSpanId(kid.span);
+						return (
+							<SpanTreeViewer 
+								key={kidSpanId} 
+								spanTree={kid}
+								selectedSpanId={selectedSpanId}
+								expandedSpanIds={expandedSpanIds}
+								onSelectSpan={onSelectSpan}
+								onToggleExpanded={onToggleExpanded}
+								durationUnit={durationUnit}
+								filter={filter}
+								onSpanUpdate={onSpanUpdate}
+							/>
+						);
+					})}
 				</div>
 			)}
 		</div>

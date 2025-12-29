@@ -5,6 +5,7 @@
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getUser, getOrganisationsForUser, getOrganisation, listUsers, getApiKey, getApiKeyByHash } from './db/db_sql.js';
+import ApiKey from './common/types/ApiKey.js';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
@@ -19,6 +20,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
 	organisation?: string;
 	userId?: string;
 	apiKeyId?: string;
+	apiKey?: ApiKey; // Full API key object (only set when authenticated with API key)
 }
 
 /**
@@ -145,6 +147,7 @@ async function authenticateWithApiKey(
 	// For API keys, we use the organisation directly from the API key record
 	request.organisation = apiKey.organisation;
 	request.apiKeyId = apiKey.id;
+	request.apiKey = apiKey; // Store full API key for permission checks
 	request.authenticatedWith = 'api_key';
 	return true;
 }
@@ -305,6 +308,47 @@ export async function authenticate(
 
 	// Invalid Authorization header format
 	reply.code(401).send({ error: 'Invalid Authorization header format. Use "Bearer <jwt-token>" or "ApiKey <api-key>"' });
+}
+
+/**
+ * Check if the authenticated request has the required access permissions.
+ * JWT users always have full access (equivalent to admin role).
+ * API keys are checked against their role and the list of allowed roles.
+ * Admin role always has access (can be omitted from allowedRoles, but can be specified for clarity).
+ * 
+ * @param request - Authenticated request
+ * @param reply - Fastify reply object
+ * @param allowedRoles - Array of roles that are allowed to access this endpoint. Admin is always allowed.
+ * @returns true if access is allowed, false if denied (and reply is sent)
+ */
+export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, allowedRoles: ('trace' | 'developer' | 'admin')[]): boolean {
+	// JWT users always have full access (equivalent to admin)
+	if (request.authenticatedWith === 'jwt') {
+		return true;
+	}
+
+	// For API keys, check role
+	if (request.authenticatedWith === 'api_key' && request.apiKey) {
+		const apiKeyRole = request.apiKey.role;
+		if (!apiKeyRole) {
+			reply.code(403).send({ error: 'API key does not have a role' });
+			return false;
+		}
+		
+		// Admin role always has access
+		if (apiKeyRole === 'admin') {
+			return true;
+		}
+		
+		// Check if the API key's role is in the allowed roles list
+		if (!allowedRoles.includes(apiKeyRole)) {
+			reply.code(403).send({ error: `API key role '${apiKeyRole}' is not allowed. Required roles: ${allowedRoles.join(', ')}` });
+			return false;
+		}
+	}
+	// How is this possible??
+	console.error('checkAccess: authenticatedWith is not set', request.authenticatedWith);
+	return true;
 }
 
 /**
