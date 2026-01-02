@@ -11,9 +11,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
+    permissions:
+      contents: read
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,7 +45,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           source: "server/dist,server/package.json,server/pnpm-lock.yaml"
           target: "/opt/aiqa/server.new"
           strip_components: 1
@@ -53,7 +56,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           script: |
             # Verify new deployment files exist
             if [ ! -f /opt/aiqa/server.new/dist/index.js ]; then
@@ -114,7 +117,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           envs: SERVER_PORT,DATABASE_URL,PGHOST,PGDATABASE,PGUSER,PGPASSWORD,PGSSLMODE,PGCHANNELBINDING,ELASTICSEARCH_URL,SPANS_INDEX,SPANS_INDEX_ALIAS,DATASET_EXAMPLES_INDEX,DATASET_EXAMPLES_INDEX_ALIAS,AUTH0_DOMAIN,AUTH0_AUDIENCE,AZURE_OPENAI_ENDPOINT
           script: |
             cd /opt/aiqa/server
