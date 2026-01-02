@@ -118,7 +118,7 @@ def get_component_tag() -> str:
     return _component_tag
 
 
-def set_component_tag(tag: str | None) -> None:
+def set_component_tag(tag: Optional[str]) -> None:
     """Set the component tag programmatically (overrides environment variable)."""
     global _component_tag
     _component_tag = tag or ""
