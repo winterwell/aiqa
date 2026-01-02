@@ -19,6 +19,20 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### Development Setup
+
+For development, install with dev dependencies to run tests:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Then run the unit tests:
+
+```bash
+pytest
+```
+
 See [TESTING.md](TESTING.md) for detailed testing instructions.
 
 ## Setup

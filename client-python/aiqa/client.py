@@ -129,9 +129,14 @@ def get_aiqa_client() -> AIQAClient:
     """
     Initialize and return the AIQA client singleton.
     
-    This function must be called before using any AIQA tracing functionality to ensure
-    that environment variables (such as AIQA_SERVER_URL, AIQA_API_KEY, AIQA_COMPONENT_TAG)
-    are properly loaded and the tracing system is initialized.
+    This function is called automatically when WithTracing is first used, so you typically
+    don't need to call it explicitly. However, you can call it manually if you want to:
+    - Check if tracing is enabled (client.enabled)
+    - Initialize before the first @WithTracing usage
+    - Access the client object for advanced usage
+    
+    The function loads environment variables (AIQA_SERVER_URL, AIQA_API_KEY, AIQA_COMPONENT_TAG)
+    and initializes the tracing system.
     
     The client object manages the tracing system state. Tracing is done by the WithTracing 
     decorator. Experiments are run by the ExperimentRunner class.
@@ -142,12 +147,14 @@ def get_aiqa_client() -> AIQAClient:
     Example:
         from aiqa import get_aiqa_client, WithTracing
         
-        # Initialize client (loads env vars)
+        # Optional: Initialize explicitly (usually not needed)
         client = get_aiqa_client()
+        if client.enabled:
+            print("Tracing is enabled")
         
         @WithTracing
         def my_function():
-            pass
+            pass  # Initialization happens automatically here if not done above
     """
     global client
     try:

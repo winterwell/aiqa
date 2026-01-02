@@ -590,7 +590,8 @@ def WithTracing(
         is_generator = inspect.isgeneratorfunction(fn)
         is_async_generator = inspect.isasyncgenfunction(fn) if hasattr(inspect, 'isasyncgenfunction') else False
         
-        tracer = get_aiqa_tracer()
+        # Don't get tracer here - get it lazily when function is called
+        # This ensures initialization only happens when tracing is actually used
         
         def _setup_span(span: trace.Span, input_data: Any) -> bool:
             """Setup span with input data. Returns True if span is recording."""
@@ -627,10 +628,13 @@ def WithTracing(
         def _execute_with_span_sync(executor: Callable[[], Any], input_data: Any) -> Any:
             """Execute sync function within span context, handling input/output and exceptions."""
             # Ensure tracer provider is initialized before creating spans
+            # This is called lazily when the function runs, not at decorator definition time
             client = get_aiqa_client()
             if not client.enabled:
                 return executor()
             
+            # Get tracer after initialization (lazy)
+            tracer = get_aiqa_tracer()
             with tracer.start_as_current_span(fn_name) as span:
                 if not _setup_span(span, input_data):
                     return executor()
@@ -646,10 +650,13 @@ def WithTracing(
         async def _execute_with_span_async(executor: Callable[[], Any], input_data: Any) -> Any:
             """Execute async function within span context, handling input/output and exceptions."""
             # Ensure tracer provider is initialized before creating spans
+            # This is called lazily when the function runs, not at decorator definition time
             client = get_aiqa_client()
             if not client.enabled:
                 return await executor()
             
+            # Get tracer after initialization (lazy)
+            tracer = get_aiqa_tracer()
             with tracer.start_as_current_span(fn_name) as span:
                 if not _setup_span(span, input_data):
                     return await executor()
@@ -668,10 +675,13 @@ def WithTracing(
         def _execute_generator_sync(executor: Callable[[], Any], input_data: Any) -> Any:
             """Execute sync generator function, returning a traced generator."""
             # Ensure tracer provider is initialized before creating spans
+            # This is called lazily when the function runs, not at decorator definition time
             client = get_aiqa_client()
             if not client.enabled:
                 return executor()
             
+            # Get tracer after initialization (lazy)
+            tracer = get_aiqa_tracer()
             # Create span but don't use 'with' - span will be closed by TracedGenerator
             span = tracer.start_span(fn_name)
             token = trace.context_api.attach(trace.context_api.set_span_in_context(span))
@@ -694,10 +704,13 @@ def WithTracing(
         async def _execute_generator_async(executor: Callable[[], Any], input_data: Any) -> Any:
             """Execute async generator function, returning a traced async generator."""
             # Ensure tracer provider is initialized before creating spans
+            # This is called lazily when the function runs, not at decorator definition time
             client = get_aiqa_client()
             if not client.enabled:
                 return await executor()
             
+            # Get tracer after initialization (lazy)
+            tracer = get_aiqa_tracer()
             # Create span but don't use 'with' - span will be closed by TracedAsyncGenerator
             span = tracer.start_span(fn_name)
             token = trace.context_api.attach(trace.context_api.set_span_in_context(span))
@@ -935,7 +948,8 @@ def set_component_tag(tag: str) -> None:
     This can also be set via the AIQA_COMPONENT_TAG environment variable.
     The component tag allows you to identify which component/system generated the spans.
     
-    Note: If using environment variables, ensure you call get_aiqa_client() first to initialize
+    Note: Initialization is automatic when WithTracing is first used. You can also call
+    get_aiqa_client() explicitly if needed.
     the client and load environment variables.
     
     Args:
@@ -1045,6 +1059,8 @@ def create_span_from_trace_id(
         from opentelemetry.trace import set_span_in_context
         parent_context = set_span_in_context(trace.NonRecordingSpan(parent_span_context))
         
+        # Ensure initialization before creating span
+        get_aiqa_client()
         # Start a new span in this context (it will be a child of the parent span)
         tracer = get_aiqa_tracer()
         span = tracer.start_span(span_name, context=parent_context)
@@ -1057,6 +1073,8 @@ def create_span_from_trace_id(
         return span
     except (ValueError, AttributeError) as e:
         logger.error(f"Error creating span from trace_id: {e}")
+        # Ensure initialization before creating span
+        get_aiqa_client()
         # Fallback: create a new span
         tracer = get_aiqa_tracer()
         span = tracer.start_span(span_name)

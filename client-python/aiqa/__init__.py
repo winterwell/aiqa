@@ -1,22 +1,29 @@
 """
 Python client for AIQA server - OpenTelemetry tracing decorators.
 
-IMPORTANT: Before using any AIQA functionality, you must call get_aiqa_client() to initialize
-the client and load environment variables (AIQA_SERVER_URL, AIQA_API_KEY, AIQA_COMPONENT_TAG, etc.).
+Initialization is automatic - you don't need to call get_aiqa_client() explicitly.
+The client initializes automatically when WithTracing is first used.
+
+Set environment variables:
+    AIQA_SERVER_URL: URL of the AIQA server
+    AIQA_API_KEY: API key for authentication
+    AIQA_COMPONENT_TAG: Optional component identifier
+    AIQA_STARTUP_DELAY_SECONDS: Optional delay before first flush (default: 10s)
 
 Example:
     from dotenv import load_dotenv
-    from aiqa import get_aiqa_client, WithTracing
+    from aiqa import WithTracing
     
     # Load environment variables from .env file (if using one)
     load_dotenv()
     
-    # Initialize client (must be called before using WithTracing or other functions)
-    get_aiqa_client()
-    
+    # No explicit initialization needed - it happens automatically when used
     @WithTracing
     def my_function():
         return "Hello, AIQA!"
+    
+    # Call the function - initialization happens on first use
+    result = my_function()
 """
 
 from .tracing import (

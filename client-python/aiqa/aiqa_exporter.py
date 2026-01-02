@@ -68,14 +68,18 @@ class AIQASpanExporter(SpanExporter):
         self.buffer_span_keys: set = set()  # Track (traceId, spanId) tuples to prevent duplicates (Python 3.8 compatible)
         self.buffer_lock = threading.Lock()
         self.flush_lock = threading.Lock()
+        # shutdown_requested is only set once (in shutdown()) and read many times
+        # No lock needed: worst case is reading stale False, which is acceptable
         self.shutdown_requested = False
         self.flush_timer: Optional[threading.Thread] = None
+        self._auto_flush_started = False
+        self._auto_flush_lock = threading.Lock()  # Lock for lazy thread creation
         
         logger.info(
             f"Initializing AIQASpanExporter: server_url={self.server_url or 'not set'}, "
             f"flush_interval={flush_interval_seconds}s, startup_delay={startup_delay_seconds}s"
         )
-        self._start_auto_flush()
+        # Don't start thread immediately - start lazily on first export to avoid startup issues
 
     @property
     def server_url(self) -> str:         
@@ -106,6 +110,11 @@ class AIQASpanExporter(SpanExporter):
             pass
         
         logger.debug(f"AIQA export() called with {len(spans)} spans")
+        
+        # Lazy initialization: start auto-flush thread on first export
+        # This avoids thread creation during initialization, which can cause issues in ECS deployments
+        self._ensure_auto_flush_started()
+        
         # Serialize and add to buffer, deduplicating by (traceId, spanId)
         with self.buffer_lock:
             serialized_spans = []
@@ -342,6 +351,8 @@ class AIQASpanExporter(SpanExporter):
         """
         Flush buffered spans to the server. Thread-safe: ensures only one flush operation runs at a time.
         Atomically extracts spans to prevent race conditions with concurrent export() calls.
+        
+        Lock ordering: flush_lock -> buffer_lock (must be consistent to avoid deadlocks)
         """
         logger.debug("flush() called - attempting to acquire flush lock")
         with self.flush_lock:
@@ -364,35 +375,116 @@ class AIQASpanExporter(SpanExporter):
                 self._remove_span_keys_from_tracking(spans_to_flush)
                 return
 
-            logger.info(f"flush() sending {len(spans_to_flush)} span(s) to server")
-            try:
-                await self._send_spans(spans_to_flush)
-                logger.info(f"flush() successfully sent {len(spans_to_flush)} span(s) to server")
-                # Spans already removed from buffer during extraction
-                # Now clear their keys from tracking set to free memory
-                self._remove_span_keys_from_tracking(spans_to_flush)
-            except RuntimeError as error:
-                if self._is_interpreter_shutdown_error(error):
-                    if self.shutdown_requested:
-                        logger.debug(f"flush() skipped due to interpreter shutdown: {error}")
-                        # Put spans back for retry with sync send during shutdown
-                        self._prepend_spans_to_buffer(spans_to_flush)
-                    else:
-                        logger.warning(f"flush() interrupted by interpreter shutdown: {error}")
-                        # Put spans back for retry
-                        self._prepend_spans_to_buffer(spans_to_flush)
-                    raise
-                logger.error(f"Error flushing spans to server: {error}")
-                # Put spans back for retry
+        # Release flush_lock before I/O to avoid blocking other flush attempts
+        # Spans are already extracted, so concurrent exports won't interfere
+        logger.info(f"flush() sending {len(spans_to_flush)} span(s) to server")
+        try:
+            await self._send_spans(spans_to_flush)
+            logger.info(f"flush() successfully sent {len(spans_to_flush)} span(s) to server")
+            # Spans already removed from buffer during extraction
+            # Now clear their keys from tracking set to free memory
+            self._remove_span_keys_from_tracking(spans_to_flush)
+        except RuntimeError as error:
+            if self._is_interpreter_shutdown_error(error):
+                if self.shutdown_requested:
+                    logger.debug(f"flush() skipped due to interpreter shutdown: {error}")
+                else:
+                    logger.warning(f"flush() interrupted by interpreter shutdown: {error}")
+                # Put spans back for retry with sync send during shutdown
                 self._prepend_spans_to_buffer(spans_to_flush)
                 raise
-            except Exception as error:
-                logger.error(f"Error flushing spans to server: {error}")
-                # Put spans back for retry
-                self._prepend_spans_to_buffer(spans_to_flush)
-                if self.shutdown_requested:
-                    raise
+            logger.error(f"Error flushing spans to server: {error}")
+            # Put spans back for retry
+            self._prepend_spans_to_buffer(spans_to_flush)
+            raise
+        except Exception as error:
+            logger.error(f"Error flushing spans to server: {error}")
+            # Put spans back for retry
+            self._prepend_spans_to_buffer(spans_to_flush)
+            if self.shutdown_requested:
+                raise
 
+    def _ensure_auto_flush_started(self) -> None:
+        """Ensure auto-flush thread is started (lazy initialization). Thread-safe."""
+        # Fast path: check without lock first
+        if self._auto_flush_started or self.shutdown_requested:
+            return
+        
+        # Slow path: acquire lock and double-check
+        with self._auto_flush_lock:
+            if self._auto_flush_started or self.shutdown_requested:
+                return
+            
+            try:
+                self._start_auto_flush()
+                self._auto_flush_started = True
+            except Exception as e:
+                logger.error(f"Failed to start auto-flush thread: {e}", exc_info=True)
+                # Don't raise - allow spans to be buffered even if auto-flush fails
+                # They can still be flushed manually or on shutdown
+
+    def _flush_worker(self) -> None:
+        """Worker function for auto-flush thread. Runs in a separate thread with its own event loop."""
+        import asyncio
+        logger.debug("Auto-flush worker thread started")
+        
+        # Wait for startup delay before beginning flush operations
+        # This gives the container/application time to stabilize, which helps avoid startup issues (seen with AWS ECS, Dec 2025).
+        if self.startup_delay_seconds > 0:
+            logger.info(f"Auto-flush waiting {self.startup_delay_seconds}s before first flush (startup delay)")
+            # Sleep in small increments to allow for early shutdown
+            sleep_interval = 0.5
+            remaining_delay = self.startup_delay_seconds
+            while remaining_delay > 0 and not self.shutdown_requested:
+                sleep_time = min(sleep_interval, remaining_delay)
+                time.sleep(sleep_time)
+                remaining_delay -= sleep_time
+            
+            if self.shutdown_requested:
+                logger.debug("Auto-flush startup delay interrupted by shutdown")
+                return
+            
+            logger.info("Auto-flush startup delay complete, beginning flush operations")
+        
+        # Create event loop in this thread (isolated from main thread's event loop)
+        # This prevents interference with the main application's event loop
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        except Exception as e:
+            logger.error(f"Failed to create event loop for auto-flush thread: {e}", exc_info=True)
+            return
+        
+        # Ensure event loop is always closed, even if an exception occurs
+        try:
+            cycle_count = 0
+            while not self.shutdown_requested:
+                cycle_count += 1
+                logger.debug(f"Auto-flush cycle #{cycle_count} starting")
+                try:
+                    loop.run_until_complete(self.flush())
+                    logger.debug(f"Auto-flush cycle #{cycle_count} completed, sleeping {self.flush_interval_ms / 1000.0}s")
+                except Exception as e:
+                    logger.error(f"Error in auto-flush cycle #{cycle_count}: {e}")
+                    logger.debug(f"Auto-flush cycle #{cycle_count} error handled, sleeping {self.flush_interval_ms / 1000.0}s")
+                
+                # Sleep after each cycle (including errors) to avoid tight loops
+                if not self.shutdown_requested:
+                    time.sleep(self.flush_interval_ms / 1000.0)
+            
+            logger.info(f"Auto-flush worker thread stopping (shutdown requested). Completed {cycle_count} cycles.")
+            # Don't do final flush here - shutdown() will handle it with synchronous send
+            # This avoids event loop shutdown issues
+            logger.debug("Auto-flush thread skipping final flush (will be handled by shutdown() with sync send)")
+        finally:
+            # Always close the event loop, even if an exception occurs
+            try:
+                if not loop.is_closed():
+                    loop.close()
+                logger.debug("Auto-flush worker thread event loop closed")
+            except Exception:
+                pass  # Ignore errors during cleanup
+    
     def _start_auto_flush(self) -> None:
         """Start the auto-flush timer with startup delay."""
         if self.shutdown_requested:
@@ -404,59 +496,7 @@ class AIQASpanExporter(SpanExporter):
             f"startup delay {self.startup_delay_seconds}s"
         )
 
-        def flush_worker():
-            import asyncio
-            logger.debug("Auto-flush worker thread started")
-            
-            # Wait for startup delay before beginning flush operations
-            # This gives the container/application time to stabilize, which helps avoid startup issues (seen with AWS ECS, Dec 2025).
-            if self.startup_delay_seconds > 0:
-                logger.info(f"Auto-flush waiting {self.startup_delay_seconds}s before first flush (startup delay)")
-                # Sleep in small increments to allow for early shutdown
-                sleep_interval = 0.5
-                remaining_delay = self.startup_delay_seconds
-                while remaining_delay > 0 and not self.shutdown_requested:
-                    sleep_time = min(sleep_interval, remaining_delay)
-                    time.sleep(sleep_time)
-                    remaining_delay -= sleep_time
-                
-                if self.shutdown_requested:
-                    logger.debug("Auto-flush startup delay interrupted by shutdown")
-                    return
-                
-                logger.info("Auto-flush startup delay complete, beginning flush operations")
-            
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            cycle_count = 0
-            while not self.shutdown_requested:
-                cycle_count += 1
-                logger.debug(f"Auto-flush cycle #{cycle_count} starting")
-                try:
-                    loop.run_until_complete(self.flush())
-                    logger.debug(f"Auto-flush cycle #{cycle_count} completed, sleeping {self.flush_interval_ms / 1000.0}s")
-                    time.sleep(self.flush_interval_ms / 1000.0)
-                except Exception as e:
-                    logger.error(f"Error in auto-flush cycle #{cycle_count}: {e}")
-                    logger.debug(f"Auto-flush cycle #{cycle_count} error handled, sleeping {self.flush_interval_ms / 1000.0}s")
-                    time.sleep(self.flush_interval_ms / 1000.0)
-            
-            logger.info(f"Auto-flush worker thread stopping (shutdown requested). Completed {cycle_count} cycles.")
-            
-            # Don't do final flush here - shutdown() will handle it with synchronous send
-            # This avoids event loop shutdown issues
-            logger.debug("Auto-flush thread skipping final flush (will be handled by shutdown() with sync send)")
-            
-            # Close the event loop
-            try:
-                if not loop.is_closed():
-                    loop.close()
-                logger.debug("Auto-flush worker thread event loop closed")
-            except Exception:
-                pass  # Ignore errors during cleanup
-
-        flush_thread = threading.Thread(target=flush_worker, daemon=True, name="AIQA-AutoFlush")
+        flush_thread = threading.Thread(target=self._flush_worker, daemon=True, name="AIQA-AutoFlush")
         flush_thread.start()
         self.flush_timer = flush_thread
         logger.info(f"Auto-flush thread started: {flush_thread.name} (daemon={flush_thread.daemon})")
@@ -585,7 +625,8 @@ class AIQASpanExporter(SpanExporter):
             logger.info(f"shutdown() buffer contains {buffer_size} span(s) before shutdown")
 
         # Wait for flush thread to finish (it will do final flush)
-        if self.flush_timer and self.flush_timer.is_alive():
+        # Only wait if thread was actually started
+        if self._auto_flush_started and self.flush_timer and self.flush_timer.is_alive():
             logger.info("shutdown() waiting for auto-flush thread to complete (timeout=10s)")
             self.flush_timer.join(timeout=10.0)
             if self.flush_timer.is_alive():

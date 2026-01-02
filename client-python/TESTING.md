@@ -8,6 +8,68 @@
 pip install build wheel
 ```
 
+## Running Unit Tests
+
+The package includes unit tests using `pytest`. To run them:
+
+### Setup for Testing
+
+First, install the package with development dependencies:
+
+```bash
+cd client-python
+
+# Create and activate virtual environment (if not already done)
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies including dev dependencies (pytest, pytest-asyncio, etc.)
+pip install -r requirements.txt
+pip install -e ".[dev]"   # defined in pyproject.toml
+```
+
+### Running All Tests
+
+```bash
+# Run all tests
+pytest
+
+# Or using Python module syntax
+python -m pytest
+```
+
+### Running Specific Test Files
+
+```bash
+# Run a specific test file
+pytest aiqa/test_tracing.py
+pytest aiqa/test_experiment_runner.py
+pytest aiqa/test_startup_reliability.py
+```
+
+### Running Specific Tests
+
+```bash
+# Run a specific test class
+pytest aiqa/test_tracing.py::TestGetSpan
+
+# Run a specific test method
+pytest aiqa/test_tracing.py::TestGetSpan::test_get_span_success_with_span_id
+```
+
+### Test Output Options
+
+```bash
+# Verbose output (shows each test name)
+pytest -v
+
+# Very verbose output (shows print statements)
+pytest -vv -s
+
+# Show test coverage (requires pytest-cov)
+pytest --cov=aiqa --cov-report=html
+```
+
 ## Method 1: Install in Development Mode (Recommended)
 
 This allows you to make changes and test them immediately without rebuilding:
