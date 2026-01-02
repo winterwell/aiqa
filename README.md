@@ -1,4 +1,17 @@
 
+# AIQA
+
+## Client Libraries
+
+See the repositories:
+
+- Javascript / Typescript: https://github.com/winterwell/aiqa-client-js
+- Python: https://github.com/winterwell/aiqa-client-python
+- Go: https://github.com/winterwell/aiqa-client-go
+- Java: https://github.com/winterwell/aiqa-client-java
+
+## Architecture Overview
+
 Using ElasticSearch as the storage database.
 OpenTelemetry as the tracing system.
 

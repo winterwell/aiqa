@@ -14,6 +14,7 @@ jobs:
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,10 +45,10 @@ jobs:
       - name: Deploy to temporary location
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           source: "webapp/dist"
           target: "/opt/aiqa/webapp.new"
           strip_components: 1
@@ -55,10 +56,10 @@ jobs:
       - name: Verify deployment and swap files
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           script: |
             # Verify new deployment files exist
             if [ ! -d /opt/aiqa/webapp.new ]; then

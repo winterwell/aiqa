@@ -14,6 +14,7 @@ jobs:
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -67,10 +68,10 @@ jobs:
       - name: Deploy to staging location
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           source: "website/webroot"
           target: "/opt/aiqa/website-staging"
           strip_components: 1
@@ -78,10 +79,10 @@ jobs:
       - name: Verify and swap deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           script: |
             # Verify staging deployment has index.html
             if [ ! -f "/opt/aiqa/website-staging/webroot/index.html" ]; then
@@ -97,6 +98,8 @@ jobs:
             # Atomically swap staging to production
             sudo mkdir -p /opt/aiqa/website
             sudo mv /opt/aiqa/website-staging/webroot /opt/aiqa/website/webroot
+            # Clean up empty staging directory
+            sudo rmdir /opt/aiqa/website-staging 2>/dev/null || true
             sudo chown -R www-data:www-data /opt/aiqa/website
             
             # Verify production deployment
@@ -117,10 +120,10 @@ jobs:
       - name: Restart nginx
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ vars.DEPLOY_PORT || 22 }}
+          port: ${{ env.DEPLOY_PORT }}
           script: |
             sudo systemctl reload nginx
             sudo systemctl status nginx

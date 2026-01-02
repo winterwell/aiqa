@@ -145,7 +145,7 @@ function GolangCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
   return (
     <div>
       <h5>Install the client-go library</h5>
-      <p><code>go get github.com/aiqa/client-go</code></p>
+      <p><code>go get github.com/winterwell/aiqa-client-go</code></p>
       <p>In .env or otherwise, set the API key and server URL:</p>
         <p><code>AIQA_API_KEY=your-api-key<br/>
 AIQA_SERVER_URL={API_BASE_URL}</code></p>
@@ -153,7 +153,7 @@ AIQA_SERVER_URL={API_BASE_URL}</code></p>
       <pre><code>{`import (
     "context"
     "time"
-    "github.com/aiqa/client-go"
+    "github.com/winterwell/aiqa-client-go"
 )
 
 func main() {

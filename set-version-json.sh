@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bump this version when you make a change to the codebase
-VERSION="0.4.2"
+VERSION="0.4.3"
 
 # Ideally this should be auto-run (fiddly with git hooks)
 
@@ -26,7 +26,7 @@ echo "{
 }" > $VERSION_INFO_FILE
 
 # Copy out to dirs
-FILES=(client-go/version.json client-js/version.json server/src/version.json webapp/.well-known/version.json website/webroot/.well-known/version.json)
+FILES=(../aiqa-client-go/version.json ../aiqa-client-js/version.json server/src/version.json webapp/.well-known/version.json website/webroot/.well-known/version.json)
 
 for FILE in ${FILES[@]}; do
     DIR=$(dirname "$FILE")
@@ -38,20 +38,30 @@ for FILE in ${FILES[@]}; do
 done
 
 # Update Python constants.py VERSION
-PYTHON_CONSTANTS_FILE="client-python/aiqa/constants.py"
+PYTHON_CONSTANTS_FILE="../aiqa-client-python/aiqa/constants.py"
 if [ -f "$PYTHON_CONSTANTS_FILE" ]; then
     echo "Updating $PYTHON_CONSTANTS_FILE VERSION"
     # Use sed to update VERSION line, preserving the rest of the file
-    sed -i "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    # macOS (BSD) sed requires an extension argument, Linux (GNU) sed doesn't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    else
+        sed -i "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    fi
     echo "Updated VERSION to $VERSION in $PYTHON_CONSTANTS_FILE"
 else
     echo "Warning: $PYTHON_CONSTANTS_FILE not found, skipping VERSION update"
 fi
 # Update Python pyproject.toml
-PYTHON_PYPROJECT_FILE="client-python/pyproject.toml"
+PYTHON_PYPROJECT_FILE="../aiqa-client-python/pyproject.toml"
 if [ -f "$PYTHON_PYPROJECT_FILE" ]; then
     echo "Updating $PYTHON_PYPROJECT_FILE version"
-    sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    # macOS (BSD) sed requires an extension argument, Linux (GNU) sed doesn't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    else
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    fi
     echo "Updated version to $VERSION in $PYTHON_PYPROJECT_FILE"
 else
     echo "Warning: $PYTHON_PYPROJECT_FILE not found, skipping version update"
@@ -64,7 +74,7 @@ echo `cat $VERSION_INFO_FILE`
 # if git rev-parse --git-dir > /dev/null 2>&1; then
 #     echo "Staging version.json files..."
 #     git add version.json
-#     git add client-go/version.json client-python/version.json client-js/version.json
+#     git add ../aiqa-client-go/version.json ../aiqa-client-python/version.json ../aiqa-client-js/version.json
 #     git add server/.well-known/version.json webapp/.well-known/version.json 2>/dev/null || true
 #     echo "Version files staged successfully"
 # fi
