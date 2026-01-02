@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Bump this version when you make a change to the codebase
-VERSION="0.4.2"
+VERSION="0.4.3"
 
 # Ideally this should be auto-run (fiddly with git hooks)
 
@@ -42,7 +42,12 @@ PYTHON_CONSTANTS_FILE="../aiqa-client-python/aiqa/constants.py"
 if [ -f "$PYTHON_CONSTANTS_FILE" ]; then
     echo "Updating $PYTHON_CONSTANTS_FILE VERSION"
     # Use sed to update VERSION line, preserving the rest of the file
-    sed -i "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    # macOS (BSD) sed requires an extension argument, Linux (GNU) sed doesn't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    else
+        sed -i "s/^VERSION = \".*\"/VERSION = \"$VERSION\"/" "$PYTHON_CONSTANTS_FILE"
+    fi
     echo "Updated VERSION to $VERSION in $PYTHON_CONSTANTS_FILE"
 else
     echo "Warning: $PYTHON_CONSTANTS_FILE not found, skipping VERSION update"
@@ -51,7 +56,12 @@ fi
 PYTHON_PYPROJECT_FILE="../aiqa-client-python/pyproject.toml"
 if [ -f "$PYTHON_PYPROJECT_FILE" ]; then
     echo "Updating $PYTHON_PYPROJECT_FILE version"
-    sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    # macOS (BSD) sed requires an extension argument, Linux (GNU) sed doesn't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    else
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" "$PYTHON_PYPROJECT_FILE"
+    fi
     echo "Updated version to $VERSION in $PYTHON_PYPROJECT_FILE"
 else
     echo "Warning: $PYTHON_PYPROJECT_FILE not found, skipping version update"
