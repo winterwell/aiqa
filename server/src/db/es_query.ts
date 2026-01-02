@@ -215,4 +215,3 @@ export async function searchEntities<T>(
 function isJsonString(str?: string): boolean {
   return str && typeof str === 'string' && (str[0] == '{' || str[0] == '[');
 }
-}

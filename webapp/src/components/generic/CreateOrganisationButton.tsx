@@ -14,7 +14,7 @@ interface CreateOrganisationButtonProps {
 
 export default function CreateOrganisationButton({
   dbUserId,
-  buttonText = '+ Add organisation',
+  buttonText = 'Add organisation',
   showFormInline = false,
   onSuccess,
 }: CreateOrganisationButtonProps) {

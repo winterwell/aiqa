@@ -19,7 +19,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopNav />
       <Row className="flex-grow-1 g-0" style={{ margin: 0 }}>
-        <Col xs="auto" className="p-0">
+        <Col xs="auto" className="p-0" style={{ maxWidth: '175px' }}>
           <LeftNav />
         </Col>
         <Col className="p-4">

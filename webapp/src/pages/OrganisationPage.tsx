@@ -1,9 +1,9 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem } from 'reactstrap';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getOrganisation, getOrCreateUser } from '../api';
+import { getOrganisation, getOrCreateUser, listOrganisations } from '../api';
 import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
 
 const OrganisationPage: React.FC = () => {
@@ -16,7 +16,7 @@ const OrganisationPage: React.FC = () => {
     enabled: !!organisationId,
   });
 
-  const { data: dbUser } = useQuery({
+  const { data: dbUser, isLoading: isLoadingUser } = useQuery({
     queryKey: ['user', auth0User?.email],
     queryFn: async () => {
       if (!auth0User?.email) return null;
@@ -28,7 +28,15 @@ const OrganisationPage: React.FC = () => {
     enabled: !!auth0User?.email,
   });
 
-  if (isLoading) {
+  // Check if user has any organizations when there's an error or no organisationId
+  const shouldCheckOrganisations = (!organisationId || error || !organisation) && !!dbUser?.id;
+  const { data: allOrganisations, isLoading: isLoadingOrgs } = useQuery({
+    queryKey: ['organisations'],
+    queryFn: () => listOrganisations(),
+    enabled: shouldCheckOrganisations,
+  });
+
+  if (isLoading || isLoadingUser || (shouldCheckOrganisations && isLoadingOrgs)) {
     return (
       <Container className="mt-4">
         <div className="text-center">
@@ -40,13 +48,38 @@ const OrganisationPage: React.FC = () => {
     );
   }
 
-  if (error || !organisation) {
+  // If no organisationId or error, check if user has any organizations
+  if (!organisationId || error || !organisation) {
+    // If user has no organizations, show create form
+    if (allOrganisations && allOrganisations.length === 0 && dbUser?.id) {
+      return (
+        <Container className="mt-4">
+          <Row className="justify-content-center">
+            <Col md={8}>
+              <Card>
+                <CardBody>
+                  <h3>Welcome to AIQA</h3>
+                  <p className="lead">You're not a member of any organization yet.</p>
+                  <p>Create your first organization to get started:</p>
+                  <CreateOrganisationButton dbUserId={dbUser.id} showFormInline={true} />
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
+        </Container>
+      );
+    }
+
+    // If user has organizations but this one doesn't exist, show error
     return (
       <Container className="mt-4">
-        <div className="alert alert-danger">
+        <Alert color="danger">
           <h4>Error</h4>
           <p>Failed to load organisation: {error instanceof Error ? error.message : 'Unknown error'}</p>
-        </div>
+          {!organisationId && (
+            <p className="mt-2">Please select an organization from the list or create a new one.</p>
+          )}
+        </Alert>
       </Container>
     );
   }

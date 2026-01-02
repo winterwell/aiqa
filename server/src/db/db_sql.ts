@@ -232,6 +232,21 @@ async function applyMigrations(): Promise<void> {
 		END $$;
 	  `);
 	
+	// Allow NULL in key column (migration: key is never stored, only key_hash is)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' 
+			AND column_name = 'key' 
+			AND is_nullable = 'NO'
+		  ) THEN
+			ALTER TABLE api_keys ALTER COLUMN key DROP NOT NULL;
+		  END IF;
+		END $$;
+	  `);
+	
 	// Add name column to api_keys table if it doesn't exist (migration)
 	await doQuery(`
 		DO $$ 
@@ -241,6 +256,21 @@ async function applyMigrations(): Promise<void> {
 			WHERE table_name = 'api_keys' AND column_name = 'name'
 		  ) THEN
 			ALTER TABLE api_keys ADD COLUMN name VARCHAR(255);
+		  END IF;
+		END $$;
+	  `);
+	
+	// Allow NULL in name column (migration: name is optional for api_keys)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' 
+			AND column_name = 'name' 
+			AND is_nullable = 'NO'
+		  ) THEN
+			ALTER TABLE api_keys ALTER COLUMN name DROP NOT NULL;
 		  END IF;
 		END $$;
 	  `);
@@ -367,6 +397,19 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Add member_settings (JSONB) column to organisations table if it doesn't exist (migration)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'organisations' AND column_name = 'member_settings'
+		  ) THEN
+			ALTER TABLE organisations ADD COLUMN member_settings JSONB;
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**
@@ -489,13 +532,19 @@ async function deleteEntity(tableName: string, id: string): Promise<boolean> {
 }
 
 
-// Helper function to transform Organisation (no transformation needed, column names match interface)
+// Helper function to transform Organisation
 function transformOrganisation(row: any): Organisation {
-	return row as Organisation;
+	return {
+		...row,
+		member_settings: row.member_settings ? (typeof row.member_settings === 'string' ? JSON.parse(row.member_settings) : row.member_settings) : {},
+	};
 }
 
 // CRUD operations for Organisation
 export async function createOrganisation(org: Omit<Organisation, 'id' | 'created' | 'updated'>): Promise<Organisation> {
+	if ( ! org.member_settings) org.member_settings = {};
+	if ( ! org.members) org.members = [];
+	if ( ! org.subscription) org.subscription = { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' };
 	return createEntity<Organisation>(
 		'organisations', org,
 		transformOrganisation

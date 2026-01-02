@@ -11,8 +11,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
-    permissions:
-      contents: read
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}

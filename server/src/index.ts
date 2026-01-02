@@ -9,11 +9,6 @@ import { dirname } from 'path';
 import { initPool, createTables, closePool } from './db/db_sql.js';
 import { initClient, createIndices, closeClient } from './db/db_es.js';
 import {
-  createOrganisation,
-  getOrganisation,
-  listOrganisations,
-  updateOrganisation,
-  deleteOrganisation,
   createUser,
   getUser,
   listUsers,
@@ -29,10 +24,6 @@ import {
   listDatasets,
   updateDataset,
   deleteDataset,
-  addOrganisationMember,
-  removeOrganisationMember,
-  getOrganisationMembers,
-  getOrganisationsForUser,
 } from './db/db_sql.js';
 import {
   bulkInsertExamples,
@@ -43,6 +34,7 @@ import SearchQuery from './common/SearchQuery.js';
 import Example from './common/types/Example.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
+import { registerOrganisationRoutes } from './routes/organisations.js';
 import versionData from './version.json';
 
 dotenv.config();
@@ -98,63 +90,6 @@ fastify.get('/health', async () => {
 // Security: Public endpoint - no authentication required.
 fastify.get('/version', async () => {
   return versionData;
-});
-
-// ===== ORGANISATION ENDPOINTS (PostgreSQL) =====
-// Security: Authenticated users only (via authenticate middleware). No organisation membership check - any authenticated user can create organisations.
-fastify.post('/organisation', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const org = await createOrganisation(request.body as any);
-  return org;
-});
-
-// Security: Authenticated users only. No membership check - any authenticated user can view any organisation by ID.
-fastify.get('/organisation/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const org = await getOrganisation(id);
-  if (!org) {
-    reply.code(404).send({ error: 'Organisation not found' });
-    return;
-  }
-  return org;
-});
-
-// Security: Authenticated users only. Filtered to only return organisations where user is a member (via getOrganisationsForUser in endpoint handler).
-fastify.get('/organisation', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const query = (request.query as any).q as string | undefined;
-  const searchQuery = query ? new SearchQuery(query) : null;
-  if (!request.userId) {
-    reply.code(401).send({ error: 'User ID not found in authenticated request' });
-    return;
-  }
-  const orgs = await getOrganisationsForUser(request.userId, searchQuery);
-  return orgs;
-});
-
-// Security: Authenticated users only. No membership check - any authenticated user can update any organisation by ID.
-fastify.put('/organisation/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const org = await updateOrganisation(id, request.body as any);
-  if (!org) {
-    reply.code(404).send({ error: 'Organisation not found' });
-    return;
-  }
-  return org;
-});
-
-// Security: Authenticated users only. No membership check - any authenticated user can delete any organisation by ID.
-fastify.delete('/organisation/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['admin'])) return;
-  const { id } = request.params as { id: string };
-  const deleted = await deleteOrganisation(id);
-  if (!deleted) {
-    reply.code(404).send({ error: 'Organisation not found' });
-    return;
-  }
-  return { success: true };
 });
 
 // ===== USER ENDPOINTS (PostgreSQL) =====
@@ -487,35 +422,6 @@ fastify.get('/example', { preHandler: authenticate }, async (request: Authentica
   };
 });
 
-// ===== ORGANISATION MEMBER ENDPOINTS =====
-// Security: Authenticated users only. No membership check - any authenticated user can add members to any organisation.
-fastify.post('/organisation/:organisationId/member/:userId',{ preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { organisationId, userId } = request.params as { organisationId: string; userId: string };
-  const organisation = await addOrganisationMember(organisationId, userId);
-  return organisation;
-});
-
-// Security: Authenticated users only. No membership check - any authenticated user can remove members from any organisation.
-fastify.delete('/organisation/:organisationId/member/:userId', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { organisationId, userId } = request.params as { organisationId: string; userId: string };
-  const deleted = await removeOrganisationMember(organisationId, userId);
-  if (!deleted) {
-    reply.code(404).send({ error: 'Member not found' });
-    return;
-  }
-  return { success: true };
-});
-
-// Security: Authenticated users only. No membership check - any authenticated user can view members of any organisation.
-fastify.get('/organisation/:organisationId/member', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { organisationId } = request.params as { organisationId: string };
-  const members = await getOrganisationMembers(organisationId);
-  return members;
-});
-
 // Start server
 const start = async () => {
   try {
@@ -540,6 +446,9 @@ const start = async () => {
     
     // Register span routes
     await registerSpanRoutes(fastify);
+    
+    // Register organisation routes
+    await registerOrganisationRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4001');
     await fastify.listen({ port, host: '0.0.0.0' });

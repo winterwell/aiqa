@@ -15,6 +15,22 @@
       ],
       "type": "string"
     },
+    "MemberSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "enum": [
+            "admin",
+            "standard"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "type": "object"
+    },
     "Organisation": {
       "additionalProperties": false,
       "properties": {
@@ -43,6 +59,13 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "member_settings": {
+          "description": "user id to user-specific settings for the organisation",
+          "additionalProperties": {
+            "$ref": "#/definitions/MemberSettings"
+          },
+          "type": "object"
         },
         "name": {
           "type": "string"

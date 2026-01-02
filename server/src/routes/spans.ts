@@ -28,8 +28,16 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     // Add token cost
     spansArray.forEach(span => addTokenCost(span));
     // save
-    await bulkInsertSpans(spansWithOrg);
-    return { success: true, count: spansWithOrg.length };
+    try {
+      await bulkInsertSpans(spansWithOrg);
+      return { success: true, count: spansWithOrg.length };
+    } catch (error: any) {
+      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
   });
 
   /**
@@ -93,13 +101,21 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
 
     // Pass sourceFields to Elasticsearch for efficient field filtering at the source
-    const result = await searchSpans(searchQuery, organisationId, limit, offset, _source_includes, _source_excludes);
-    return {
-      hits: result.hits,
-      total: result.total,
-      limit,
-      offset,
-    };
+    try {
+      const result = await searchSpans(searchQuery, organisationId, limit, offset, _source_includes, _source_excludes);
+      return {
+        hits: result.hits,
+        total: result.total,
+        limit,
+        offset,
+      };
+    } catch (error: any) {
+      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
   });
 
   /**
@@ -128,13 +144,21 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
 
-    const updatedSpan = await updateSpan(id, updates, organisation);
-    if (!updatedSpan) {
-      reply.code(404).send({ error: 'Span not found or does not belong to your organisation' });
-      return;
-    }
+    try {
+      const updatedSpan = await updateSpan(id, updates, organisation);
+      if (!updatedSpan) {
+        reply.code(404).send({ error: 'Span not found or does not belong to your organisation' });
+        return;
+      }
 
-    return updatedSpan;
+      return updatedSpan;
+    } catch (error: any) {
+      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
   });
 }
 

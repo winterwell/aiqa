@@ -52,7 +52,8 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
   }
   
   if (fieldName.includes('_id') && fieldName !== 'id') {
-    return 'UUID NOT NULL';
+    // Foreign key fields: NOT NULL will be determined by required array in schema
+    return 'UUID';
   }
   
   switch (type) {
@@ -60,16 +61,19 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
       if (prop.format === 'date-time') {
         return 'TIMESTAMP DEFAULT NOW()';
       }
-      // Check for enums or specific formats
-      if (fieldName.includes('hash') || fieldName.includes('key')) {
-        return 'VARCHAR(255) NOT NULL UNIQUE';
+      // Hash fields: keep UNIQUE constraint, but NOT NULL comes from required array
+      if (fieldName.includes('hash')) {
+        return 'VARCHAR(255) UNIQUE';
       }
+      // key (plaintext) is never stored in DB, so always nullable
+      if (fieldName === 'key') {
+        return 'VARCHAR(255)';
+      }
+      // email: allow null and non-unique (sub is the login auth key)
       if (fieldName === 'email') {
-        return 'VARCHAR(255)'; // allow null and non-unique -- as sub is the login auth key
+        return 'VARCHAR(255)';
       }
-      if (fieldName === 'name') {
-        return 'VARCHAR(255) NOT NULL';
-      }
+      // All other string fields: NOT NULL determined by required array in schema
       return 'VARCHAR(255)';
     case 'number':
       return 'INTEGER';
@@ -128,7 +132,8 @@ export function generatePostgresTable(
   for (const [fieldName, prop] of Object.entries(def.properties)) {
     const pgType = jsonSchemaToPostgresType(prop, fieldName);
     const isRequired = required.includes(fieldName);
-    const notNull = isRequired && !pgType.includes('DEFAULT') ? ' NOT NULL' : '';
+    // Add NOT NULL if field is required, doesn't have DEFAULT, and doesn't already have NOT NULL
+    const notNull = isRequired && !pgType.includes('DEFAULT') && !pgType.includes('NOT NULL') ? ' NOT NULL' : '';
     columnMap.set(fieldName, `${pgType}${notNull}`);
   }
   

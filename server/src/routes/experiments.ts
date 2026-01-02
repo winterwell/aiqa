@@ -259,7 +259,16 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
     // Get example by searching for it
     const exampleQuery = new SearchQuery(`id:${exampleId}`);
-    const exampleResult = await searchExamples(exampleQuery, organisation, experiment.dataset, 1, 0);
+    let exampleResult;
+    try {
+      exampleResult = await searchExamples(exampleQuery, organisation, experiment.dataset, 1, 0);
+    } catch (error: any) {
+      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
     if (exampleResult.total === 0 || exampleResult.hits.length === 0) {
       reply.code(404).send({ error: 'Example not found' });
       return;

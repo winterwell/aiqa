@@ -215,14 +215,11 @@ async function authenticateWithJwt(
 		}
 		request.organisation = requestedOrg;
 	} else {
-		// Get user's organisations and use the first one
+		// Get user's organisations and use the first one if there is only one
 		const organisations = await getOrganisationsForUser(userId);
-		if (organisations.length === 0) {
-			reply.code(403).send({ error: 'User is not a member of any organisation' });
-			return false;
-		}
-		// Use the first organisation (could be enhanced to allow selection)
+		if (organisations.length === 1) {
 		request.organisation = organisations[0].id;
+		}
 	}
 
 	request.userId = userId;

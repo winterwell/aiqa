@@ -10,6 +10,10 @@ type Subscription = {
   currency: "USD" | "EUR" | "GBP";
 }
 
+type MemberSettings = {
+  role: "admin" | "standard";
+}
+
 export default interface Organisation {
   id: string;
   name: string;
@@ -24,6 +28,8 @@ export default interface Organisation {
   
   /** User ids of members of the organisation. Must contain the current user's id. */
   members: string[];
+  /** user id to user-specific settings for the organisation */
+  member_settings: Record<string, MemberSettings>;
   created: Date;
   updated: Date;
 }
