@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, Nav, NavItem, NavLink, TabContent, TabPane } from 'reactstrap';
-import { listApiKeys, listDatasets } from '../api';
+import { API_BASE_URL, listApiKeys, listDatasets } from '../api';
 import { useQuery } from '@tanstack/react-query';
+import HowToSetYourEnv from '../components/HowToSetYourEnv';
 
 const ExperimentCodePage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
@@ -97,9 +98,7 @@ const ExperimentCodePage: React.FC = () => {
                       <code>npm install @aiqa/client-js</code>
                     </li>
                     <li>
-                      <strong>Set your API key:</strong>
-                      <br />
-                      In .env or otherwise, set: <code>AIQA_API_KEY="{apiKey?.id || 'your-api-key'}"</code>
+						<HowToSetYourEnv />
                     </li>
                     <li>
                       <strong>Use the AIQA ExperimentRunner:</strong>
@@ -129,9 +128,7 @@ const ExperimentCodePage: React.FC = () => {
                       <code>pip install aiqa-client-python</code>
                     </li>
                     <li>
-                      <strong>Set your API key:</strong>
-                      <br />
-                      In your environment or config, set: <code>AIQA_API_KEY="{apiKey?.id || 'your-api-key'}"</code>
+						<HowToSetYourEnv />
                     </li>
                     <li>
                       <strong>Use the AIQA ExperimentRunner:</strong>
@@ -156,9 +153,7 @@ const ExperimentCodePage: React.FC = () => {
                       <strong>Setup your Metrics</strong>.
                     </li>
                     <li>
-                      <strong>Get your API key:</strong>
-                      <br />
-                      Your API key: <code>{apiKey?.id || 'your-api-key'}</code>
+						<HowToSetYourEnv />
                     </li>
                     <li>
                       <strong>Fetch the dataset:</strong>

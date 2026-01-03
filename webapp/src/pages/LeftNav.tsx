@@ -31,7 +31,7 @@ const LeftNav: React.FC = () => {
 	return (
 		<Nav vertical className="p-3 border-end left-nav">
 			{/* Progress bar */}
-			<div className="progress-section mb-3">
+			<div className="progress-section mb-3 w-100">
 				<div className="d-flex justify-content-between align-items-center mb-2">
 					<small className="text-muted progress-label">Progress</small>
 					<small className="text-muted progress-label">{completedSteps}/{totalSteps}</small>

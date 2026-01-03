@@ -4,6 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, Nav, NavItem, NavLink,
 import { API_BASE_URL, listApiKeys } from '../api';
 import { useQuery } from '@tanstack/react-query';
 import ApiKey from '../common/types/ApiKey.js';
+import HowToSetYourEnv from '../components/HowToSetYourEnv';
 
 const CodeSetupPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
@@ -98,9 +99,7 @@ function PythonCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
       <pre>
 pip install aiqa-client
       </pre>
-	  <p>In .env or otherwise, set the API key and server URL:</p>
-	    <p><code>AIQA_API_KEY=your-api-key<br/>
-AIQA_SERVER_URL={API_BASE_URL}</code></p>
+	  <HowToSetYourEnv />
       <h5>Trace your functions</h5>
       <p>
         Use the <code>@WithTracing</code> or <code>@WithTracingAsync</code> decorators from the client. For example:
@@ -126,9 +125,7 @@ function JavaScriptCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
     <div>
  <h5>Install the client-js library</h5>
 <p><code>npm install @aiqa/client-js</code></p>
-<p>In .env or otherwise, set the API key and server URL:</p>
-  <p><code>AIQA_API_KEY=your-api-key<br/>
-AIQA_SERVER_URL={API_BASE_URL}</code></p>
+<HowToSetYourEnv />
 <h5>Wrap the functions you want to trace using the <code>withTracing</code> or <code>withTracingAsync</code> decorators</h5>
 <pre><code>{`import { withTracing, withTracingAsync } from '@aiqa/client-js';
 
@@ -146,9 +143,7 @@ function GolangCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
     <div>
       <h5>Install the client-go library</h5>
       <p><code>go get github.com/winterwell/aiqa-client-go</code></p>
-      <p>In .env or otherwise, set the API key and server URL:</p>
-        <p><code>AIQA_API_KEY=your-api-key<br/>
-AIQA_SERVER_URL={API_BASE_URL}</code></p>
+      <HowToSetYourEnv />
       <h5>Initialize tracing and wrap functions with <code>WithTracing</code></h5>
       <pre><code>{`import (
     "context"
