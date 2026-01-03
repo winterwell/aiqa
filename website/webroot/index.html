@@ -65,9 +65,6 @@
 					<a href="https://app-aiqa.winterwell.com" class="btn btn-light btn-lg" rel="noopener">
 						<i class="bi bi-person-plus me-2"></i>Sign Up
 					</a>
-					<a href="https://github.com/winterwell/aiqa" class="btn btn-outline-light btn-lg" target="_blank" rel="noopener">
-						<i class="bi bi-github me-2"></i>View on GitHub
-					</a>
 				</div>
 			</div>
 			<div class="col-lg-6 text-center mt-4 mt-lg-0">
@@ -169,15 +166,17 @@
 		<div class="col-md-6 col-lg-3">
 			<div class="text-center">
 				<div class="step-number bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px; font-size: 1.5rem; font-weight: bold;">1</div>
-				<h4 class="h5 fw-bold">Install</h4>
-				<p class="text-muted small">Add AIQA to your project with a simple package install.</p>
+				<h4 class="h5 fw-bold">Sign Up</h4>
+				<p class="text-muted small">.</p>
 			</div>
 		</div>
 		<div class="col-md-6 col-lg-3">
 			<div class="text-center">
 				<div class="step-number bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px; font-size: 1.5rem; font-weight: bold;">2</div>
-				<h4 class="h5 fw-bold">Decorate</h4>
-				<p class="text-muted small">Add <code>@WithTracing</code> to your functions. That's it.</p>
+				<h4 class="h5 fw-bold">Install & Decorate</h4>
+				<p class="text-muted small">
+					Add AIQA to your project with a normal package install.
+					Add <code>@WithTracing</code> to your functions. That's it.</p>
 			</div>
 		</div>
 		<div class="col-md-6 col-lg-3">
@@ -238,10 +237,7 @@
 					<div class="tab-content p-4" id="codeExampleTabsContent">
 						<!-- Python -->
 						<div class="tab-pane fade show active" id="python" role="tabpanel" aria-labelledby="python-tab">
-							<pre class="mb-0"><code class="text-light">from aiqa import get_aiqa_client, WithTracing
-
-# Initialize once
-get_aiqa_client()
+							<pre class="mb-0"><code class="text-light">from aiqa import WithTracing, flush_tracing
 
 # Just add a decorator
 @WithTracing
@@ -249,7 +245,9 @@ def my_ai_function(prompt: str):
     # Your AI code here
     return ai_model.generate(prompt)
 
-# That's it! Now you're tracing.</code></pre>
+# That's it! Now you're tracing. 
+# If you need to send traces mannually, e.g. in a short-lived script, call:
+await flush_tracing()</code></pre>
 						</div>
 						<!-- JavaScript -->
 						<div class="tab-pane fade" id="javascript" role="tabpanel" aria-labelledby="javascript-tab">

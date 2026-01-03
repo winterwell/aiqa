@@ -97,7 +97,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
   if (!isAuthenticated) {
     // Redirect to website if not authenticated
-    window.location.href = 'https://www-aiqa.winterwell.com';
+    window.location.href = 'https://aiqa.winterwell.com';
     return null;
   }
 
