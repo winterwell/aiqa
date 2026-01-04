@@ -17,7 +17,7 @@ const CodeSetupPage: React.FC = () => {
   });
   const apiKey = apiKeys?.[0];
   return (
-    <Container className="mt-4">
+    <Container>
       <Row>
         <Col>
           <h1>Code Setup</h1>

@@ -67,6 +67,22 @@ else
     echo "Warning: $PYTHON_PYPROJECT_FILE not found, skipping version update"
 fi
 
+# Update Go constants.go VERSION
+GO_CONSTANTS_FILE="../aiqa-client-go/constants.go"
+if [ -f "$GO_CONSTANTS_FILE" ]; then
+    echo "Updating $GO_CONSTANTS_FILE VERSION"
+    # Use sed to update Version line, preserving the rest of the file
+    # macOS (BSD) sed requires an extension argument, Linux (GNU) sed doesn't
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^	Version = \".*\"/	Version = \"$VERSION\"/" "$GO_CONSTANTS_FILE"
+    else
+        sed -i "s/^	Version = \".*\"/	Version = \"$VERSION\"/" "$GO_CONSTANTS_FILE"
+    fi
+    echo "Updated VERSION to $VERSION in $GO_CONSTANTS_FILE"
+else
+    echo "Warning: $GO_CONSTANTS_FILE not found, skipping VERSION update"
+fi
+
 echo "Version info:"
 echo `cat $VERSION_INFO_FILE`
 

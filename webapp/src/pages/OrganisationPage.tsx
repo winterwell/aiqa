@@ -38,7 +38,7 @@ const OrganisationPage: React.FC = () => {
 
   if (isLoading || isLoadingUser || (shouldCheckOrganisations && isLoadingOrgs)) {
     return (
-      <Container className="mt-4">
+      <Container>
         <div className="text-center">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -53,7 +53,7 @@ const OrganisationPage: React.FC = () => {
     // If user has no organizations, show create form
     if (allOrganisations && allOrganisations.length === 0 && dbUser?.id) {
       return (
-        <Container className="mt-4">
+        <Container>
           <Row className="justify-content-center">
             <Col md={8}>
               <Card>
@@ -72,7 +72,7 @@ const OrganisationPage: React.FC = () => {
 
     // If user has organizations but this one doesn't exist, show error
     return (
-      <Container className="mt-4">
+      <Container>
         <Alert color="danger">
           <h4>Error</h4>
           <p>Failed to load organisation: {error instanceof Error ? error.message : 'Unknown error'}</p>

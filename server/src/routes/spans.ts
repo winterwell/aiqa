@@ -25,8 +25,8 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }));
     console.log("inserting: "+spansWithOrg.length+" spans");
     // TODO rate limit check
-    // Add token cost
-    spansArray.forEach(span => addTokenCost(span));
+    // Add token cost (must be called on spansWithOrg so cost attributes are included when saving)
+    spansWithOrg.forEach(span => addTokenCost(span));
     // save
     try {
       await bulkInsertSpans(spansWithOrg);

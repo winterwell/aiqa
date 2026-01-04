@@ -18,7 +18,8 @@
     "fastify": "^4.24.3",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "vm2": "^3.9.21"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",

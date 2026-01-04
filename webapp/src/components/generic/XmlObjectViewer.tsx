@@ -232,21 +232,61 @@ function XmlNodeViewer({ node, textComponent, depth = 2 }: { node: XmlNode, text
 
 /** Show potentially big xml */
 export default function XmlObjectViewer({ xml, textComponent, depth = 2 }: { xml: string, textComponent?: React.ComponentType<{ text: string, depth?: number }>, depth?: number }) {
+	const [viewMode, setViewMode] = useState<'html' | 'text'>('html');
 	const [localDepth, setLocalDepth] = useState<number | null>(null);
 	const effectiveDepth = localDepth !== null ? localDepth : depth;
 	const expanded = effectiveDepth > 0;
 	const parsed = parseXml(xml);
 	const $copyButton = <CopyButton content={xml} />;
 	
+	const toggleButtons = (
+		<div className="btn-group btn-group-sm" role="group">
+			<button
+				type="button"
+				className={`btn ${viewMode === 'html' ? 'btn-primary' : 'btn-outline-secondary'}`}
+				onClick={() => setViewMode('html')}
+			>
+				HTML
+			</button>
+			<button
+				type="button"
+				className={`btn ${viewMode === 'text' ? 'btn-primary' : 'btn-outline-secondary'}`}
+				onClick={() => setViewMode('text')}
+			>
+				Text
+			</button>
+		</div>
+	);
+	
+	// Text view - show raw XML as plain text
+	if (viewMode === 'text') {
+		return (
+			<div className="my-2" style={{ position: 'relative', marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0 }}>
+				<div className="d-flex align-items-center justify-content-between mb-1">
+					<div className="d-flex align-items-center">
+						<span className="text-muted fst-italic me-2">XML</span>
+						<span className="ms-2">{$copyButton}</span>
+					</div>
+					{toggleButtons}
+				</div>
+				<pre className="my-2" style={{ fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>{xml}</pre>
+			</div>
+		);
+	}
+	
+	// HTML view - show structured view
 	if (!parsed) {
 		// If parsing fails, show raw XML with expand/collapse
 		if (xml.length > 1000) {
 			return (
-				<div className="my-2" style={{ marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
-					<div className="d-flex align-items-center mb-1">
-						<ExpandCollapseControl hasChildren={true} isExpanded={expanded} onToggle={() => setLocalDepth(expanded ? 0 : 1)} />
-						<span className="text-muted fst-italic me-2">XML ({xml.length} characters, parse failed)</span>
-						<span className="ms-2">{$copyButton}</span>
+				<div className="my-2" style={{ position: 'relative', marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
+					<div className="d-flex align-items-center justify-content-between mb-1">
+						<div className="d-flex align-items-center">
+							<ExpandCollapseControl hasChildren={true} isExpanded={expanded} onToggle={() => setLocalDepth(expanded ? 0 : 1)} />
+							<span className="text-muted fst-italic me-2">XML ({xml.length} characters, parse failed)</span>
+							<span className="ms-2">{$copyButton}</span>
+						</div>
+						{toggleButtons}
 					</div>
 					{expanded && (
 						<pre className="my-2" style={{ fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }}>{xml}</pre>
@@ -255,15 +295,28 @@ export default function XmlObjectViewer({ xml, textComponent, depth = 2 }: { xml
 			);
 		}
 		return (
-			<div className="my-2" style={{ marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
-				<div className="d-flex align-items-center mb-1">
-					<span className="text-muted fst-italic me-2">XML (parse failed)</span>
-					<span className="ms-2">{$copyButton}</span>
+			<div className="my-2" style={{ position: 'relative', marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
+				<div className="d-flex align-items-center justify-content-between mb-1">
+					<div className="d-flex align-items-center">
+						<span className="text-muted fst-italic me-2">XML (parse failed)</span>
+						<span className="ms-2">{$copyButton}</span>
+					</div>
+					{toggleButtons}
 				</div>
 				<pre className="my-2" style={{ fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }}>{xml}</pre>
 			</div>
 		);
 	}
 	
-	return <XmlNodeViewer node={parsed} textComponent={textComponent} depth={depth} />;
+	// Wrap the parsed view with toggle in top-right
+	return (
+		<div className="my-2" style={{ position: 'relative', marginLeft: '20px', borderLeft: '2px solid #ccc', paddingLeft: '10px', maxWidth: '100%', minWidth: 0 }}>
+			<div className="d-flex align-items-center justify-content-end mb-1" style={{ position: 'absolute', top: 0, right: 0, zIndex: 1 }}>
+				{toggleButtons}
+			</div>
+			<div style={{ paddingTop: '30px' }}>
+				<XmlNodeViewer node={parsed} textComponent={textComponent} depth={depth} />
+			</div>
+		</div>
+	);
 }

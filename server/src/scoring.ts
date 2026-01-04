@@ -1,6 +1,7 @@
 import { Metric } from './common/types/Dataset.js';
 import Model from './common/types/Model.js';
 import { getModel } from './db/db_sql.js';
+import { VM } from 'vm2';
 
 /**
  * Score a metric based on its type.
@@ -33,80 +34,63 @@ export async function scoreMetric(
 }
 
 /**
- * safely run a js snippet
+ * Safely run a JavaScript snippet in a sandboxed environment.
+ * Uses vm2 to prevent access to Node.js internals, global scope, and dangerous APIs.
+ * 
  * @param metric 
  * @param output 
  * @param example 
  * @returns 
  */
 function scoreMetricJavascript(metric: Metric, output: any, example: any): Promise<number> {
-return new Promise<number>((resolve, reject) => {
-	try {
-		const functionBody = metric.parameters?.code || metric.parameters?.script;
-		if (!functionBody) {
-			return reject(new Error('No script or code found in metric.parameters'));
-		}
-
-		let finished = false;
-		// Provide only output, example, and a restricted global context
-		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
- 
-		// Prepare our function
-		let userFn: any;
+	return new Promise<number>((resolve, reject) => {
 		try {
-			// block all IO and other dangerous functions for security
-			userFn = new AsyncFunction('output', 'example', `
-				"use strict";
-				const global = undefined;
-				const require = undefined;
-				const process = undefined;
-				const eval = undefined;
-				const Function = undefined;
-				const setTimeout = undefined;
-				const setInterval = undefined;
-				const fetch = undefined;
-				const XMLHttpRequest = undefined;
-				const File = undefined;
-				const WebSocket = undefined;
-				const Buffer = undefined;
-				${functionBody}
-			`);
-		} catch (e) {
-			return reject(new Error("Failed to parse script: " + (e?.message || e)));
-		}
-
-		// Handle timeout
-		const timer = setTimeout(() => {
-			if (!finished) {
-				finished = true;
-				reject(new Error('Script execution timed out'));
+			const functionBody = metric.parameters?.code || metric.parameters?.script;
+			if (!functionBody) {
+				return reject(new Error('No script or code found in metric.parameters'));
 			}
-		}, 5000);
 
-		// Actually run the code
-		Promise.resolve(userFn(output, example))
-			.then((result: any) => {
-				if (finished) return;
-				finished = true;
-				clearTimeout(timer);
-				// If result is numeric, return it, else error
-				const num = Number(result);
-				if (!isFinite(num)) {
-					return reject(new Error('Script did not return a finite number'));
-				}
-				resolve(num);
-			})
-			.catch((err: any) => {
-				if (finished) return;
-				finished = true;
-				clearTimeout(timer);
-				reject(new Error("Metric script error: " + (err?.message || err)));
+			// Create a secure sandbox with vm2
+			// (Thanks to Aidan for spotting the security vulnerability in earlier versions of this code.)
+			// vm2 prevents escape via constructor chains and other techniques
+			const vm = new VM({
+				timeout: 5000, // 5 second timeout
+				sandbox: {
+					output,
+					example,
+					// Explicitly block network-related APIs
+					fetch: undefined,
+					XMLHttpRequest: undefined,
+					WebSocket: undefined,
+					Request: undefined,
+					Response: undefined,
+					Headers: undefined,
+				},
+				// Block all Node.js built-in modules
+				require: {
+					external: false,
+					builtin: [],
+				},
 			});
-	} catch (err: any) {
-		reject(new Error("Metric script error: " + (err?.message || err)));
-	}
-});
 
+			// Execute the code in the sandbox
+			// The code should return a number directly or be an expression that evaluates to a number
+			Promise.resolve(vm.run(functionBody))
+				.then((result: any) => {
+					// If result is numeric, return it, else error
+					const num = Number(result);
+					if (!isFinite(num)) {
+						return reject(new Error('Script did not return a finite number'));
+					}
+					resolve(num);
+				})
+				.catch((err: any) => {
+					reject(new Error("Metric script error: " + (err?.message || err)));
+				});
+		} catch (err: any) {
+			reject(new Error("Metric script error: " + (err?.message || err)));
+		}
+	});
 }
 
 

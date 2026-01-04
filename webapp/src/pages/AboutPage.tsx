@@ -16,7 +16,7 @@ const AboutPage: React.FC = () => {
   }, [isLoadingVersion, versionError, versionInfo]);
 
   return (
-    <Container className="mt-4">
+    <Container>
       <Row>
         <Col>
           <div className="d-flex align-items-center mb-4">

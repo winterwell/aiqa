@@ -74,7 +74,7 @@ const ExperimentsListPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Container className="mt-4">
+      <Container>
         <div className="text-center">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -86,7 +86,7 @@ const ExperimentsListPage: React.FC = () => {
 
   if (error) {
     return (
-      <Container className="mt-4">
+      <Container>
         <div className="alert alert-danger">
           <h4>Error</h4>
           <p>Failed to load experiments: {error instanceof Error ? error.message : 'Unknown error'}</p>

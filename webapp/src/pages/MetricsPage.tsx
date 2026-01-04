@@ -6,7 +6,7 @@ const MetricsPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
 
   return (
-    <Container className="mt-4">
+    <Container>
       <Row>
         <Col>
           <h1>Metrics</h1>

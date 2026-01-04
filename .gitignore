@@ -11,3 +11,5 @@ server/.tap
 server/pnpm-lock.yaml
 webapp/pnpm-lock.yaml
 deploy/sead.org.uk.nginx
+server/.npmrc webapp/.npmrc
+**/.npmrc

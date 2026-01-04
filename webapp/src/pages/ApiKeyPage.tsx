@@ -120,7 +120,7 @@ const ApiKeyPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <Container className="mt-4">
+      <Container>
         <Row>
           <Col>
             <h1>API Keys</h1>
@@ -142,7 +142,7 @@ const ApiKeyPage: React.FC = () => {
 
   if (error) {
     return (
-      <Container className="mt-4">
+      <Container>
         <Alert color="danger">
           <h4>Error</h4>
           <p>Failed to load API keys: {error instanceof Error ? error.message : 'Unknown error'}</p>

@@ -28,7 +28,7 @@ const ExperimentCodePage: React.FC = () => {
   }, [datasets]);
 
   return (
-    <Container className="mt-4">
+    <Container>
       <Row>
         <Col>
           <h1>How to Run an Experiment</h1>

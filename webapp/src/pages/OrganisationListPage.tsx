@@ -46,7 +46,7 @@ const OrganisationListPage: React.FC = () => {
 
   if (isLoadingUser || isLoadingOrgs) {
     return (
-      <Container className="mt-4">
+      <Container>
         <div className="text-center">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Loading...</span>
@@ -58,7 +58,7 @@ const OrganisationListPage: React.FC = () => {
 
   if (error) {
     return (
-      <Container className="mt-4">
+      <Container>
         <Alert color="danger">
           <h4>Error</h4>
           <p>Failed to load organizations: {error instanceof Error ? error.message : 'Unknown error'}</p>
@@ -70,7 +70,7 @@ const OrganisationListPage: React.FC = () => {
   // Show create form if no organizations
   if (allOrganisations && allOrganisations.length === 0 && dbUser?.id) {
     return (
-      <Container className="mt-4">
+      <Container>
         <Row className="justify-content-center">
           <Col md={8}>
             <Card>
@@ -90,7 +90,7 @@ const OrganisationListPage: React.FC = () => {
   // Show list of organizations
   if (!dbUser?.id) {
     return (
-      <Container className="mt-4">
+      <Container>
         <Alert color="warning">Loading user information...</Alert>
       </Container>
     );

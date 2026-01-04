@@ -581,7 +581,7 @@ const TracesListPage: React.FC = () => {
   };
 
   return (
-    <Container className="mt-4">
+    <Container>
       <Row>
         <Col>
           <h1>Traces</h1>

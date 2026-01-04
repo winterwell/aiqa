@@ -9,6 +9,8 @@ interface TokenCostEntry {
 	input_Mtkn: number;
 	cached_input_Mtkn: number;
 	output_Mtkn: number;
+	/** if true, this is a bland guess */
+	fallback?: boolean;
 }
 
 // Cache for loaded token costs
@@ -115,10 +117,21 @@ function getTokenCostEntry(provider: string | null, model: string | undefined, m
 	const fallbackKey = 'openai-gpt-4o-standard';
 	const fallback = costs.get(fallbackKey);
 	if (fallback) {
-		return fallback;
+		return {
+			...fallback,
+			fallback: true,
+		};
 	}
-	
-	return null;
+	const hardCodedEntry : TokenCostEntry = {
+		fallback: true,
+		provider: 'openai',
+		model: 'gpt-4o',
+		mode: 'standard',
+		input_Mtkn: 2.50,
+		cached_input_Mtkn: 1.25,
+		output_Mtkn: 10.00,
+	};
+	return hardCodedEntry;
 }
 
 /**
@@ -203,7 +216,8 @@ export function addTokenCost(span: Span): void {
 	const costEntry = getTokenCostEntry(provider || null, model, mode);
 	
 	if (!costEntry) {
-		// No cost entry found, skip
+		// No cost entry found - log warning for debugging
+		console.warn(`No cost entry found for provider="${provider || 'null'}", model="${model || 'undefined'}", mode="${mode}". Tokens present but cost not calculated.`);
 		return;
 	}
 	
