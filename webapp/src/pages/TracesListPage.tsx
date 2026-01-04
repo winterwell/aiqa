@@ -430,7 +430,6 @@ const TracesListPage: React.FC = () => {
 			},
 			cell: ({ row }) => {
 			  const startTime = getStartTime(row.original);
-			  console.log('[TracesListPage] startTime cell render:', { startTime, span: row.original });
 			  return <span>{startTime ? startTime.toLocaleString() : 'N/A'}</span>;
 			},
 			enableSorting: true,
@@ -441,7 +440,6 @@ const TracesListPage: React.FC = () => {
         header: 'Trace ID',
         cell: ({ row }) => {
           const traceId = getTraceId(row.original);
-          console.log('[TracesListPage] traceId cell render:', { traceId, span: row.original });
           if (!traceId) return <span>N/A</span>;
           return <code className="small">{traceId.length > 16 ? `${traceId.substring(0, 16)}...` : traceId}</code>;
         },
@@ -451,7 +449,6 @@ const TracesListPage: React.FC = () => {
         header: 'Name',
         cell: ({ row }) => {
           const name = (row.original as any).name || 'Unknown';
-          console.log('[TracesListPage] name cell render:', { name, span: row.original });
           return <span>{name}</span>;
         },
       },
@@ -464,7 +461,6 @@ const TracesListPage: React.FC = () => {
         },
         cell: ({ row }) => {
           const duration = getDurationMs(row.original);
-          console.log('[TracesListPage] duration cell render:', { duration, span: row.original });
           if (duration === null) return <span>N/A</span>;
           // Format duration nicely
           if (duration < 1000) {

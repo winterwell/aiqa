@@ -9,6 +9,7 @@ import { addTokenCost } from '../token_cost.js';
  * Register span endpoints with Fastify
  */
 export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void> {
+  
   // ===== SPAN ENDPOINTS (ElasticSearch) =====
   // Security: Authenticated users only. Organisation set from authenticate middleware (request.organisation). Spans stored with organisation field.
   fastify.post('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {

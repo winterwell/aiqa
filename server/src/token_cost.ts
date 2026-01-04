@@ -103,7 +103,7 @@ function inferProviderFromModel(model: string | undefined): string | null {
 /**
  * Get token cost entry for a given provider, model, and mode
  */
-function getTokenCostEntry(provider: string | null, model: string | undefined, mode: string = 'standard'): TokenCostEntry | null {
+function getTokenCostEntry(provider: string | null, model: string | undefined, mode: string = 'standard'): TokenCostEntry {
 	const costs = loadTokenCosts();
 	
 	// Try exact match first

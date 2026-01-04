@@ -1,18 +1,107 @@
 import React from 'react';
 import { Row, Col, Input } from 'reactstrap';
 import { Span } from '../common/types';
-import { getSpanId, getDurationMs, durationString } from '../utils/span-utils';
+import { getSpanId, getDurationMs, durationString, getSpanName } from '../utils/span-utils';
 import ExpandCollapseControl from './generic/ExpandCollapseControl';
 import StarButton from './generic/StarButton';
 import CopyButton from './generic/CopyButton';
+import { truncate } from '../common/utils/miscutils';
 
 interface SpanTree {
   span: Span;
   children: SpanTree[];
 }
 
-// Helper function to get span name
-const getSpanName = (span: Span): string => (span as any).name || '';
+// Helper function to extract message text from output, recursing up to depth 2
+function extractMessageFromOutput(output: any, depth: number = 0): string | null {
+  if (depth > 2 || output === null || output === undefined) {
+    return null;
+  }
+
+  // Direct string message
+  if (typeof output === 'string') {
+    return output;
+  }
+
+  // {role, content} format
+  if (typeof output === 'object') {
+    // Check for direct message property
+    if (typeof output.message === 'string') {
+      return output.message;
+    }
+
+    // Check for {role, content} format
+    if (output.role && output.content) {
+      const content = output.content;
+      if (typeof content === 'string') {
+        return content;
+      }
+      // If content is an array with one item, recurse into it
+      if (Array.isArray(content) && content.length === 1) {
+        return extractMessageFromOutput(content[0], depth + 1);
+      }
+      // If content is an object with type="text", get the text
+      if (typeof content === 'object' && content.type === 'text' && typeof content.text === 'string') {
+        return content.text;
+      }
+    }
+
+    // Check for choices[0].message.content format (OpenAI style)
+    if (Array.isArray(output.choices) && output.choices.length > 0) {
+      const message = output.choices[0].message;
+      if (message && message.content) {
+        if (typeof message.content === 'string') {
+          return message.content;
+        }
+        // Recurse into content if it's an array
+        if (Array.isArray(message.content) && message.content.length === 1) {
+          return extractMessageFromOutput(message.content[0], depth + 1);
+        }
+      }
+    }
+
+    // If it's an array with one item, recurse into it
+    if (Array.isArray(output) && output.length === 1) {
+      return extractMessageFromOutput(output[0], depth + 1);
+    }
+
+    // Recurse into object properties
+    if (depth < 2) {
+      for (const key of ['content', 'message', 'text', 'response', 'output']) {
+        if (output[key] !== undefined) {
+          const result = extractMessageFromOutput(output[key], depth + 1);
+          if (result) return result;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Helper function to get spanSummary from a span, checking output first, then child spans
+function getSpanSummary(span: Span, children: SpanTree[]): string | null {
+  const spanAny = span as any;
+  const output = spanAny.attributes?.output;
+
+  // First, try to extract message from output
+  if (output) {
+    const message = extractMessageFromOutput(output);
+    if (message) {
+      return truncate(message, 140);
+    }
+  }
+
+  // If no summary from output, check child spans
+  for (const child of children) {
+    const childSummary = getSpanSummary(child.span, child.children);
+    if (childSummary) {
+      return childSummary;
+    }
+  }
+
+  return null;
+}
 
 // Helper function for filter matching
 function treeMatchesFilter(tree: SpanTree, filterLower: string): boolean {
@@ -104,12 +193,6 @@ function SpanTreeViewer({
     treeState.onSelectSpan(spanId);
   };
 
-  const spanAny = span as any;
-  const spanName = getSpanName(span);
-  const spanSummary = spanAny.attributes?.input?.message 
-    ? <div>Message: {JSON.stringify(spanAny.attributes.input.message).substring(0,100)}</div>
-    : null;
-
   return (
     <div style={{ marginLeft: '20px', marginTop: '5px', borderLeft: '2px solid #ccc', paddingLeft: '10px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '5px' }}>
@@ -118,27 +201,7 @@ function SpanTreeViewer({
           isExpanded={isExpanded}
           onToggle={() => treeState.onToggleExpanded(spanId)}
         />
-        <div 
-          style={{ 
-            flex: 1,
-            cursor: 'pointer',
-            padding: '5px',
-            borderRadius: '4px',
-            backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
-            border: isSelected ? '2px solid #2196f3' : '2px solid transparent',
-            position: 'relative'
-          }}
-          onClick={handleSelect}
-        >									
-          {spanName && <div>{spanName}</div>}
-          {spanSummary}
-          <div><small>Span ID: {spanId}</small></div>
-          <div><small>Duration: <span>{durationString(getDurationMs(span), config.durationUnit)}</span></small></div>
-          <div style={{ position: 'absolute', right: '20px', top: '10px', display: 'flex', gap: '5px', alignItems: 'center' }}>
-            <StarButton span={span} size="sm" onUpdate={config.onSpanUpdate} />
-            <CopyButton content={span} logToConsole size="xs" />
-          </div>
-        </div>
+       <SpanTreeItem span={span} children={children} treeState={treeState} config={config} />
       </div>
       {isExpanded && filteredChildren.length > 0 && (
         <div>
@@ -157,6 +220,40 @@ function SpanTreeViewer({
       )}
     </div>
   );
+}
+
+function SpanTreeItem({ span, children, treeState, config }: { span: Span; children: SpanTree[]; treeState: TreeState; config: TreeViewConfig }) {
+  const isSelected = treeState.selectedSpanId === getSpanId(span);
+  const spanId = getSpanId(span);
+  const handleSelect = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    treeState.onSelectSpan(spanId);
+  };
+  const spanName = getSpanName(span);
+  const spanSummary = getSpanSummary(span, children);
+  return (<div 
+  style={{ 
+    flex: 1,
+    cursor: 'pointer',
+    padding: '5px',
+    borderRadius: '4px',
+    backgroundColor: isSelected ? '#e3f2fd' : 'transparent',
+    border: isSelected ? '2px solid #2196f3' : '2px solid transparent',
+    position: 'relative'
+  }}
+  onClick={handleSelect}
+>									
+  {spanName && <div>{spanName}</div>}
+  {spanSummary && <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{spanSummary}</div>}
+  <div><small>Span ID: {spanId}</small></div>
+  <div><small>Duration: <span>{durationString(getDurationMs(span), config.durationUnit)}</span></small></div>
+  <div style={{ position: 'absolute', right: '20px', top: '10px', display: 'flex', gap: '5px', alignItems: 'center' }}>
+    <StarButton span={span} size="sm" onUpdate={config.onSpanUpdate} />
+    <CopyButton content={span} logToConsole size="xs" />
+  </div>
+</div>
+);
 }
 
 export default function TraceDetailsContent({

@@ -1,18 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpanId } from '../utils/span-utils';
+import { getSpanId, getSpanName } from '../utils/span-utils';
 import { Span } from '../common/types';
 
 interface SpanTree {
   span: Span;
   children: SpanTree[];
-}
-
-const getSpanName = (span: Span): string => (span as any).name || '';
-
-function treeMatchesFilter(tree: SpanTree, filterLower: string): boolean {
-  const name = getSpanName(tree.span);
-  if (name.toLowerCase().includes(filterLower)) return true;
-  return tree.children.some(child => treeMatchesFilter(child, filterLower));
 }
 
 /**

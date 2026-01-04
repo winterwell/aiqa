@@ -1,5 +1,7 @@
 import { Span } from "../common/types";
 
+export const getSpanName = (span: Span): string => (span as any).name || '';
+
 export function getDurationUnits(durationMs: number | null | undefined): 'ms' | 's' | 'm' | 'h' | 'd' | null {
 	if (durationMs === null || durationMs === undefined) return null;
 	if (durationMs < 1000) return 'ms';
@@ -86,10 +88,19 @@ export const getTotalTokenCount = (span: Span): number | null => {
   return null;
 };
 
+/** gen_ai.cost.usd if the tracer or server has added it, otherwise calculate from token usage */
 export const getCost = (span: Span): number | null => {
   const attributes = (span as any).attributes || {};
   const cost = attributes['gen_ai.cost.usd'] as number | undefined;
-  return cost !== undefined ? cost : null;
+  if (cost !== undefined && cost !== null) {
+    return cost;
+  }
+  const inputTokens = attributes['gen_ai.usage.input_tokens'] as number | undefined;
+  const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
+  if (inputTokens || outputTokens) {
+    // TODO calculate cost from token usage -- should be done server side   
+  }
+   return null; 
 };
 
 export const isRootSpan = (span: Span): boolean => {

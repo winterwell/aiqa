@@ -26,7 +26,7 @@ echo "{
 }" > $VERSION_INFO_FILE
 
 # Copy out to dirs
-FILES=(../aiqa-client-go/version.json ../aiqa-client-js/version.json server/src/version.json webapp/.well-known/version.json website/webroot/.well-known/version.json)
+FILES=(../aiqa-client-go/version.json ../aiqa-client-js/version.json server/src/version.json webapp/public/.well-known/version.json website/webroot/.well-known/version.json)
 
 for FILE in ${FILES[@]}; do
     DIR=$(dirname "$FILE")

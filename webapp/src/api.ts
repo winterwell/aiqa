@@ -338,3 +338,17 @@ export async function getVersion() {
 	return data;
 }
 
+// Webapp version endpoint (public, no auth required)
+export async function getWebappVersion() {
+	const url = '/.well-known/version.json';
+	console.log('[getWebappVersion] Fetching from:', url);
+	const response = await fetch(url);
+	if (!response.ok) {
+		console.error('[getWebappVersion] Error:', response.status, response.statusText);
+		throw new Error(`HTTP error! status: ${response.status}`);
+	}
+	const data = await response.json();
+	console.log('[getWebappVersion] Received:', data);
+	return data;
+}
+

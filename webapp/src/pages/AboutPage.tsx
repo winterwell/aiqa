@@ -2,9 +2,15 @@ import React, { useEffect } from 'react';
 import { Container, Row, Col, Card, CardBody, CardHeader } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import Logo from '../components/Logo';
-import { getVersion } from '../api';
+import { getVersion, getWebappVersion } from '../api';
 
 const AboutPage: React.FC = () => {
+  const { data: webappVersionInfo, isLoading: isLoadingWebappVersion, error: webappVersionError } = useQuery({
+    queryKey: ['webappVersion'],
+    queryFn: getWebappVersion,
+    retry: 1,
+  });
+
   const { data: versionInfo, isLoading: isLoadingVersion, error: versionError } = useQuery({
     queryKey: ['version'],
     queryFn: getVersion,
@@ -60,21 +66,35 @@ const AboutPage: React.FC = () => {
                   <small className="text-muted">Loading version information...</small>
                 </div>
               )}
-              {versionInfo && (
-                <div className="mt-4 pt-3 border-top">
-                  <h6>Version Information</h6>
-                  <dl className="row mb-0">
-                    <dt className="col-sm-3">Version:</dt>
-                    <dd className="col-sm-9">{versionInfo.VERSION}</dd>
-                    <dt className="col-sm-3">Git Commit:</dt>
-                    <dd className="col-sm-9">
-                      <code className="small">{versionInfo.GIT_COMMIT?.substring(0, 7)}</code>
-                    </dd>
-                    <dt className="col-sm-3">Build Date:</dt>
-                    <dd className="col-sm-9">{new Date(versionInfo.DATE).toLocaleString()}</dd>
-                  </dl>
-                </div>
-              )}
+              <div className="mt-4 pt-3 border-top">
+                <h6>Version Information</h6>
+                <dl className="row mb-0">
+                  {webappVersionInfo && (
+                    <>
+                      <dt className="col-sm-3">Webapp Version:</dt>
+                      <dd className="col-sm-9">{webappVersionInfo.VERSION}</dd>
+                      <dt className="col-sm-3">Webapp Git Commit:</dt>
+                      <dd className="col-sm-9">
+                        <code className="small">{webappVersionInfo.GIT_COMMIT?.substring(0, 7)}</code>
+                      </dd>
+                      <dt className="col-sm-3">Webapp Build Date:</dt>
+                      <dd className="col-sm-9">{new Date(webappVersionInfo.DATE).toLocaleString()}</dd>
+                    </>
+                  )}
+                  {versionInfo && (
+                    <>
+                      <dt className="col-sm-3">Server Version:</dt>
+                      <dd className="col-sm-9">{versionInfo.VERSION}</dd>
+                      <dt className="col-sm-3">Server Git Commit:</dt>
+                      <dd className="col-sm-9">
+                        <code className="small">{versionInfo.GIT_COMMIT?.substring(0, 7)}</code>
+                      </dd>
+                      <dt className="col-sm-3">Server Build Date:</dt>
+                      <dd className="col-sm-9">{new Date(versionInfo.DATE).toLocaleString()}</dd>
+                    </>
+                  )}
+                </dl>
+              </div>
             </CardBody>
           </Card>
         </Col>

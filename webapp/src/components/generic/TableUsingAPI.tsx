@@ -46,7 +46,7 @@ function TableUsingAPI<T extends Record<string, any>>({
   loadData,
   columns,
   searchPlaceholder = 'Search...',
-  searchDebounceMs = 500,
+  searchDebounceMs = 1000,
   pageSize = 50,
   enableInMemoryFiltering = true,
   initialSorting = [],
@@ -56,6 +56,7 @@ function TableUsingAPI<T extends Record<string, any>>({
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
+  const [inputValue, setInputValue] = useState('');
   const [serverQuery, setServerQuery] = useState('');
   // Load data from server when debounced query changes
   // Use useQuery to cache
@@ -64,6 +65,17 @@ function TableUsingAPI<T extends Record<string, any>>({
   if (data) {
 	loadData = () => Promise.resolve(data);
   }
+  
+  // Debounce input value to serverQuery
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setServerQuery(inputValue);
+      setCurrentPage(0); // Reset to first page on search change
+    }, searchDebounceMs);
+    
+    return () => clearTimeout(timer);
+  }, [inputValue, searchDebounceMs]);
+  
   const { data: loadedData, isLoading, error: loadError } = useQuery({
     queryKey: ['table-data', serverQuery],
     queryFn: () => loadData(serverQuery),
@@ -73,20 +85,6 @@ function TableUsingAPI<T extends Record<string, any>>({
   const total = loadedData?.total || 0;
   const offset = loadedData?.offset || 0;
   const limit = loadedData?.limit || pageSize;
-
-//   // Debug logging
-//   useEffect(() => {
-//     console.log('[TableUsingAPI] Data state:', {
-//       isLoading,
-//       hasError: !!loadError,
-//       error: loadError?.message,
-//       hitsCount: hits.length,
-//       total,
-//       offset,
-//       limit,
-//       firstHit: hits[0] ? { keys: Object.keys(hits[0]), sample: hits[0] } : null,
-//     });
-//   }, [isLoading, loadError, hits, total, offset, limit]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['table-data', serverQuery] });
@@ -122,39 +120,11 @@ function TableUsingAPI<T extends Record<string, any>>({
   const start = currentPage * pageSize;
   const paginatedRows = allRows.slice(start, start + pageSize);
   
-//   // Debug logging
-//   useEffect(() => {
-//     console.log('[TableUsingAPI] Pagination:', {
-//       totalRows: allRows.length,
-//       currentPage,
-//       pageSize,
-//       start,
-//       end: start + pageSize,
-//       paginatedCount: paginatedRows.length,
-//       paginatedRowIds: paginatedRows.map(r => r.id),
-//       firstRowData: paginatedRows[0]?.original || null,
-//       rowsArrayLength: allRows.length,
-//       rowsArraySample: allRows.length > 0 ? { id: allRows[0].id, original: allRows[0].original } : null,
-//     });
-//   }, [allRows.length, currentPage, pageSize, paginatedRows.length]);
-
   const totalRows = allRows.length;
   const totalPages = Math.ceil(totalRows / pageSize);
   
-//   useEffect(() => {
-//     console.log('[TableUsingAPI] Table state:', {
-//       totalRows,
-//       totalPages,
-//       columnsCount: columns.length,
-//       columnIds: columns.map(c => c.id || (c as any).accessorKey),
-//       globalFilter,
-//       sorting,
-//     });
-//   }, [totalRows, totalPages, columns, globalFilter, sorting]);  
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setServerQuery(e.target.value);
-    setCurrentPage(0); // Reset to first page on search change
+    setInputValue(e.target.value);
   };
 
   const handlePageChange = (newPage: number) => {
@@ -193,9 +163,9 @@ function TableUsingAPI<T extends Record<string, any>>({
     <div className="table-container">
         <div className="mb-3">
           <Input
-            type="text"
+            type="search"
             placeholder={searchPlaceholder}
-            value={serverQuery}
+            value={inputValue}
             onChange={handleSearchChange}
           />
 		  <Button onClick={refresh}>Refresh</Button>
