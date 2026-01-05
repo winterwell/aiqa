@@ -27,7 +27,7 @@ export default function CopyButton({
     const getSizeClass = (size?: 'xs' | 'sm' | 'md' | 'lg'): string => {
         if (!size) return '';
         switch (size) {
-            case 'xs': return 'btn-xs'; // Note: Bootstrap 5 doesn't have btn-xs, but some projects add it
+            case 'xs': return 'btn-xs'; // Note: Bootstrap 5 doesn't have btn-xs, but we add it
             case 'sm': return 'btn-sm';
             case 'md': return ''; // md is default Bootstrap size
             case 'lg': return 'btn-lg';

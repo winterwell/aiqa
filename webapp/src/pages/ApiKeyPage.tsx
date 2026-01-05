@@ -41,10 +41,12 @@ const ApiKeyPage: React.FC = () => {
   const createApiKeyMutation = useMutation({
     mutationFn: async ({ key, name }: { key: string; name?: string }) => {
       const keyHash = await hashApiKey(key);
+      const keyEnd = key.slice(-4);
       return createApiKey({
         organisation: organisationId!,
         name: name || undefined,
         key_hash: keyHash,
+        key_end: keyEnd,
         role: 'developer',
       });
     },

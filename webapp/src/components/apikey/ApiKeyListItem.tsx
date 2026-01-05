@@ -5,6 +5,7 @@ interface ApiKeyListItemProps {
   apiKey: {
     id: string;
     name?: string;
+    key_end?: string;
     role?: 'trace' | 'developer' | 'admin';
     rate_limit_per_hour?: number;
     retention_period_days?: number;
@@ -28,6 +29,9 @@ export const ApiKeyListItem: React.FC<ApiKeyListItemProps> = ({
       <div className="d-flex justify-content-between align-items-start">
         <div className="flex-grow-1">
           <div><strong>{apiKey.name || "Unnamed API Key"}</strong></div>
+          {apiKey.key_end && (
+            <div className="text-muted small mt-2">Key ending: **** {apiKey.key_end}</div>
+          )}
           <div className="text-muted small mt-2">ID: {apiKey.id}</div>
        
           <div className="text-muted small mt-2">Created: {new Date(apiKey.created).toLocaleString()}</div>

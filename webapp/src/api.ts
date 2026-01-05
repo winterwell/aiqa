@@ -295,6 +295,7 @@ export async function createApiKey(apiKey: {
 	organisation: string;
 	name?: string;
 	key_hash: string;
+	key_end?: string;
 	rate_limit_per_hour?: number;
 	retention_period_days?: number;
 	role?: 'trace' | 'developer' | 'admin';

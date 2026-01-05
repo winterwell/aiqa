@@ -6,6 +6,7 @@ import ExpandCollapseControl from './generic/ExpandCollapseControl';
 import StarButton from './generic/StarButton';
 import CopyButton from './generic/CopyButton';
 import { truncate } from '../common/utils/miscutils';
+import ChatMessage from '../common/types/ChatMessage';
 
 interface SpanTree {
   span: Span;
@@ -13,7 +14,7 @@ interface SpanTree {
 }
 
 // Helper function to extract message text from output, recursing up to depth 2
-function extractMessageFromOutput(output: any, depth: number = 0): string | null {
+function extractMessageFromOutput(output: any, depth: number = 0): string | ChatMessage | null {
   if (depth > 2 || output === null || output === undefined) {
     return null;
   }
@@ -23,27 +24,15 @@ function extractMessageFromOutput(output: any, depth: number = 0): string | null
     return output;
   }
 
-  // {role, content} format
+    // Check for {role, content} format
+    if (typeof output === 'object' && output.role && output.content) {
+      return output as ChatMessage;
+    }
+
   if (typeof output === 'object') {
     // Check for direct message property
     if (typeof output.message === 'string') {
       return output.message;
-    }
-
-    // Check for {role, content} format
-    if (output.role && output.content) {
-      const content = output.content;
-      if (typeof content === 'string') {
-        return content;
-      }
-      // If content is an array with one item, recurse into it
-      if (Array.isArray(content) && content.length === 1) {
-        return extractMessageFromOutput(content[0], depth + 1);
-      }
-      // If content is an object with type="text", get the text
-      if (typeof content === 'object' && content.type === 'text' && typeof content.text === 'string') {
-        return content.text;
-      }
     }
 
     // Check for choices[0].message.content format (OpenAI style)
@@ -79,8 +68,8 @@ function extractMessageFromOutput(output: any, depth: number = 0): string | null
   return null;
 }
 
-// Helper function to get spanSummary from a span, checking output first, then child spans
-function getSpanSummary(span: Span, children: SpanTree[]): string | null {
+/** Helper function to get spanSummary from a span, checking output first, then child spans */
+function getSpanSummary(span: Span, children: SpanTree[]): string | ChatMessage | null  {
   const spanAny = span as any;
   const output = spanAny.attributes?.output;
 
@@ -88,7 +77,7 @@ function getSpanSummary(span: Span, children: SpanTree[]): string | null {
   if (output) {
     const message = extractMessageFromOutput(output);
     if (message) {
-      return truncate(message, 140);
+      return message;
     }
   }
 

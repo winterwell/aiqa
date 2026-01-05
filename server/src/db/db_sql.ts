@@ -410,6 +410,19 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Add key_end column to api_keys table if it doesn't exist (migration)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' AND column_name = 'key_end'
+		  ) THEN
+			ALTER TABLE api_keys ADD COLUMN key_end VARCHAR(4);
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**

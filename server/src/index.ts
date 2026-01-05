@@ -230,6 +230,7 @@ fastify.post('/api-key', { preHandler: authenticate }, async (request: Authentic
     organisation: body.organisation,
     name: body.name,
     key_hash: body.key_hash,
+    key_end: body.key_end,
     rate_limit_per_hour: body.rate_limit_per_hour,
     retention_period_days: body.retention_period_days,
     role: body.role || 'developer',
