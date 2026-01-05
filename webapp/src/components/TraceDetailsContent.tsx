@@ -221,6 +221,12 @@ function SpanTreeItem({ span, children, treeState, config }: { span: Span; child
   };
   const spanName = getSpanName(span);
   const spanSummary = getSpanSummary(span, children);
+  // TODO better
+  const spanSummaryText = typeof spanSummary === 'string' 
+    ? spanSummary 
+    : spanSummary?.content && typeof spanSummary.content === 'string'
+    ? spanSummary.content
+    : spanSummary ? JSON.stringify(spanSummary) : null;
   return (<div 
   style={{ 
     flex: 1,
@@ -234,7 +240,7 @@ function SpanTreeItem({ span, children, treeState, config }: { span: Span; child
   onClick={handleSelect}
 >									
   {spanName && <div>{spanName}</div>}
-  {spanSummary && <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{spanSummary}</div>}
+  {spanSummaryText && <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{spanSummaryText}</div>}
   <div><small>Span ID: {spanId}</small></div>
   <div><small>Duration: <span>{durationString(getDurationMs(span), config.durationUnit)}</span></small></div>
   <div style={{ position: 'absolute', right: '20px', top: '10px', display: 'flex', gap: '5px', alignItems: 'center' }}>

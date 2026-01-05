@@ -4,6 +4,8 @@ import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.
 import SearchQuery from '../common/SearchQuery.js';
 import Span from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
+import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
+import { getOrganisation } from '../db/db_sql.js';
 
 /**
  * Register span endpoints with Fastify
@@ -19,18 +21,36 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
     const spansArray = Array.isArray(spans) ? spans : [spans];
     
+    // Get organisation to check rate limit
+    const org = await getOrganisation(organisation);
+    const rateLimitPerHour = org?.rate_limit_per_hour ?? 1000;
+    
+    // Check rate limit before processing
+    const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);
+    if (rateLimitResult && !rateLimitResult.allowed) {
+      reply.code(429).send({ 
+        error: 'Rate limit exceeded',
+        limit: rateLimitPerHour,
+        remaining: rateLimitResult.remaining,
+        resetAt: new Date(rateLimitResult.resetAt).toISOString()
+      });
+      return;
+    }
+    
     // Add organisation to each span
     const spansWithOrg = spansArray.map(span => ({
       ...span,
       organisation,
     }));
     console.log("inserting: "+spansWithOrg.length+" spans");
-    // TODO rate limit check
+    
     // Add token cost (must be called on spansWithOrg so cost attributes are included when saving)
     spansWithOrg.forEach(span => addTokenCost(span));
     // save
     try {
       await bulkInsertSpans(spansWithOrg);
+      // Record successful span posting for rate limiting
+      await recordSpanPosting(organisation, spansWithOrg.length);
       return { success: true, count: spansWithOrg.length };
     } catch (error: any) {
       if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {

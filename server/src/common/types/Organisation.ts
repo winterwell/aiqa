@@ -19,7 +19,9 @@ export default interface Organisation {
   name: string;
   
   subscription: Subscription;
+  /** default: 1000 */
   rate_limit_per_hour?: number;
+  /** default: 20 */
   retention_period_days?: number;
   max_members?: number;
   max_datasets?: number;

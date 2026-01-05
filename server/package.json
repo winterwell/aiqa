@@ -8,7 +8,8 @@
     "build": "tsc",
     "test": "pnpm run build && tap test/**/*.ts",
     "start": "node dist/index.js",
-    "schema": "node scripts/generate-schemas.js"
+    "schema": "node scripts/generate-schemas.js",
+    "retention": "pnpm run build && node dist/scripts/delete-old-spans.js"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",
@@ -19,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
     "pg": "^8.11.3",
+    "redis": "^4.6.12",
     "vm2": "^3.9.21"
   },
   "devDependencies": {

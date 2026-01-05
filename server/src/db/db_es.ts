@@ -734,6 +734,66 @@ export async function deleteIndex(indexName: string): Promise<void> {
 }
 
 /**
+ * Delete old spans for an organisation based on retention period.
+ * Deletes spans where endTime (or startTime if endTime is missing) is older than the cutoff date.
+ * @param organisationId - Organisation ID
+ * @param retentionDays - Number of days to retain (spans older than this will be deleted)
+ * @returns Number of deleted spans
+ */
+export async function deleteOldSpans(organisationId: string, retentionDays: number): Promise<number> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  if (retentionDays <= 0) {
+    throw new Error('retentionDays must be greater than 0');
+  }
+
+  // Calculate cutoff time (milliseconds since epoch)
+  const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+
+  // Delete spans where:
+  // - organisation matches
+  // - (endTime < cutoffTime OR (endTime missing AND startTime < cutoffTime))
+  // Use deleteByQuery for efficient bulk deletion
+  const query = {
+    bool: {
+      must: [
+        { term: { organisation: organisationId } }
+      ],
+      should: [
+        // Spans with endTime older than cutoff
+        { range: { endTime: { lt: cutoffTime } } },
+        // Spans without endTime but with startTime older than cutoff
+        {
+          bool: {
+            must_not: { exists: { field: 'endTime' } },
+            must: { range: { startTime: { lt: cutoffTime } } }
+          }
+        }
+      ],
+      minimum_should_match: 1
+    }
+  };
+
+  try {
+    const response = await client.deleteByQuery({
+      index: SPAN_INDEX_ALIAS,
+      body: {
+        query
+      },
+      refresh: true,
+      conflicts: 'proceed' // Continue even if some documents are updated during deletion
+    });
+
+    return response.deleted || 0;
+  } catch (error: any) {
+    console.error(`Error deleting old spans for organisation ${organisationId}:`, error.message);
+    throw error;
+  }
+}
+
+/**
  * Close Elasticsearch client. Call during graceful shutdown.
  */
 export async function closeClient(): Promise<void> {

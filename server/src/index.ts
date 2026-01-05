@@ -8,6 +8,7 @@ import { dirname } from 'path';
 
 import { initPool, createTables, closePool } from './db/db_sql.js';
 import { initClient, createIndices, closeClient } from './db/db_es.js';
+import { initRedis, closeRedis } from './rate_limit.js';
 import {
   createUser,
   getUser,
@@ -55,9 +56,13 @@ const fastify = Fastify({
 // Initialize databases
 const pgConnectionString = process.env.DATABASE_URL;
 const esUrl = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
+const redisUrl = process.env.REDIS_URL;
 
 initPool(pgConnectionString);
 initClient(esUrl);
+initRedis(redisUrl).catch((err) => {
+  console.warn('Failed to initialize Redis (rate limiting will be disabled):', err);
+});
 
 // Graceful shutdown
 const shutdown = async () => {
@@ -65,6 +70,7 @@ const shutdown = async () => {
   await fastify.close();
   await closePool();
   await closeClient();
+  await closeRedis();
   process.exit(0);
 };
 

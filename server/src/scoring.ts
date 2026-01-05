@@ -67,11 +67,12 @@ function scoreMetricJavascript(metric: Metric, output: any, example: any): Promi
 					Headers: undefined,
 				},
 				// Block all Node.js built-in modules
+				// Type assertion needed because require option exists at runtime but may not be in type definitions
 				require: {
 					external: false,
 					builtin: [],
 				},
-			});
+			} as any);
 
 			// Execute the code in the sandbox
 			// The code should return a number directly or be an expression that evaluates to a number
