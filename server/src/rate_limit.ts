@@ -72,7 +72,7 @@ export async function checkRateLimit(
     // Calculate reset time (1 hour from oldest entry, or 1 hour from now if empty)
     let resetAt = now + 3600000;
     if (count > 0) {
-      const oldestEntry = await redisClient.zRange(key, 0, 0, { REV: false });
+      const oldestEntry = await redisClient.zRange(key, 0, 0);
       if (oldestEntry.length > 0) {
         const oldestScore = await redisClient.zScore(key, oldestEntry[0]);
         if (oldestScore !== null) {

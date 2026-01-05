@@ -667,8 +667,6 @@ export async function updateApiKey(id: string, updates: Partial<ApiKey>): Promis
 	const item: Record<string, any> = {};
 
 	if (updates.name !== undefined) item.name = updates.name;
-	if (updates.rate_limit_per_hour !== undefined) item.rate_limit_per_hour = updates.rate_limit_per_hour;
-	if (updates.retention_period_days !== undefined) item.retention_period_days = updates.retention_period_days;
 	if (updates.role !== undefined) item.role = updates.role;
 
 	return updateEntity<ApiKey>('api_keys', id, item, transformApiKey);
