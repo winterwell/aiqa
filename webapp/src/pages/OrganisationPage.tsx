@@ -1,19 +1,40 @@
-import React from 'react';
-import { useParams } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert } from 'reactstrap';
+import React, { useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getOrganisation, getOrCreateUser, listOrganisations } from '../api';
+import { Users as UsersIcon } from '@phosphor-icons/react';
+import { getOrganisation, getOrCreateUser, listOrganisations, getUser, getOrganisationAccount } from '../api';
 import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
+import ManageMembersModal from '../components/ManageMembersModal';
 
 const OrganisationPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
   const { user: auth0User } = useAuth0();
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 
   const { data: organisation, isLoading, error } = useQuery({
     queryKey: ['organisation', organisationId],
     queryFn: () => getOrganisation(organisationId!),
     enabled: !!organisationId,
+  });
+
+  // Fetch user details for member IDs
+  const memberIds = organisation?.members || [];
+  const { data: memberUsers, isLoading: isLoadingMembers } = useQuery({
+    queryKey: ['users-by-ids', memberIds.join(',')],
+    queryFn: async () => {
+      if (memberIds.length === 0) return [];
+      const userPromises = memberIds.map(async (id) => {
+        try {
+          return await getUser(id);
+        } catch {
+          return { id, email: undefined, name: undefined };
+        }
+      });
+      return Promise.all(userPromises);
+    },
+    enabled: !!organisation && memberIds.length > 0,
   });
 
   const { data: dbUser, isLoading: isLoadingUser } = useQuery({
@@ -35,6 +56,16 @@ const OrganisationPage: React.FC = () => {
     queryFn: () => listOrganisations(),
     enabled: shouldCheckOrganisations,
   });
+
+  // Fetch OrganisationAccount
+  const { data: organisationAccount, isLoading: isLoadingAccount } = useQuery({
+    queryKey: ['organisationAccount', organisationId],
+    queryFn: () => getOrganisationAccount(organisationId!),
+    enabled: !!organisationId,
+  });
+
+  // Check if user is super admin (member of AIQA organisation)
+  const isSuperAdmin = allOrganisations?.some(org => org.name === 'AIQA') || false;
 
   if (isLoading || isLoadingUser || (shouldCheckOrganisations && isLoadingOrgs)) {
     return (
@@ -134,6 +165,57 @@ const OrganisationPage: React.FC = () => {
           </Card>
         </Col>
       </Row>
+      <Row className="mt-4">
+        <Col md={6}>
+          <Card>
+            <CardHeader className="d-flex justify-content-between align-items-center">
+              <h5>Members</h5>
+              <Button color="primary" size="sm" onClick={() => setIsMembersModalOpen(true)}>
+                <UsersIcon size={16} className="me-1" />
+                Manage Members
+              </Button>
+            </CardHeader>
+            <CardBody>
+              {isLoadingMembers ? (
+                <div className="text-muted">Loading members...</div>
+              ) : !memberUsers || memberUsers.length === 0 ? (
+                <Alert color="info" className="mb-0">
+                  No members yet. Click "Manage Members" to add members.
+                </Alert>
+              ) : (
+                <ListGroup flush>
+                  {memberUsers.map((member: { id: string; email?: string; name?: string }) => {
+                    const memberSettings = organisation.member_settings?.[member.id];
+                    return (
+                      <ListGroupItem key={member.id}>
+                        <div>
+                          <div>
+                            {member.name || member.email || 'Unknown'}
+                            {member.email && member.name && (
+                              <span className="text-muted ms-2">({member.email})</span>
+                            )}
+                            {memberSettings && (
+                              <span className="badge bg-secondary ms-2">{memberSettings.role}</span>
+                            )}
+                          </div>
+                        </div>
+                      </ListGroupItem>
+                    );
+                  })}
+                </ListGroup>
+              )}
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      {organisation && (
+        <ManageMembersModal
+          isOpen={isMembersModalOpen}
+          toggle={() => setIsMembersModalOpen(false)}
+          organisation={organisation}
+        />
+      )}
     </Container>
   );
 };

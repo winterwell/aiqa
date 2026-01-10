@@ -5,7 +5,8 @@ import SearchQuery from '../common/SearchQuery.js';
 import Span from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
 import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
-import { getOrganisation } from '../db/db_sql.js';
+import { getOrganisation, getOrganisationAccountByOrganisation } from '../db/db_sql.js';
+import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 
 /**
  * Register span endpoints with Fastify
@@ -21,9 +22,9 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
     const spansArray = Array.isArray(spans) ? spans : [spans];
     
-    // Get organisation to check rate limit
-    const org = await getOrganisation(organisation);
-    const rateLimitPerHour = org?.rate_limit_per_hour ?? 1000;
+    // Get organisation account to check rate limit
+    const account = await getOrganisationAccountByOrganisation(organisation);
+    const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
     
     // Check rate limit before processing
     const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);

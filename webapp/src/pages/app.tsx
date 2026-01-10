@@ -22,6 +22,7 @@ import ExperimentCodePage from './ExperimentCodePage';
 import MetricsPage from './MetricsPage';
 import ProfilePage from './ProfilePage';
 import AccountPage from './AccountPage';
+import AdminPage from './AdminPage';
 import AboutPage from './AboutPage';
 import Layout from './Layout';
 import { ToastProvider } from '../utils/toast';
@@ -209,6 +210,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <AccountPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
           </ProtectedRoute>
         }
       />

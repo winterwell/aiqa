@@ -8,6 +8,7 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import {
 	Organisation,
+	OrganisationAccount,
 	User,
 	ApiKey,
 	Model,
@@ -23,6 +24,7 @@ let pool: Pool | null = null;
 /** Allowed fields per table (excluding id, created, updated which are managed by the database)  */
 const TABLE_FIELDS = {
 	organisations: getAllowedFieldsFromSchema('Organisation'),
+	organisation_accounts: getAllowedFieldsFromSchema('OrganisationAccount'),
 	users: getAllowedFieldsFromSchema('User'),
 	api_keys: getAllowedFieldsFromSchema('ApiKey'),
 	datasets: getAllowedFieldsFromSchema('Dataset'),
@@ -143,6 +145,7 @@ export async function doQuery<T extends QueryResultRow = any>(text: string, para
 export async function createTables(): Promise<void> {
 	// Load schemas
 	const organisationSchema = loadSchema('Organisation');
+	const organisationAccountSchema = loadSchema('OrganisationAccount');
 	const userSchema = loadSchema('User');
 	const apiKeySchema = loadSchema('ApiKey');
 	const modelSchema = loadSchema('Model');
@@ -151,6 +154,13 @@ export async function createTables(): Promise<void> {
 
 	// Create organisations table
 	await doQuery(generatePostgresTable('Organisation', organisationSchema, {}, []));
+
+	// Create organisation_accounts table
+	await doQuery(generatePostgresTable('OrganisationAccount', organisationAccountSchema, {
+		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
+	}, [
+		'UNIQUE(organisation)'
+	]));
 
 	// Create users table
 	await doQuery(generatePostgresTable('User', userSchema, {}, []));
@@ -180,6 +190,7 @@ export async function createTables(): Promise<void> {
 
 	// Create indexes
 		await doQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_organisation ON api_keys(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_organisation_accounts_organisation ON organisation_accounts(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_models_organisation ON models(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_datasets_organisation ON datasets(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_dataset ON experiments(dataset)`);
@@ -423,6 +434,25 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Migration: Drop subscription/limits columns from organisations table (moved to organisation_accounts)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'organisations' AND column_name = 'subscription'
+		  ) THEN
+			ALTER TABLE organisations DROP COLUMN IF EXISTS subscription;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS rate_limit_per_hour;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS retention_period_days;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS max_members;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS max_datasets;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS experiment_retention_days;
+			ALTER TABLE organisations DROP COLUMN IF EXISTS max_examples_per_dataset;
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**
@@ -465,6 +495,19 @@ async function listEntities<T extends QueryResultRow>(
 	return transform ? result.rows.map(transform) : result.rows;
 }
 
+/**
+/**
+ * Generic entity creation helper.
+ * 
+ * Where is ID created? 
+ * - If the `item` object contains an `id` field, it will be inserted explicitly.
+ * - Otherwise, we rely on the database table to generate a unique ID.
+ * 
+ * @param tableName The name of the database table to insert into.
+ * @param item The object containing fields and values for the new row.
+ * @param transform Optional function to transform the returned row before returning.
+ * @returns The created entity (optionally transformed).
+ */
 async function createEntity<T extends QueryResultRow>(
 	tableName: string,
 	item: Record<string, any>,
@@ -554,10 +597,9 @@ function transformOrganisation(row: any): Organisation {
 }
 
 // CRUD operations for Organisation
-export async function createOrganisation(org: Omit<Organisation, 'id' | 'created' | 'updated'>): Promise<Organisation> {
+export async function createOrganisation(org: Omit<Organisation, 'created' | 'updated'> & { id?: string }): Promise<Organisation> {
 	if ( ! org.member_settings) org.member_settings = {};
 	if ( ! org.members) org.members = [];
-	if ( ! org.subscription) org.subscription = { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' };
 	return createEntity<Organisation>(
 		'organisations', org,
 		transformOrganisation
@@ -584,6 +626,52 @@ export async function updateOrganisation(id: string, updatedItem: Partial<Organi
  */
 export async function deleteOrganisation(id: string): Promise<boolean> {
 	return deleteEntity('organisations', id);
+}
+
+// Helper function to transform OrganisationAccount
+function transformOrganisationAccount(row: any): OrganisationAccount {
+	return {
+		...row,
+		subscription: row.subscription ? (typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription) : { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' },
+	};
+}
+
+// CRUD operations for OrganisationAccount
+export async function createOrganisationAccount(account: Omit<OrganisationAccount, 'id' | 'created' | 'updated'>): Promise<OrganisationAccount> {
+	if ( ! account.subscription) account.subscription = { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' };
+	return createEntity<OrganisationAccount>(
+		'organisation_accounts', account,
+		transformOrganisationAccount
+	);
+}
+
+export async function getOrganisationAccount(id: string): Promise<OrganisationAccount | null> {
+	return getById<OrganisationAccount>('organisation_accounts', id, transformOrganisationAccount);
+}
+
+/**
+ * Get OrganisationAccount by organisation ID.
+ */
+export async function getOrganisationAccountByOrganisation(organisationId: string): Promise<OrganisationAccount | null> {
+	const result = await doQuery<OrganisationAccount>(
+		'SELECT * FROM organisation_accounts WHERE organisation = $1 LIMIT 1',
+		[organisationId]
+	);
+	if (result.rows.length === 0) {
+		return null;
+	}
+	return transformOrganisationAccount(result.rows[0]);
+}
+
+export async function updateOrganisationAccount(id: string, updatedItem: Partial<OrganisationAccount>): Promise<OrganisationAccount | null> {
+	return updateEntity<OrganisationAccount>('organisation_accounts', id, updatedItem, transformOrganisationAccount);
+}
+
+/**
+ * Returns true if deleted, false if not found.
+ */
+export async function deleteOrganisationAccount(id: string): Promise<boolean> {
+	return deleteEntity('organisation_accounts', id);
 }
 
 // CRUD operations for User

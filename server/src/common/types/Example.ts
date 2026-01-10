@@ -1,6 +1,9 @@
 import Span from "./Span";
 import { Metric } from "./Dataset";
 
+/**
+ * An Example aka an Eval
+ */
 export default interface Example {
 	id: string;
 	/* matches the Spans */

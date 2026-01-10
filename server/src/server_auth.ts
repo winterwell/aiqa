@@ -4,12 +4,13 @@
  */
 
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { getUser, getOrganisationsForUser, getOrganisation, listUsers, getApiKey, getApiKeyByHash } from './db/db_sql.js';
+import { getUser, getOrganisationsForUser, getOrganisation, listUsers, getApiKey, getApiKeyByHash, listOrganisations, getOrganisationMembers } from './db/db_sql.js';
 import ApiKey from './common/types/ApiKey.js';
 import * as crypto from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import * as jwksClient from 'jwks-rsa';
 import SearchQuery from './common/SearchQuery.js';
+import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 
 /**
  * Request with authentication metadata attached by authenticate middleware.
@@ -346,6 +347,32 @@ export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, 
 	// How is this possible??
 	console.error('checkAccess: authenticatedWith is not set', request.authenticatedWith);
 	return true;
+}
+
+/**
+ * Check if the user is a super admin (member of AIQA organisation).
+ * If AIQA org has ANYONE_EMAIL as a member, then always return true.
+ * @param userId - User ID to check
+ * @returns Promise resolving to true if user is a super admin, false otherwise
+ */
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+	if (!userId) {
+		return false;
+	}
+	const aiqaOrg = await getOrganisation(AIQA_ORG_ID);
+	if (!aiqaOrg) {
+		return false;
+	}
+	
+	// Check if ANYONE_EMAIL is a member - if so, everyone is a super admin
+	const members = await getOrganisationMembers(AIQA_ORG_ID);
+	const hasAnyoneEmail = members.some(member => member.email === ANYONE_EMAIL);
+	if (hasAnyoneEmail) {
+		return true;
+	}
+	
+	// Otherwise, check if the user is a member
+	return aiqaOrg.members && aiqaOrg.members.includes(userId);
 }
 
 /**

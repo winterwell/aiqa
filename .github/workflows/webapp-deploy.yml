@@ -11,6 +11,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: prod
+    # Grant minimal permissions so the workflow can download (checkout) the repository code.
     permissions:
       contents: read
     env:

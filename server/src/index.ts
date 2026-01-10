@@ -6,7 +6,7 @@ import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-import { initPool, createTables, closePool } from './db/db_sql.js';
+import { initPool, createTables, closePool, createOrganisation, listOrganisations, addOrganisationMember, createOrganisationAccount, getOrganisationAccountByOrganisation } from './db/db_sql.js';
 import { initClient, createIndices, closeClient } from './db/db_es.js';
 import { initRedis, closeRedis } from './rate_limit.js';
 import {
@@ -33,6 +33,7 @@ import {
 import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, checkAccess } from './server_auth.js';
 import SearchQuery from './common/SearchQuery.js';
 import Example from './common/types/Example.js';
+import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
 import { registerOrganisationRoutes } from './routes/organisations.js';
@@ -427,6 +428,60 @@ fastify.get('/example', { preHandler: authenticate }, async (request: Authentica
   };
 });
 
+// Initialize AIQA organisation and admin user
+async function initializeAiqaOrg(): Promise<void> {
+  const adminEmail = process.env.AIQA_ADMIN_EMAIL || ANYONE_EMAIL;
+  
+  // Find or create AIQA organisation
+  let aiqaOrg = (await listOrganisations(new SearchQuery('name:AIQA')))[0];
+  if (!aiqaOrg) {
+    aiqaOrg = await createOrganisation({
+      id: AIQA_ORG_ID,
+      name: 'AIQA',
+      members: [],
+      member_settings: {},
+    });
+    fastify.log.info(`Created AIQA organisation: ${aiqaOrg.id}`);
+  }
+  
+  // Find or create admin user
+  if (adminEmail !== ANYONE_EMAIL) {
+    let adminUser = (await listUsers(new SearchQuery(`email:${adminEmail}`)))[0];
+    if (!adminUser) {
+      adminUser = await createUser({
+        email: adminEmail,
+        name: adminEmail.split('@')[0],
+        sub: `aiqa-admin-${adminEmail}`, // Placeholder sub for admin user
+      });
+      fastify.log.info(`Created admin user: ${adminUser.id}`);
+    }
+    
+    // Add admin user to AIQA organisation if not already a member
+    if (!aiqaOrg.members.includes(adminUser.id)) {
+      await addOrganisationMember(aiqaOrg.id, adminUser.id);
+      fastify.log.info(`Added ${adminEmail} to AIQA organisation`);
+    }
+  }
+
+  // Create OrganisationAccount for AIQA if it doesn't exist
+  const account = await getOrganisationAccountByOrganisation(aiqaOrg.id);
+  if (!account) {
+    await createOrganisationAccount({
+      organisation: aiqaOrg.id,
+      subscription: {
+        type: 'enterprise',
+        status: 'active',
+        start_date: new Date(),
+        end_date: null,
+        renewal_date: null,
+        price_per_month: 0,
+        currency: 'USD',
+      },
+    });
+    fastify.log.info(`Created OrganisationAccount for AIQA`);
+  }
+} // end initializeAiqaOrg
+
 // Start server
 const start = async () => {
   try {
@@ -435,6 +490,9 @@ const start = async () => {
       await createTables();
       await createIndices();
       fastify.log.info('Database schemas initialized');
+      
+      // Initialize AIQA organisation and admin user
+      await initializeAiqaOrg();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       fastify.log.error(`Error initializing schemas: ${message}`);

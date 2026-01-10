@@ -2,35 +2,6 @@
   "$ref": "#/definitions/Organisation",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "LifecycleStatus": {
-      "description": "LifecycleStatus describes the lifecycle state of an entity or process.",
-      "enum": [
-        "draft",
-        "processing",
-        "active",
-        "closing",
-        "closed",
-        "archived",
-        "error"
-      ],
-      "type": "string"
-    },
-    "MemberSettings": {
-      "additionalProperties": false,
-      "properties": {
-        "role": {
-          "enum": [
-            "admin",
-            "standard"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "role"
-      ],
-      "type": "object"
-    },
     "Organisation": {
       "additionalProperties": false,
       "properties": {
@@ -38,20 +9,28 @@
           "format": "date-time",
           "type": "string"
         },
-        "experiment_retention_days": {
-          "type": "number"
-        },
         "id": {
           "type": "string"
         },
-        "max_datasets": {
-          "type": "number"
-        },
-        "max_examples_per_dataset": {
-          "type": "number"
-        },
-        "max_members": {
-          "type": "number"
+        "member_settings": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "role": {
+                "enum": [
+                  "admin",
+                  "standard"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "type": "object"
+          },
+          "description": "user id to user-specific settings for the organisation",
+          "type": "object"
         },
         "members": {
           "description": "User ids of members of the organisation. Must contain the current user's id.",
@@ -60,85 +39,8 @@
           },
           "type": "array"
         },
-        "member_settings": {
-          "description": "user id to user-specific settings for the organisation",
-          "additionalProperties": {
-            "$ref": "#/definitions/MemberSettings"
-          },
-          "type": "object"
-        },
         "name": {
           "type": "string"
-        },
-        "rate_limit_per_hour": {
-          "type": "number"
-        },
-        "retention_period_days": {
-          "type": "number"
-        },
-        "subscription": {
-          "additionalProperties": false,
-          "properties": {
-            "currency": {
-              "enum": [
-                "USD",
-                "EUR",
-                "GBP"
-              ],
-              "type": "string"
-            },
-            "end_date": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "price_per_month": {
-              "type": "number"
-            },
-            "renewal_date": {
-              "anyOf": [
-                {
-                  "format": "date-time",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "start_date": {
-              "format": "date-time",
-              "type": "string"
-            },
-            "status": {
-              "$ref": "#/definitions/LifecycleStatus"
-            },
-            "type": {
-              "enum": [
-                "trial",
-                "free",
-                "pro",
-                "enterprise"
-              ],
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "status",
-            "start_date",
-            "end_date",
-            "renewal_date",
-            "price_per_month",
-            "currency"
-          ],
-          "type": "object"
         },
         "updated": {
           "format": "date-time",
@@ -148,7 +50,6 @@
       "required": [
         "id",
         "name",
-        "subscription",
         "members",
         "created",
         "updated"

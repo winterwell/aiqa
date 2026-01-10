@@ -1,5 +1,6 @@
 // Schema registry - imports all JSON schema files so they're bundled into the build
 import OrganisationSchema from '../types/Organisation.schema.json';
+import OrganisationAccountSchema from '../types/OrganisationAccount.schema.json';
 import UserSchema from '../types/User.schema.json';
 import ApiKeySchema from '../types/ApiKey.schema.json';
 import ModelSchema from '../types/Model.schema.json';
@@ -12,6 +13,7 @@ import type { JsonSchema } from './schema-loader.js';
 
 const schemaRegistry: Record<string, JsonSchema> = {
   Organisation: OrganisationSchema as JsonSchema,
+  OrganisationAccount: OrganisationAccountSchema as JsonSchema,
   User: UserSchema as JsonSchema,
   ApiKey: ApiKeySchema as JsonSchema,
   Model: ModelSchema as JsonSchema,

@@ -9,8 +9,13 @@ import {
   removeOrganisationMember,
   getOrganisationMembers,
   getOrganisationsForUser,
+  getOrganisationAccount,
+  getOrganisationAccountByOrganisation,
+  createOrganisationAccount,
+  updateOrganisationAccount,
+  listOrganisationAccounts,
 } from '../db/db_sql.js';
-import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
+import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 
 /**
@@ -168,6 +173,137 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     const { organisationId } = request.params as { organisationId: string };
     const members = await getOrganisationMembers(organisationId);
     return members;
+  });
+
+  // ===== ORGANISATION ACCOUNT ENDPOINTS =====
+  
+  // Get OrganisationAccount by organisation ID
+  // Security: Super admin or organisation members can read
+  fastify.get('/organisation/:organisationId/account', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!request.userId) {
+      reply.code(401).send({ error: 'User ID not found in authenticated request' });
+      return;
+    }
+    const { organisationId } = request.params as { organisationId: string };
+    
+    // Check if user is super admin or member of organisation
+    const isSuper = await isSuperAdmin(request.userId);
+    const org = await getOrganisation(organisationId);
+    if (!org) {
+      reply.code(404).send({ error: 'Organisation not found' });
+      return;
+    }
+    const isMember = org.members.includes(request.userId);
+    
+    if (!isSuper && !isMember) {
+      reply.code(403).send({ error: 'Access denied. Must be super admin or organisation member' });
+      return;
+    }
+    
+    const account = await getOrganisationAccountByOrganisation(organisationId);
+    if (!account) {
+      reply.code(404).send({ error: 'OrganisationAccount not found' });
+      return;
+    }
+    return account;
+  });
+
+  // Get OrganisationAccount by ID
+  // Security: Super admin or organisation members can read
+  fastify.get('/organisation-account/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!request.userId) {
+      reply.code(401).send({ error: 'User ID not found in authenticated request' });
+      return;
+    }
+    const { id } = request.params as { id: string };
+    
+    const account = await getOrganisationAccount(id);
+    if (!account) {
+      reply.code(404).send({ error: 'OrganisationAccount not found' });
+      return;
+    }
+    
+    // Check if user is super admin or member of organisation
+    const isSuper = await isSuperAdmin(request.userId);
+    const org = await getOrganisation(account.organisation);
+    if (!org) {
+      reply.code(404).send({ error: 'Organisation not found' });
+      return;
+    }
+    const isMember = org.members.includes(request.userId);
+    
+    if (!isSuper && !isMember) {
+      reply.code(403).send({ error: 'Access denied. Must be super admin or organisation member' });
+      return;
+    }
+    
+    return account;
+  });
+
+  // List all OrganisationAccounts (super admin only)
+  // Security: Super admin only
+  fastify.get('/organisation-account', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!request.userId) {
+      reply.code(401).send({ error: 'User ID not found in authenticated request' });
+      return;
+    }
+    
+    const isSuper = await isSuperAdmin(request.userId);
+    if (!isSuper) {
+      reply.code(403).send({ error: 'Access denied. Super admin only' });
+      return;
+    }
+    
+    const query = (request.query as any).q as string | undefined;
+    const searchQuery = query ? new SearchQuery(query) : null;
+    const accounts = await listOrganisationAccounts(searchQuery);
+    return accounts;
+  });
+
+  // Create OrganisationAccount
+  // Security: Super admin only
+  fastify.post('/organisation-account', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!request.userId) {
+      reply.code(401).send({ error: 'User ID not found in authenticated request' });
+      return;
+    }
+    
+    const isSuper = await isSuperAdmin(request.userId);
+    if (!isSuper) {
+      reply.code(403).send({ error: 'Access denied. Super admin only' });
+      return;
+    }
+    
+    const account = await createOrganisationAccount(request.body as any);
+    return account;
+  });
+
+  // Update OrganisationAccount
+  // Security: Super admin only
+  fastify.put('/organisation-account/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!request.userId) {
+      reply.code(401).send({ error: 'User ID not found in authenticated request' });
+      return;
+    }
+    
+    const isSuper = await isSuperAdmin(request.userId);
+    if (!isSuper) {
+      reply.code(403).send({ error: 'Access denied. Super admin only' });
+      return;
+    }
+    
+    const { id } = request.params as { id: string };
+    const account = await updateOrganisationAccount(id, request.body as any);
+    if (!account) {
+      reply.code(404).send({ error: 'OrganisationAccount not found' });
+      return;
+    }
+    return account;
   });
 }
 

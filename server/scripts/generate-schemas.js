@@ -12,6 +12,7 @@ const outputDir = path.join(__dirname, '../src/common/types');
 // Both Span.schema.json and Example.schema.json are maintained manually.
 const typeFiles = [
   { file: 'Organisation.ts', type: 'Organisation' },
+  { file: 'OrganisationAccount.ts', type: 'OrganisationAccount' },
   { file: 'User.ts', type: 'User' },
   { file: 'ApiKey.ts', type: 'ApiKey' },
   { file: 'Model.ts', type: 'Model' },

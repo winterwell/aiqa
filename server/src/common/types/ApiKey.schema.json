@@ -16,6 +16,10 @@
           "description": "The actual API key. This is NOT stored in the database. Only present temporarily in the frontend when generating a new key.",
           "type": "string"
         },
+        "key_end": {
+          "description": "store the last 4 characters of the API key so the user can identify it in the webapp",
+          "type": "string"
+        },
         "key_hash": {
           "description": "Only the hash of the API key is stored in the database. This is used to authenticate requests. Hash algorithm: sha256",
           "type": "string"
@@ -27,15 +31,13 @@
         "organisation": {
           "type": "string"
         },
-        "rate_limit_per_hour": {
-          "type": "number"
-        },
-        "retention_period_days": {
-          "type": "number"
-        },
         "role": {
           "description": "Role of the API key: 'trace' (can only post spans), 'developer' (most endpoints), or 'admin' (all endpoints)",
-          "enum": ["trace", "developer", "admin"],
+          "enum": [
+            "trace",
+            "developer",
+            "admin"
+          ],
           "type": "string"
         },
         "updated": {

@@ -63,6 +63,45 @@ export async function createOrganisation(org: { name: string; members: string[] 
 	});
 }
 
+export async function updateOrganisation(id: string, updates: Partial<{
+	name?: string;
+	members?: string[];
+	member_settings?: Record<string, { role: 'admin' | 'standard' }>;
+}>) {
+	return fetchWithAuth(`/organisation/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
+	});
+}
+
+// OrganisationAccount endpoints
+export async function getOrganisationAccount(organisationId: string) {
+	return fetchWithAuth(`/organisation/${organisationId}/account`);
+}
+
+export async function updateOrganisationAccount(id: string, updates: Partial<{
+	subscription?: {
+		type?: 'free' | 'trial' | 'pro' | 'enterprise';
+		status?: string;
+		start_date?: Date | string;
+		end_date?: Date | string | null;
+		renewal_date?: Date | string | null;
+		price_per_month?: number;
+		currency?: 'USD' | 'EUR' | 'GBP';
+	};
+	rate_limit_per_hour?: number;
+	retention_period_days?: number;
+	max_members?: number;
+	max_datasets?: number;
+	experiment_retention_days?: number;
+	max_examples_per_dataset?: number;
+}>) {
+	return fetchWithAuth(`/organisation-account/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
+	});
+}
+
 // Dataset endpoints
 export async function getDataset(id: string) {
 	return fetchWithAuth(`/dataset/${id}`);
@@ -242,6 +281,10 @@ export async function getUserByJWT() {
 	return fetchWithAuth(`/user/jwt`);
 }
 
+export async function getUser(id: string) {
+	return fetchWithAuth(`/user/${id}`);
+}
+
 export async function createUser(user: { email: string; name: string }) {
 	return fetchWithAuth('/user', {
 		method: 'POST',
@@ -271,6 +314,12 @@ export async function getOrCreateUser(email: string, name: string) {
 	console.log("creating new user: "+email+" "+name);
 	return createUser({ email, name});
 }
+
+export async function listUsers(query?: string) {
+	const url = query ? `/user?q=${encodeURIComponent(query)}` : '/user';
+	return fetchWithAuth(url);
+}
+
 
 // API Key endpoints
 export async function listApiKeys(organisationId: string, query?: string) {

@@ -65,9 +65,6 @@ const LeftNav: React.FC = () => {
 						>
 							<Number n={index+1} done={isDone} isCurrent={isCurrent} />
 							{item.label}
-							{isDone && (
-								<span className="ms-2 checkmark-animate checkmark-icon">✓</span>
-							)}
 						</NavLink>
 					</NavItem>
 				);
