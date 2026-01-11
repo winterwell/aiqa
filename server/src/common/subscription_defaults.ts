@@ -21,42 +21,6 @@ type SubscriptionsConfig = {
   enterprise: SubscriptionDefaults;
 };
 
-{
-	"free": {
-		"rate_limit_per_hour": 100,
-		"retention_period_days": 7,
-		"max_members": 1,
-		"max_datasets": 1,
-		"experiment_retention_days": 30,
-		"max_examples_per_dataset": 100
-	},
-	"trial": {
-		"rate_limit_per_hour": 1000,
-		"retention_period_days": 30,
-		"max_members": 10,
-		"max_datasets": 10,
-		"experiment_retention_days": 45,
-		"max_examples_per_dataset": 1000
-	},
-	"pro": {
-		"rate_limit_per_hour": 1000,
-		"retention_period_days": 30,
-		"max_members": 10,
-		"max_datasets": 10,
-		"experiment_retention_days": 45,
-		"max_examples_per_dataset": 1000
-	},
-	"enterprise": {
-		"rate_limit_per_hour": 10000,
-		"retention_period_days": 365,
-		"max_members": 100,
-		"max_datasets": 100,
-		"experiment_retention_days": 365,
-		"max_examples_per_dataset": 10000
-	}
-}
-
-
 let subscriptionsConfig: SubscriptionsConfig | null = null;
 
 function loadSubscriptionsConfig(): SubscriptionsConfig {

@@ -65,8 +65,8 @@ export async function checkRateLimit(
     // Count current entries in the window
     const count = await redisClient.zCard(key);
     
-    // Check if limit is exceeded
-    const allowed = count < limitPerHour;
+    // Check if limit is exceeded (allow at exactly the limit)
+    const allowed = count <= limitPerHour;
     const remaining = Math.max(0, limitPerHour - count);
     
     // Calculate reset time (1 hour from oldest entry, or 1 hour from now if empty)

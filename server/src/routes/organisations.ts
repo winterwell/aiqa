@@ -12,8 +12,7 @@ import {
   getOrganisationAccount,
   getOrganisationAccountByOrganisation,
   createOrganisationAccount,
-  updateOrganisationAccount,
-  listOrganisationAccounts,
+  updateOrganisationAccount
 } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
@@ -240,27 +239,6 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     }
     
     return account;
-  });
-
-  // List all OrganisationAccounts (super admin only)
-  // Security: Super admin only
-  fastify.get('/organisation-account', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-    if (!request.userId) {
-      reply.code(401).send({ error: 'User ID not found in authenticated request' });
-      return;
-    }
-    
-    const isSuper = await isSuperAdmin(request.userId);
-    if (!isSuper) {
-      reply.code(403).send({ error: 'Access denied. Super admin only' });
-      return;
-    }
-    
-    const query = (request.query as any).q as string | undefined;
-    const searchQuery = query ? new SearchQuery(query) : null;
-    const accounts = await listOrganisationAccounts(searchQuery);
-    return accounts;
   });
 
   // Create OrganisationAccount

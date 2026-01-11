@@ -72,15 +72,11 @@ tap.test('database initialization', async (t) => {
 tap.test('create organisation', async (t) => {
   const org = await createOrganisation({
     name: 'Test Org Create',
-    rate_limit_per_hour: 1000,
-    retention_period_days: 30,
     members: [],
   });
   
   t.ok(org.id, 'should have an id');
   t.equal(org.name, 'Test Org Create', 'should have correct name');
-  t.equal(org.rate_limit_per_hour, 1000, 'should have correct rate_limit_per_hour');
-  t.equal(org.retention_period_days, 30, 'should have correct retention_period_days');
   t.ok(Array.isArray(org.members), 'members should be an array');
   t.ok(org.created instanceof Date, 'should have created timestamp');
   t.ok(org.updated instanceof Date, 'should have updated timestamp');
@@ -92,8 +88,6 @@ tap.test('get organisation by id', async (t) => {
   const user2Id = '22222222-2222-2222-2222-222222222222';
   const created = await createOrganisation({
     name: 'Test Org Get',
-    rate_limit_per_hour: 2000,
-    retention_period_days: 60,
     members: [user1Id, user2Id],
   });
   
@@ -103,8 +97,6 @@ tap.test('get organisation by id', async (t) => {
   t.ok(retrieved, 'should retrieve organisation');
   t.equal(retrieved!.id, created.id, 'should have matching id');
   t.equal(retrieved!.name, 'Test Org Get', 'should have correct name');
-  t.equal(retrieved!.rate_limit_per_hour, 2000, 'should have correct rate_limit_per_hour');
-  t.equal(retrieved!.retention_period_days, 60, 'should have correct retention_period_days');
   t.same(retrieved!.members, [user1Id, user2Id], 'should have correct members');
   
   // Test non-existent organisation
@@ -120,13 +112,11 @@ tap.test('list organisations', async (t) => {
   
   const org1 = await createOrganisation({
     name: org1Name,
-    rate_limit_per_hour: 100,
     members: [],
   });
   
   const org2 = await createOrganisation({
     name: org2Name,
-    rate_limit_per_hour: 200,
     members: [],
   });
   
@@ -145,7 +135,8 @@ tap.test('list organisations', async (t) => {
   t.equal(foundOrg2!.name, org2Name, 'org2 should have correct name');
   
   // Test with search query - use the unique name to avoid conflicts
-  const filteredOrgs = await listOrganisations(`name:${org1Name}`);
+  // Quote the value since it contains spaces
+  const filteredOrgs = await listOrganisations(`name:"${org1Name}"`);
   t.equal(filteredOrgs.length, 1, 'should find exactly one organisation with search query');
   t.equal(filteredOrgs[0].id, org1.id, 'should find the correct organisation');
 });
@@ -157,8 +148,6 @@ tap.test('update organisation', async (t) => {
   const user3Id = '33333333-3333-3333-3333-333333333333';
   const created = await createOrganisation({
     name: 'Test Org Update',
-    rate_limit_per_hour: 500,
-    retention_period_days: 15,
     members: [user1Id],
   });
   
@@ -167,17 +156,14 @@ tap.test('update organisation', async (t) => {
   // Wait a bit to ensure updated timestamp changes
   await new Promise(resolve => setTimeout(resolve, 10));
   
-  // Update name and rate_limit_per_hour
+  // Update name
   const updated = await updateOrganisation(created.id, {
     name: 'Test Org Updated',
-    rate_limit_per_hour: 1500,
   });
   
   t.ok(updated, 'should return updated organisation');
   t.equal(updated!.id, created.id, 'should have same id');
   t.equal(updated!.name, 'Test Org Updated', 'should have updated name');
-  t.equal(updated!.rate_limit_per_hour, 1500, 'should have updated rate_limit_per_hour');
-  t.equal(updated!.retention_period_days, 15, 'should preserve retention_period_days');
   t.same(updated!.members, [user1Id], 'should preserve members');
   t.ok(updated!.updated.getTime() > originalUpdated.getTime(), 'updated timestamp should change');
   
@@ -199,7 +185,6 @@ tap.test('delete organisation', async (t) => {
   // Create an organisation
   const created = await createOrganisation({
     name: 'Test Org Delete',
-    rate_limit_per_hour: 300,
     members: [],
   });
   
@@ -225,8 +210,6 @@ tap.test('full CRUD workflow', async (t) => {
   const user1Id = '11111111-1111-1111-1111-111111111111';
   const org = await createOrganisation({
     name: 'CRUD Test Org',
-    rate_limit_per_hour: 1000,
-    retention_period_days: 90,
     members: [user1Id],
   });
   
@@ -240,10 +223,8 @@ tap.test('full CRUD workflow', async (t) => {
   // Update
   const updated = await updateOrganisation(org.id, {
     name: 'CRUD Test Org Updated',
-    rate_limit_per_hour: 2000,
   });
   t.equal(updated!.name, 'CRUD Test Org Updated', 'should update name');
-  t.equal(updated!.rate_limit_per_hour, 2000, 'should update rate_limit_per_hour');
   
   // Verify update persisted
   const retrievedAfterUpdate = await getOrganisation(org.id);
@@ -263,7 +244,6 @@ tap.test('create experiment', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -312,7 +292,6 @@ tap.test('get experiment by id', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Get Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -347,7 +326,6 @@ tap.test('list experiments', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for List Experiments',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -391,7 +369,6 @@ tap.test('update experiment', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Update Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -451,7 +428,6 @@ tap.test('delete experiment', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Delete Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -487,7 +463,6 @@ tap.test('experiment JSON fields handling', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for JSON Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
@@ -564,7 +539,6 @@ tap.test('experiment full CRUD workflow', async (t) => {
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for CRUD Experiment',
-    rate_limit_per_hour: 1000,
     members: [],
   });
   
