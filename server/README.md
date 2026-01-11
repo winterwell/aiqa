@@ -14,6 +14,10 @@ npm run build (compiles the code)
 npm run test (runs the tests)
 npm run start (starts the server)
 
+Installation:
+After cloning or pulling changes, run: pnpm install
+This installs dependencies including @fastify/compress for HTTP response compression.
+
 Package manager: pnpm
 
 Receives opentelemetry traces from a client and stores them in an ElasticSearch database.

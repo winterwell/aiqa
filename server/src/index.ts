@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import compress from '@fastify/compress';
 import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -498,6 +499,12 @@ const start = async () => {
       fastify.log.error(`Error initializing schemas: ${message}`);
       // Continue anyway - defensive code will create indices on-demand
     }
+    
+    // Register compression plugin - compresses responses for clients that support it
+    await fastify.register(compress, {
+      global: true, // Enable compression for all routes
+      threshold: 1024, // Only compress responses larger than 1KB
+    });
     
     // Register CORS plugin - allow all origins
     await fastify.register(cors, {
