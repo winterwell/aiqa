@@ -146,10 +146,31 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		);
 	}
 
+	// Extract Overall Score from summary_results
+	const overallScoreStats = useMemo(() => {
+		const summary = experiment.summary_results || {};
+		const overallScore = summary['Overall Score'];
+		if (!overallScore || typeof overallScore !== 'object') {
+			return null;
+		}
+		
+		// Handle both MetricStats format {mean, min, max, var, count} and legacy formats
+		const mean = overallScore.mean ?? overallScore.avg ?? overallScore.average ?? null;
+		const min = overallScore.min ?? null;
+		const max = overallScore.max ?? null;
+		const count = overallScore.count ?? null;
+		
+		if (mean === null || !isFinite(mean)) {
+			return null;
+		}
+		
+		return { mean, min, max, count };
+	}, [experiment.summary_results]);
+
 	// Filter to only metrics with numerical data
 	const metricsWithData = metricData.filter(md => md.count > 0);
 
-	if (metricsWithData.length === 0) {
+	if (metricsWithData.length === 0 && !overallScoreStats) {
 		return (
 			<Alert color="info" className="mt-3">
 				No numerical data found for any metrics. Ensure experiment results contain numeric scores.
@@ -157,16 +178,40 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		);
 	}
 
-	// Calculate column width based on number of metrics
+	// Calculate column width based on number of metrics (including Overall Score)
+	const totalMetrics = metricsWithData.length + (overallScoreStats ? 1 : 0);
 	const getColumnWidth = () => {
-		if (metricsWithData.length <= 1) return 12;
-		if (metricsWithData.length === 2) return 6;
+		if (totalMetrics <= 1) return 12;
+		if (totalMetrics === 2) return 6;
 		return 4; // 3 or more metrics
 	};
 	const colWidth = getColumnWidth();
 
 	return (
 		<Row className="mt-3">
+			{overallScoreStats && (
+				<Col md={colWidth} key="Overall Score" className="mb-4">
+					<Card>
+						<CardHeader>
+							<h5>Overall Score</h5>
+							<p className="text-muted small mb-0">Geometric mean of all metrics</p>
+						</CardHeader>
+						<CardBody>
+							<div className="mt-3">
+								<p className="mb-1">
+									<strong>Statistics:</strong>
+								</p>
+								<ul className="list-unstyled mb-0">
+									{overallScoreStats.count !== null && <li>Count: {overallScoreStats.count}</li>}
+									{overallScoreStats.min !== null && <li>Min: {overallScoreStats.min.toFixed(2)}</li>}
+									{overallScoreStats.max !== null && <li>Max: {overallScoreStats.max.toFixed(2)}</li>}
+									<li>Mean: {overallScoreStats.mean.toFixed(2)}</li>
+								</ul>
+							</div>
+						</CardBody>
+					</Card>
+				</Col>
+			)}
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
 				<Col md={colWidth} key={metric.name} className="mb-4">
 					<MetricDataCard

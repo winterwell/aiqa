@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import tap from 'tap';
 import Fastify from 'fastify';
 import { initPool, createTables, closePool, createOrganisation, createApiKey } from '../dist/db/db_sql.js';
-import { initClient, createIndices, closeClient } from '../dist/db/db_es.js';
+import { initClient, createIndices, closeClient, checkElasticsearchAvailable } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
 import type { AuthenticatedRequest } from '../src/server_auth.js';
 
@@ -12,6 +12,7 @@ dotenv.config();
 let fastify: ReturnType<typeof Fastify> | null = null;
 let testOrgId: string | null = null;
 let testApiKey: string | null = null;
+let elasticsearchAvailable = false;
 
 tap.before(async () => {
   // Initialize databases
@@ -21,6 +22,12 @@ tap.before(async () => {
 
   initPool(pgConnectionString);
   initClient(esUrl);
+
+  // Check if Elasticsearch is available
+  elasticsearchAvailable = await checkElasticsearchAvailable();
+  if (!elasticsearchAvailable) {
+    return; // Skip setup if Elasticsearch is not available
+  }
 
   // Create schemas
   await createTables();
@@ -33,8 +40,8 @@ tap.before(async () => {
 
   // Import route handlers
   const { authenticateApiKey } = await import('../dist/src/server_auth.js');
-  const { bulkInsertSpans, searchSpans } = await import('../dist/src/db_es.js');
-  const SearchQuery = (await import('../dist/src/common/SearchQuery.js')).default;
+  const { bulkInsertSpans, searchSpans } = await import('../dist/db/db_es.js');
+  const SearchQuery = (await import('../dist/common/SearchQuery.js')).default;
 
   // Register span endpoints
   fastify.post('/span', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
@@ -94,6 +101,11 @@ tap.after(async () => {
 });
 
 tap.test('create a new span and retrieve it by id', async (t) => {
+  if (!elasticsearchAvailable) {
+    t.skip('Elasticsearch not available');
+    return;
+  }
+  
   if (!fastify || !testOrgId || !testApiKey) {
     t.fail('Test setup failed');
     return;

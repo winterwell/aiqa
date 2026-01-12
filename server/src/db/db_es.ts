@@ -35,6 +35,22 @@ export function getClient(): Client {
   return client;
 }
 
+/**
+ * Check if Elasticsearch is available by pinging the cluster.
+ * Returns true if available, false otherwise.
+ */
+export async function checkElasticsearchAvailable(): Promise<boolean> {
+  if (!client) {
+    return false;
+  }
+  try {
+    await client.ping();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 /**  Recursively generate Elasticsearch mappings from JSON Schema properties */
 function generateEsMappingsFromSchema(properties: Record<string, any>): Record<string, any> {
   const mappings: Record<string, any> = {};

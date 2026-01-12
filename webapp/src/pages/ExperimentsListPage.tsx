@@ -139,27 +139,38 @@ const ExperimentsListPage: React.FC = () => {
                     <tr>
                       <th>ID</th>
                       <th>Dataset ID</th>
+                      <th>Overall Score</th>
                       <th>Created</th>
                       <th>Updated</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredExperiments.map((experiment: Experiment) => (
-                      <tr 
-                        key={experiment.id}
-                        onClick={() => navigate(`/organisation/${organisationId}/experiment/${experiment.id}`)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <td>
-                          <A href={`/organisation/${organisationId}/experiment/${experiment.id}`}><strong>{experiment.id.substring(0, 8)}...</strong></A>
-                        </td>
-                        <td>                          
-                            {experiment.dataset.substring(0, 8)}...
-                        </td>
-                        <td>{new Date(experiment.created).toLocaleString()}</td>
-                        <td>{new Date(experiment.updated).toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {filteredExperiments.map((experiment: Experiment) => {
+                      const summary = experiment.summary_results || {};
+                      const overallScore = summary['Overall Score'];
+                      const overallScoreMean = overallScore?.mean ?? overallScore?.avg ?? overallScore?.average ?? null;
+                      const overallScoreValue = overallScoreMean !== null && isFinite(overallScoreMean) 
+                        ? overallScoreMean.toFixed(2) 
+                        : '-';
+                      
+                      return (
+                        <tr 
+                          key={experiment.id}
+                          onClick={() => navigate(`/organisation/${organisationId}/experiment/${experiment.id}`)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td>
+                            <A href={`/organisation/${organisationId}/experiment/${experiment.id}`}><strong>{experiment.id.substring(0, 8)}...</strong></A>
+                          </td>
+                          <td>                          
+                              {experiment.dataset.substring(0, 8)}...
+                          </td>
+                          <td>{overallScoreValue}</td>
+                          <td>{new Date(experiment.created).toLocaleString()}</td>
+                          <td>{new Date(experiment.updated).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </Table>
               )}

@@ -153,9 +153,6 @@ tap.test('update organisation', async (t) => {
   
   const originalUpdated = created.updated;
   
-  // Wait a bit to ensure updated timestamp changes
-  await new Promise(resolve => setTimeout(resolve, 10));
-  
   // Update name
   const updated = await updateOrganisation(created.id, {
     name: 'Test Org Updated',
@@ -386,9 +383,6 @@ tap.test('update experiment', async (t) => {
   });
   
   const originalUpdated = created.updated;
-  
-  // Wait a bit to ensure updated timestamp changes
-  await new Promise(resolve => setTimeout(resolve, 10));
   
   // Update name, parameters, and summary_results
   const updated = await updateExperiment(created.id, {

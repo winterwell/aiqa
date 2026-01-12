@@ -21,90 +21,98 @@ type MetricDataResult = {
 };
 
 /**
- * Process experiments data for each metric, extracting numeric values and handling missing/invalid data
+ * Process experiments data for a single metric, extracting numeric values and handling missing/invalid data
  */
-function processMetricData(metrics: Metric[], experiments: Experiment[], datasetMap: Map<string, Dataset>): MetricDataResult[] {
-	return metrics.map((metric: Metric) => {
-		const data: ScatterDataPoint[] = [];
-		let ignoredCount = 0;
+function processOneMetricData(metric: Metric, experiments: Experiment[], datasetMap: Map<string, Dataset>): MetricDataResult {
+	const data: ScatterDataPoint[] = [];
+	let ignoredCount = 0;
 
-		experiments.forEach((exp: Experiment) => {
-			const dataset = datasetMap.get(exp.dataset);
-			// Only process experiments whose dataset has this metric
+	experiments.forEach((exp: Experiment) => {
+		const dataset = datasetMap.get(exp.dataset);
+		// For Overall Score, skip dataset check (it's a computed metric)
+		// For other metrics, only process experiments whose dataset has this metric
+		if (metric.name !== 'Overall Score') {
 			if (!dataset || !dataset.metrics?.some(m => m.name === metric.name)) {
 				return;
 			}
+		}
 
-			const summaryResults = exp.summary_results || {};
-			// Try to find the metric value in summary_results
-			// It could be directly under the metric name, or under a nested structure
-			let metricValue: any = summaryResults[metric.name];
-			
-			// If the value is an object (nested structure like {mean: 835.8, max: 985, ...}),
-			// extract a numeric value from common statistical keys
-			if (metricValue !== null && metricValue !== undefined && typeof metricValue === 'object' && !Array.isArray(metricValue)) {
-				// Prefer mean, then avg/average, then median, then just take the first numeric value found
-				const preferredKeys = ['mean', 'avg', 'average', 'median', 'min', 'max'];
-				for (const key of preferredKeys) {
-					if (metricValue[key] !== undefined && metricValue[key] !== null) {
-						metricValue = metricValue[key];
-						break;
-					}
-				}
-				// If no preferred key found, try to find any numeric value in the object
-				if (typeof metricValue === 'object') {
-					for (const key in metricValue) {
-						const val = metricValue[key];
-						if (typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)))) {
-							metricValue = val;
-							break;
-						}
-					}
+		const summaryResults = exp.summary_results || {};
+		// Try to find the metric value in summary_results
+		// It could be directly under the metric name, or under a nested structure
+		let metricValue: any = summaryResults[metric.name];
+		
+		// If the value is an object (nested structure like {mean: 835.8, max: 985, ...}),
+		// extract a numeric value from common statistical keys
+		if (metricValue !== null && metricValue !== undefined && typeof metricValue === 'object' && !Array.isArray(metricValue)) {
+			// Prefer mean, then avg/average, then median, then just take the first numeric value found
+			const preferredKeys = ['mean', 'avg', 'average', 'median', 'min', 'max'];
+			for (const key of preferredKeys) {
+				if (metricValue[key] !== undefined && metricValue[key] !== null) {
+					metricValue = metricValue[key];
+					break;
 				}
 			}
-			
-			// If not found directly, try common variations (avg, mean, etc.)
-			if (metricValue === undefined || metricValue === null || (typeof metricValue === 'object' && !Array.isArray(metricValue))) {
-				const variations = [
-					`avg_${metric.name}`,
-					`mean_${metric.name}`,
-					`${metric.name}_avg`,
-					`${metric.name}_mean`,
-				];
-				for (const variant of variations) {
-					if (summaryResults[variant] !== undefined && summaryResults[variant] !== null) {
-						metricValue = summaryResults[variant];
+			// If no preferred key found, try to find any numeric value in the object
+			if (typeof metricValue === 'object') {
+				for (const key in metricValue) {
+					const val = metricValue[key];
+					if (typeof val === 'number' || (typeof val === 'string' && !isNaN(parseFloat(val)))) {
+						metricValue = val;
 						break;
 					}
 				}
 			}
-
-			// Check if the value is numeric
-			const numericValue = typeof metricValue === 'number' ? metricValue : 
-				(typeof metricValue === 'string' && !isNaN(parseFloat(metricValue)) ? parseFloat(metricValue) : null);
-
-			if (numericValue !== null && !isNaN(numericValue) && isFinite(numericValue)) {
-				const date = new Date(exp.created);
-				data.push({
-					x: date.getTime(), // Use timestamp for X axis
-					y: numericValue,
-					experimentId: exp.id,
-					date: date.toLocaleString(),
-				});
-			} else {
-				ignoredCount++;
+		}
+		
+		// If not found directly, try common variations (avg, mean, etc.)
+		if (metricValue === undefined || metricValue === null || (typeof metricValue === 'object' && !Array.isArray(metricValue))) {
+			const variations = [
+				`avg_${metric.name}`,
+				`mean_${metric.name}`,
+				`${metric.name}_avg`,
+				`${metric.name}_mean`,
+			];
+			for (const variant of variations) {
+				if (summaryResults[variant] !== undefined && summaryResults[variant] !== null) {
+					metricValue = summaryResults[variant];
+					break;
+				}
 			}
-		});
+		}
 
-		// Sort by date (x value)
-		data.sort((a, b) => a.x - b.x);
+		// Check if the value is numeric
+		const numericValue = typeof metricValue === 'number' ? metricValue : 
+			(typeof metricValue === 'string' && !isNaN(parseFloat(metricValue)) ? parseFloat(metricValue) : null);
 
-		return {
-			metric,
-			data,
-			ignoredCount,
-		};
+		if (numericValue !== null && !isNaN(numericValue) && isFinite(numericValue)) {
+			const date = new Date(exp.created);
+			data.push({
+				x: date.getTime(), // Use timestamp for X axis
+				y: numericValue,
+				experimentId: exp.id,
+				date: date.toLocaleString(),
+			});
+		} else {
+			ignoredCount++;
+		}
 	});
+
+	// Sort by date (x value)
+	data.sort((a, b) => a.x - b.x);
+
+	return {
+		metric,
+		data,
+		ignoredCount,
+	};
+}
+
+/**
+ * Process experiments data for each metric, extracting numeric values and handling missing/invalid data
+ */
+function processMetricData(metrics: Metric[], experiments: Experiment[], datasetMap: Map<string, Dataset>): MetricDataResult[] {
+	return metrics.map(metric => processOneMetricData(metric, experiments, datasetMap));
 }
 
 /**
@@ -158,8 +166,19 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 				});
 			}
 		});
+		
+		// Also add Overall Score if it exists in any experiment's summary_results
+		const hasOverallScore = experiments.some(exp => {
+			const summary = exp.summary_results || {};
+			const overallScore = summary['Overall Score'];
+			return overallScore && (overallScore.mean !== undefined || overallScore.avg !== undefined || overallScore.average !== undefined);
+		});
+		if (hasOverallScore && !metricMap.has('Overall Score')) {
+			metricMap.set('Overall Score', { name: 'Overall Score', type: 'number' });
+		}
+		
 		return Array.from(metricMap.values());
-	}, [datasetMap]);
+	}, [datasetMap, experiments]);
 
 	// Process data for each metric
 	const metricData = useMemo(() => {

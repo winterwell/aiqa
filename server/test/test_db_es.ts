@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
-import { initClient, createIndices, closeClient, bulkInsertSpans, searchSpans, deleteIndex } from '../dist/db/db_es.js';
+import { initClient, createIndices, closeClient, bulkInsertSpans, searchSpans, deleteIndex, checkElasticsearchAvailable } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
 
 dotenv.config();
@@ -9,6 +9,12 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   const SearchQuery = (await import('../dist/common/SearchQuery.js')).default;
   const esUrl = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
   initClient(esUrl);
+  
+  const isAvailable = await checkElasticsearchAvailable();
+  if (!isAvailable) {
+    t.skip('Elasticsearch not available');
+    return;
+  }
 
 //   // Delete existing indices to ensure clean state
 // No - too dangerous - might delete real data

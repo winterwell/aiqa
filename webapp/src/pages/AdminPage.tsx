@@ -14,7 +14,7 @@ import {
   Badge,
 } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getOrganisation, updateOrganisation } from '../api';
+import { getOrganisation, updateOrganisationAccount } from '../api';
 import { useToast } from '../utils/toast';
 import PropInput from '../components/generic/PropInput';
 import { useRerender } from 'rerenderer';
@@ -65,8 +65,8 @@ const AdminPage: React.FC = () => {
   }, [organisation, rerender]);
 
   const updateMutation = useMutation({
-    mutationFn: (updates: Parameters<typeof updateOrganisation>[1]) =>
-      updateOrganisation(organisationId!, updates),
+    mutationFn: (updates: Parameters<typeof updateOrganisationAccount>[1]) =>
+      updateOrganisationAccount(organisationId!, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organisation', organisationId] });
       showToast('Organisation updated successfully', 'success');

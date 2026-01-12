@@ -21,6 +21,37 @@ interface MetricStats {
 }
 
 /**
+ * Calculates Overall Score as geometric mean of all metric means.
+ * Geometric mean: (x1 * x2 * ... * xn)^(1/n)
+ * Returns null if no valid metrics found or if any metric mean is <= 0.
+ */
+function calculateOverallScore(summary: Record<string, MetricStats>): number | null {
+	const metricMeans: number[] = [];
+	
+	for (const [metricName, stats] of Object.entries(summary)) {
+		// Skip the overall_score itself if present
+		if (metricName === 'Overall Score') {
+			continue;
+		}
+		
+		// Only include metrics with valid means > 0 (geometric mean requires positive values)
+		if (stats.mean > 0 && isFinite(stats.mean)) {
+			metricMeans.push(stats.mean);
+		}
+	}
+	
+	if (metricMeans.length === 0) {
+		return null;
+	}
+	
+	// Calculate geometric mean: (x1 * x2 * ... * xn)^(1/n)
+	const product = metricMeans.reduce((acc, val) => acc * val, 1);
+	const geometricMean = Math.pow(product, 1 / metricMeans.length);
+	
+	return geometricMean;
+}
+
+/**
  * Recalculates summary results from all results.
  * This is used when updating existing results to ensure accuracy.
  */
@@ -79,6 +110,47 @@ function recalculateSummaryResults(results: Array<{ scores: Record<string, numbe
 					count: newCount,
 				};
 			}
+		}
+	}
+	
+	// Calculate Overall Score as geometric mean of all metric means
+  // TODO why is overall score not handled alongside other summary stats? Can we DRY and reduce code?
+	const overallScore = calculateOverallScore(summary);
+	if (overallScore !== null) {
+		// For Overall Score, we use the geometric mean as the mean value
+		// Min/max/variance are not as meaningful for a composite metric, but we calculate them from the individual scores
+		const allOverallScores: number[] = [];
+		for (const result of results) {
+			if (!result.scores) continue;
+			const metricMeans: number[] = [];
+			for (const [metricName, value] of Object.entries(result.scores)) {
+				if (metricName === 'Overall Score') continue;
+				if (typeof value === 'number' && isFinite(value) && value > 0) {
+					metricMeans.push(value);
+				}
+			}
+			if (metricMeans.length > 0) {
+				const product = metricMeans.reduce((acc, val) => acc * val, 1);
+				const geoMean = Math.pow(product, 1 / metricMeans.length);
+				allOverallScores.push(geoMean);
+			}
+		}
+		
+		if (allOverallScores.length > 0) {
+			const min = Math.min(...allOverallScores);
+			const max = Math.max(...allOverallScores);
+			const count = allOverallScores.length;
+			const variance = count > 1 
+				? allOverallScores.reduce((sum, val) => sum + Math.pow(val - overallScore, 2), 0) / (count - 1)
+				: 0;
+			
+			summary['Overall Score'] = {
+				mean: overallScore,
+				min,
+				max,
+				var: variance,
+				count,
+			};
 		}
 	}
 	
@@ -141,6 +213,46 @@ function updateSummaryResults(summaryResults: Record<string, MetricStats> | unde
 				max: Math.max(existing.max, value),
 				var: newVar,
 				count: newCount,
+			};
+		}
+	}
+
+	// Calculate Overall Score as geometric mean of all metric means
+	const overallScore = calculateOverallScore(updated);
+	if (overallScore !== null) {
+		// For rolling updates, we calculate Overall Score from the current summary state
+		// This gives us the geometric mean of metric means
+		// For min/max, we approximate by using the geometric mean of metric mins/maxes
+		const metricMeans: number[] = [];
+		const metricMins: number[] = [];
+		const metricMaxes: number[] = [];
+		let maxCount = 0;
+		
+		for (const [metricName, stats] of Object.entries(updated)) {
+			if (metricName === 'Overall Score') continue;
+			if (stats.mean > 0 && isFinite(stats.mean)) {
+				metricMeans.push(stats.mean);
+			}
+			if (stats.min > 0 && isFinite(stats.min)) {
+				metricMins.push(stats.min);
+			}
+			if (stats.max > 0 && isFinite(stats.max)) {
+				metricMaxes.push(stats.max);
+			}
+			maxCount = Math.max(maxCount, stats.count);
+		}
+		
+		if (metricMeans.length > 0) {
+			const geometricMean = overallScore; // Already calculated
+			const min = metricMins.length > 0 ? Math.pow(metricMins.reduce((acc, val) => acc * val, 1), 1 / metricMins.length) : geometricMean;
+			const max = metricMaxes.length > 0 ? Math.pow(metricMaxes.reduce((acc, val) => acc * val, 1), 1 / metricMaxes.length) : geometricMean;
+			
+			updated['Overall Score'] = {
+				mean: geometricMean,
+				min,
+				max,
+				var: 0, // Variance calculation would require all individual results, set to 0 for rolling updates
+				count: maxCount,
 			};
 		}
 	}
