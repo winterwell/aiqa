@@ -26,10 +26,10 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   // Insert a couple of spans
   const orgId = 'es_test_org_1';
   const now = Date.now();
-  const startTime1: [number, number] = [Math.floor(now / 1000), (now % 1000) * 1000000];
-  const endTime1: [number, number] = [Math.floor(now / 1000), (now % 1000) * 1000000];
-  const startTime2: [number, number] = [Math.floor((now - 1000) / 1000), ((now - 1000) % 1000) * 1000000];
-  const endTime2: [number, number] = [Math.floor((now - 1000) / 1000), ((now - 1000) % 1000) * 1000000];
+  const startTime1 = now;
+  const endTime1 = now + 100;
+  const startTime2 = now - 1000;
+  const endTime2 = now - 1000 + 200;
   
   const spans: Span[] = [
     {
@@ -39,7 +39,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       kind: 1, // SpanKind.INTERNAL
       startTime: startTime1,
       endTime: endTime1,
-      duration: [0, 1000000], // HrTime tuple
+      duration: endTime1 - startTime1,
       ended: true,
       status: {
         code: 1, // SpanStatusCode.OK
@@ -69,7 +69,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       kind: 1, // SpanKind.INTERNAL
       startTime: startTime2,
       endTime: endTime2,
-      duration: [0, 1000000], // HrTime tuple
+      duration: endTime2 - startTime2,
       ended: true,
       status: {
         code: 2, // SpanStatusCode.ERROR

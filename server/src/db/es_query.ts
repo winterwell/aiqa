@@ -39,6 +39,61 @@ function buildEsQuery_oneBit(bit: any): any {
       if (value === 'unset') {
         return { bool: { must_not: { exists: { field: key } } } };
       }
+      
+      // Check for comparison operators (>=, <=, >, <)
+      if (typeof value === 'string') {
+        const rangeMatch = value.match(/^(>=|<=|>|<)(.+)$/);
+        if (rangeMatch) {
+          const operator = rangeMatch[1];
+          const actualValue = rangeMatch[2];
+          
+          // Fields that are stored as milliseconds in Elasticsearch
+          const dateTimeFields = ['startTime', 'endTime', 'duration'];
+          const isDateTimeField = dateTimeFields.includes(key);
+          
+          let rangeValue: number | string;
+          
+          if (isDateTimeField) {
+            // Convert ISO date string to milliseconds
+            const date = new Date(actualValue);
+            if (!isNaN(date.getTime())) {
+              rangeValue = date.getTime();
+            } else {
+              // Try parsing as milliseconds directly
+              const ms = parseInt(actualValue, 10);
+              rangeValue = !isNaN(ms) ? ms : actualValue;
+            }
+          } else if (key === '@timestamp') {
+            // @timestamp might be ISO string or milliseconds
+            const date = new Date(actualValue);
+            rangeValue = !isNaN(date.getTime()) ? date.toISOString() : actualValue;
+          } else {
+            // For numeric fields, try to parse as number
+            if (/^-?\d+$/.test(actualValue)) {
+              rangeValue = parseInt(actualValue, 10);
+            } else if (/^-?\d*\.\d+$/.test(actualValue)) {
+              rangeValue = parseFloat(actualValue);
+            } else {
+              rangeValue = actualValue;
+            }
+          }
+          
+          // Build range query
+          const rangeClause: any = {};
+          if (operator === '>=') {
+            rangeClause.gte = rangeValue;
+          } else if (operator === '<=') {
+            rangeClause.lte = rangeValue;
+          } else if (operator === '>') {
+            rangeClause.gt = rangeValue;
+          } else if (operator === '<') {
+            rangeClause.lt = rangeValue;
+          }
+          
+          return { range: { [key]: rangeClause } };
+        }
+      }
+      
       // Convert string numbers to actual numbers for numeric fields
       if (typeof value === 'string' && /^-?\d+$/.test(value)) {
         value = parseInt(value, 10);

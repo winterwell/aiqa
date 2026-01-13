@@ -62,11 +62,10 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
       continue;
     }
     
-    // Special handling for HrTime fields (startTime, endTime, duration)
-    // These are arrays of [seconds, nanoseconds] that we'll convert to milliseconds (long)
+    // Special handling for time fields (startTime, endTime, duration)
+    // These are stored as milliseconds (long)
     if ((fieldName === 'startTime' || fieldName === 'endTime' || fieldName === 'duration') &&
-        prop.type === 'array' && prop.items?.type === 'integer' && 
-        prop.minItems === 2 && prop.maxItems === 2) {
+        prop.type === 'number') {
       mappings[fieldName] = { type: 'long' };
       continue;
     }
@@ -84,16 +83,16 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
     }
     
     // Special handling for events array (nested type with specific structure)
-    // Events have 'time' property (HrTime) which maps to 'timestamp' in ES
+    // Events have 'time' property (milliseconds) which maps to 'timestamp' in ES
     if (fieldName === 'events' && prop.type === 'array' && prop.items?.properties) {
       const eventProps = prop.items.properties;
       baseMapping.properties = {};
       if (eventProps.name) {
         baseMapping.properties.name = jsonSchemaToEsMapping(eventProps.name, 'name');
       }
-      // Map 'time' (HrTime) to 'timestamp' (date) in Elasticsearch
+      // Map 'time' (milliseconds) to 'timestamp' (long) in Elasticsearch
       if (eventProps.time) {
-        baseMapping.properties.timestamp = { type: 'date' };
+        baseMapping.properties.timestamp = { type: 'long' };
       }
       // Use flattened type for event attributes
       if (eventProps.attributes) {
@@ -193,13 +192,6 @@ async function createIndex(indexName: string, mappings: any): Promise<void> {
   });
 }
 
-// Convert HrTime tuple [seconds, nanoseconds] to milliseconds
-function hrTimeToMillis(hrTime: [number, number] | undefined): number | undefined {
-  if (!hrTime || !Array.isArray(hrTime) || hrTime.length !== 2) {
-    return undefined;
-  }
-  return hrTime[0] * 1000 + Math.floor(hrTime[1] / 1000000);
-}
 
 // Elasticsearch flattened fields have a max value size of 32,766 bytes
 // We truncate to 30KB to leave some margin for encoding overhead
@@ -297,24 +289,10 @@ function processArrayWithAttributes<T>(
   return { transformed, bigAttributes };
 }
 
-/**
- * Convert HrTime tuple [seconds, nanoseconds] to milliseconds for multiple fields.
- */
-function convertHrTimeFields(obj: any, fields: string[]): void {
-  for (const field of fields) {
-    if (Array.isArray(obj[field]) && obj[field].length === 2) {
-      obj[field] = hrTimeToMillis(obj[field] as [number, number]);
-    }
-  }
-}
-
-// Transform span document for Elasticsearch (convert HrTime tuples to milliseconds)
+// Transform span document for Elasticsearch
 function transformSpanForEs(doc: any): any {
   const transformed = { ...doc };
   const unindexedBigAttributes: any = {};
-  
-  // Convert HrTime fields to milliseconds
-  convertHrTimeFields(transformed, ['startTime', 'endTime', 'duration']);
   
   // Process top-level attributes
   const { truncated: attrsTruncated, bigAttributes: attrsBig } = processAttributes(transformed.attributes);
@@ -328,10 +306,9 @@ function transformSpanForEs(doc: any): any {
     transformed.events,
     (event: any) => {
       const eventTransformed = { ...event };
-      // Convert event.time to timestamp
-      if (Array.isArray(event.time) && event.time.length === 2) {
-        const { time, ...rest } = eventTransformed;
-        eventTransformed.timestamp = hrTimeToMillis(time as [number, number]);
+      // Convert event.time to timestamp (time is already in milliseconds)
+      if (eventTransformed.time !== undefined) {
+        eventTransformed.timestamp = eventTransformed.time;
         delete eventTransformed.time;
       }
       // Process event attributes
@@ -381,7 +358,7 @@ function transformSpanForEs(doc: any): any {
   return transformed;
 }
 
-// Transform example document for Elasticsearch (convert spans array with HrTime tuples)
+// Transform example document for Elasticsearch
 function transformExampleForEs(doc: any): any {
   const transformed = { ...doc };
   

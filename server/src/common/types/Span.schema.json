@@ -20,22 +20,12 @@
           "type": "string"
         },
         "startTime": {
-          "type": "array",
-          "items": {
-            "type": "integer"
-          },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "HrTime tuple [seconds, nanoseconds]"
+          "type": "number",
+          "description": "Epoch milliseconds"
         },
         "endTime": {
-          "type": "array",
-          "items": {
-            "type": "integer"
-          },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "HrTime tuple [seconds, nanoseconds]"
+          "type": "number",
+          "description": "Epoch milliseconds"
         },
         "status": {
           "type": "object",
@@ -81,11 +71,8 @@
             "properties": {
               "name": { "type": "string" },
               "time": {
-                "type": "array",
-                "items": { "type": "integer" },
-                "minItems": 2,
-                "maxItems": 2,
-                "description": "HrTime tuple [seconds, nanoseconds]"
+                "type": "number",
+                "description": "Epoch milliseconds"
               },
               "attributes": {
                 "type": "object",
@@ -95,13 +82,8 @@
           }
         },
         "duration": {
-          "type": "array",
-          "items": {
-            "type": "integer"
-          },
-          "minItems": 2,
-          "maxItems": 2,
-          "description": "HrTime tuple [seconds, nanoseconds]"
+          "type": "number",
+          "description": "Duration in milliseconds"
         },
         "ended": {
           "type": "boolean"

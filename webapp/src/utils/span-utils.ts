@@ -40,13 +40,10 @@ export const getSpanId = (span: Span) => {
         || 'N/A';
   };
 
-  const asTime = (time: number|[number, number]|Date) => {
+  const asTime = (time: number | Date | null | undefined) => {
 	if ( ! time) return null;
 	if (typeof time === 'number') {
 		return new Date(time);
-	}
-	if (Array.isArray(time)) {
-		return new Date(time[0] * 1000 + time[1] / 1000000);
 	}
 	if (time instanceof Date) {
 		return time;

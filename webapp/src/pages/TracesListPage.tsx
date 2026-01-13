@@ -48,23 +48,8 @@ const FEEDBACK_ATTRIBUTES = [
   'feedback.comment',
 ].join(',');
 
-// Strip down attributes to only what we need
-const stripAttributes = (span: Span, requiredAttrs: string[]): Span => {
-  const spanAny = span as any;
-  if (!spanAny.attributes) return span;
-  
-  const stripped: Record<string, any> = {};
-  requiredAttrs.forEach(attr => {
-    if (spanAny.attributes[attr] !== undefined) {
-      stripped[attr] = spanAny.attributes[attr];
-    }
-  });
-  
-  return {
-    ...span,
-    attributes: stripped,
-  } as Span;
-};
+const BATCH_SIZE = 10;
+const CACHE_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 type DateFilterType = '1h' | '1d' | '1w' | 'custom';
 
@@ -90,23 +75,6 @@ const getRelativeTime = (relative: string): string => {
   }
   
   return now.toISOString();
-};
-
-// Convert ISO string to relative format if possible, otherwise return ISO
-const toRelativeOrIso = (iso: string): string => {
-  const date = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  const diffWeeks = diffDays / 7;
-  
-  // Check if it matches common relative times (within 1 minute tolerance)
-  if (Math.abs(diffHours - 1) < 1/60) return '-1h';
-  if (Math.abs(diffDays - 1) < 1/24) return '-1d';
-  if (Math.abs(diffWeeks - 1) < 1/7) return '-1w';
-  
-  return iso;
 };
 
 const TracesListPage: React.FC = () => {
@@ -191,197 +159,87 @@ const TracesListPage: React.FC = () => {
   const buildDateFilterQuery = (): string => {
     const parts: string[] = [];
     
-    if (dateFilterType === 'custom') {
-      if (sinceParam) {
-        const sinceValue = sinceParam.startsWith('-') ? getRelativeTime(sinceParam) : sinceParam;
-        parts.push(`startTime:>=${sinceValue}`);
-      }
-      if (untilParam) {
-        const untilValue = untilParam.startsWith('-') ? getRelativeTime(untilParam) : untilParam;
-        parts.push(`startTime:<=${untilValue}`);
-      }
-    } else {
-      // For preset filters, only use since
-      if (sinceParam) {
-        const sinceValue = sinceParam.startsWith('-') ? getRelativeTime(sinceParam) : sinceParam;
-        parts.push(`startTime:>=${sinceValue}`);
-      }
+    if (sinceParam) {
+      const sinceValue = sinceParam.startsWith('-') ? getRelativeTime(sinceParam) : sinceParam;
+      parts.push(`startTime:>=${sinceValue}`);
+    }
+    
+    if (dateFilterType === 'custom' && untilParam) {
+      const untilValue = untilParam.startsWith('-') ? getRelativeTime(untilParam) : untilParam;
+      parts.push(`startTime:<=${untilValue}`);
     }
     
     return parts.length > 0 ? parts.join(' AND ') : '';
   };
 
-  // Step 1: Load root spans without attributes (fast)
-  const loadRootSpans = async (query: string): Promise<PageableData<Span>> => {
-    const limit = 1000; // Fetch more traces for in-memory filtering
-    // Don't request attributes - just basic span data
-    // Exclude input/output in case any attributes are returned
-    
+  // Main loadData function
+  const loadData = async (query: string): Promise<PageableData<Span>> => {
     // Build combined query with date filter
     const dateFilter = buildDateFilterQuery();
-    let combinedQuery = query;
-    if (dateFilter) {
-      combinedQuery = combinedQuery ? `(${query}) AND (${dateFilter})` : dateFilter;
-    }
+    const combinedQuery = dateFilter 
+      ? (query ? `(${query}) AND (${dateFilter})` : dateFilter)
+      : query;
     
+    // Load root spans with required attributes directly
     const result = await searchSpans({ 
       organisationId: organisationId!, 
       query: combinedQuery, 
       isRoot: true, 
-      limit, 
+      limit: 1000,
       offset: 0,
-      exclude: 'attributes.input,attributes.output', // Exclude large input/output attributes
-      // No fields parameter = no attributes by default
+      fields: REQUIRED_ATTRIBUTES,
+      exclude: 'attributes.input,attributes.output',
     });
     
-    return result;
-  };
-
-  // Step 2: Load attributes for a single batch of traces (cached via useQuery)
-  // Queries by traceId to get root spans with attributes
-  const loadSpanAttributesBatch = async (traceIds: string[]): Promise<Map<string, Span>> => {
-    if (traceIds.length === 0) return new Map();
-    
-    const traceIdQuery = traceIds.map(id => `traceId:${id}`).join(' OR ');
-    
-    // Query for root spans in these traces with only the attributes we need
-    // Exclude input/output as they can be very large
-    const result = await searchSpans({
-      organisationId: organisationId!,
-      query: `(${traceIdQuery}) AND parentSpanId:unset`,
-      limit: traceIds.length,
-      offset: 0,
-      fields: REQUIRED_ATTRIBUTES, // Only fetch the attributes we need
-      exclude: 'attributes.input,attributes.output', // Exclude large input/output attributes
-    });
-    
-    const attributeMap = new Map<string, Span>();
-    if (result.hits) {
-      result.hits.forEach((span: Span) => {
-        const traceId = getTraceId(span);
-        if (traceId) {
-          // Strip down to only required attributes
-          const stripped = stripAttributes(span, REQUIRED_ATTRIBUTES.split(','));
-          attributeMap.set(traceId, stripped);
-        }
-      });
+    if (!result.hits || result.hits.length === 0) {
+      setFeedbackMap(new Map());
+      setEnrichedSpans(new Map());
+      return result;
     }
-    
-    return attributeMap;
-  };
 
-  // Step 3: Load feedback spans for a single batch (cached via useQuery)
-  const loadFeedbackSpansBatch = async (traceIds: string[]): Promise<Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>> => {
-    if (traceIds.length === 0) return new Map();
-    
-    const feedbackQuery = traceIds.map(id => `traceId:${id}`).join(' OR ');
-    
-    const feedbackResult = await searchSpans({
-      organisationId: organisationId!,
-      query: `(${feedbackQuery}) AND attributes.aiqa\\.span_type:feedback`,
-      limit: traceIds.length,
-      offset: 0,
-      fields: FEEDBACK_ATTRIBUTES, // Only fetch feedback attributes
-    });
-    
-    const feedbackMap = new Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>();
-    if (feedbackResult.hits) {
-      feedbackResult.hits.forEach((span: Span) => {
+    // Extract trace IDs
+    const traceIds = result.hits
+      .map(span => getTraceId(span))
+      .filter((id): id is string => !!id);
+
+    // Load feedback in batches with caching
+    const feedbackData = new Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>();
+    for (let i = 0; i < traceIds.length; i += BATCH_SIZE) {
+      const batch = traceIds.slice(i, i + BATCH_SIZE);
+      const sortedBatch = [...batch].sort();
+      const cacheKey = ['feedback-spans', organisationId, sortedBatch.join(',')];
+      
+      const spans = await queryClient.fetchQuery({
+        queryKey: cacheKey,
+        queryFn: async () => {
+          const traceIdQuery = batch.map(id => `traceId:${id}`).join(' OR ');
+          const feedbackResult = await searchSpans({
+            organisationId: organisationId!,
+            query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
+            limit: batch.length,
+            offset: 0,
+            fields: FEEDBACK_ATTRIBUTES,
+          });
+          return feedbackResult.hits || [];
+        },
+        staleTime: CACHE_STALE_TIME,
+      });
+      
+      spans.forEach((span: Span) => {
         const traceId = getTraceId(span);
         if (traceId) {
           const feedback = getFeedback(span);
           if (feedback && feedback.type !== null) {
-            feedbackMap.set(traceId, feedback);
+            feedbackData.set(traceId, feedback);
           }
         }
       });
     }
-    
-    return feedbackMap;
-  };
 
-  // Main loadData function - loads root spans first, then enriches with attributes
-  const loadData = async (query: string): Promise<PageableData<Span>> => {
-    // Step 1: Load root spans without attributes (fast)
-    const rootSpansResult = await loadRootSpans(query);
-    
-    if (!rootSpansResult.hits || rootSpansResult.hits.length === 0) {
-      return rootSpansResult;
-    }
-
-    // Step 2: Extract trace IDs
-    const traceIds = rootSpansResult.hits
-      .map(span => getTraceId(span))
-      .filter((id): id is string => !!id);
-
-    // Step 3: Load attributes and feedback in batches of 10, with caching
-    const BATCH_SIZE = 10;
-    const allAttributeMaps: Map<string, Span>[] = [];
-    const allFeedbackMaps: Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>[] = [];
-
-    // Process span attributes in batches (by traceId)
-    for (let i = 0; i < traceIds.length; i += BATCH_SIZE) {
-      const batch = traceIds.slice(i, i + BATCH_SIZE);
-      // Sort batch for consistent cache key
-      const sortedBatch = [...batch].sort();
-      const cacheKey = ['span-attributes', organisationId, sortedBatch.join(',')];
-      
-      const attributeMap = await queryClient.fetchQuery({
-        queryKey: cacheKey,
-        queryFn: () => loadSpanAttributesBatch(batch),
-        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-      });
-      allAttributeMaps.push(attributeMap);
-    }
-
-    // Process feedback in batches
-    for (let i = 0; i < traceIds.length; i += BATCH_SIZE) {
-      const batch = traceIds.slice(i, i + BATCH_SIZE);
-      // Sort batch for consistent cache key
-      const sortedBatch = [...batch].sort();
-      const cacheKey = ['feedback-spans', organisationId, sortedBatch.join(',')];
-      
-      const feedbackMap = await queryClient.fetchQuery({
-        queryKey: cacheKey,
-        queryFn: () => loadFeedbackSpansBatch(batch),
-        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-      });
-      allFeedbackMaps.push(feedbackMap);
-    }
-
-    // Merge all attribute maps
-    const attributesMap = new Map<string, Span>();
-    allAttributeMaps.forEach(map => {
-      map.forEach((value, key) => attributesMap.set(key, value));
-    });
-
-    // Merge all feedback maps
-    const feedbackData = new Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>();
-    allFeedbackMaps.forEach(map => {
-      map.forEach((value, key) => feedbackData.set(key, value));
-    });
-
-    // Step 4: Merge attributes back into spans (by traceId)
-    const enriched = rootSpansResult.hits.map(span => {
-      const traceId = getTraceId(span);
-      const enrichedSpan = traceId ? attributesMap.get(traceId) : null;
-      if (enrichedSpan) {
-        // Merge attributes from enriched span
-        return {
-          ...span,
-          attributes: {
-            ...(span as any).attributes,
-            ...(enrichedSpan as any).attributes,
-          },
-        } as Span;
-      }
-      return span;
-    });
-
-    // Update state
+    // Update state and build enriched spans map
     setFeedbackMap(feedbackData);
     const enrichedMap = new Map<string, Span>();
-    enriched.forEach(span => {
+    result.hits.forEach(span => {
       const traceId = getTraceId(span);
       if (traceId) {
         enrichedMap.set(traceId, span);
@@ -389,12 +247,10 @@ const TracesListPage: React.FC = () => {
     });
     setEnrichedSpans(enrichedMap);
 
-    return {
-      ...rootSpansResult,
-      hits: enriched,
-    };
+    return result;
   };
 
+  // Table columns
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
 		{
