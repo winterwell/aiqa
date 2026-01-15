@@ -74,8 +74,9 @@ sudo systemctl daemon-reload
 echo "Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Configure /opt/aiqa/server/.env with your database credentials"
-echo "2. Enable services: sudo systemctl enable aiqa-server"
-echo "3. Start services: sudo systemctl start aiqa-server && sudo systemctl reload nginx"
-echo "4. Check status: sudo systemctl status aiqa-server && sudo systemctl status nginx"
+echo "1. If deploying from git, ensure submodules are initialized: git submodule update --init --recursive"
+echo "2. Configure /opt/aiqa/server/.env with your database credentials"
+echo "3. Enable services: sudo systemctl enable aiqa-server"
+echo "4. Start services: sudo systemctl start aiqa-server && sudo systemctl reload nginx"
+echo "5. Check status: sudo systemctl status aiqa-server && sudo systemctl status nginx"
 

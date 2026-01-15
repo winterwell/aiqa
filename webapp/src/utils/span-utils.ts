@@ -5,9 +5,9 @@ export const getSpanName = (span: Span): string => (span as any).name || '';
 export function getDurationUnits(durationMs: number | null | undefined): 'ms' | 's' | 'm' | 'h' | 'd' | null {
 	if (durationMs === null || durationMs === undefined) return null;
 	if (durationMs < 1000) return 'ms';
-	if (durationMs < 1000000) return 's';
-	if (durationMs < 60000) return 'm';
-	if (durationMs < 3600000) return 'h';
+	if (durationMs < 60000) return 's';
+	if (durationMs < 3600000) return 'm';
+	if (durationMs < 86400000) return 'h';
 	return 'd';
 }
 
@@ -26,6 +26,16 @@ export function durationString(durationMs: number | null | undefined, units: 'ms
 	return '';
 }
 
+/**
+ * Format a number to 3 significant figures.
+ * Examples: 123 -> "123", 1234 -> "1230", 0.00123 -> "0.00123", 0.000123 -> "0.000123"
+ */
+export function prettyNumber(num: number | null | undefined): string {
+	if (num === null || num === undefined || isNaN(num)) return 'N/A';
+	if (num === 0) return '0';
+	return parseFloat(num.toPrecision(3)).toString();
+}
+
 
 export const getSpanId = (span: Span) => {
     // Check all possible locations for span ID, in order of preference:
@@ -40,15 +50,20 @@ export const getSpanId = (span: Span) => {
         || 'N/A';
   };
 
-  const asTime = (time: number | Date | null | undefined) => {
+  const asTime = (time: number | Date | [number, number] | null | undefined): Date | null => {
 	if ( ! time) return null;
 	if (typeof time === 'number') {
 		return new Date(time);
 	}
 	if (time instanceof Date) {
 		return time;
-	}	
-	return new Date(time);
+	}
+	if (Array.isArray(time)) {
+		// HrTime format: [seconds, nanoseconds]
+		return new Date(time[0] * 1000 + time[1] / 1000000);
+	}
+	// Should never reach here, but satisfy TypeScript
+	return null;
   };
 
 export const getStartTime = (span: Span) => {

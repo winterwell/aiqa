@@ -32,12 +32,11 @@ const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | 
 
 // Attributes we need for the traces list page
 const REQUIRED_ATTRIBUTES = [
-  'gen_ai.usage.total_tokens',
-  'gen_ai.usage.input_tokens',
-  'gen_ai.usage.output_tokens',
-  'gen_ai.cost.usd',
-  'gen_ai.component.id',
-  'component',
+  'traceId',
+  'startTime',
+  'endTime',
+  'name',
+  'attributes',
 ].join(',');
 
 // Attributes we need for feedback spans

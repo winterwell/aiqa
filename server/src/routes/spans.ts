@@ -7,6 +7,7 @@ import { addTokenCost } from '../token_cost.js';
 import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
 import { getOrganisation, getOrganisationAccountByOrganisation } from '../db/db_sql.js';
 import { getOrganisationThreshold } from '../common/subscription_defaults.js';
+import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
 
 /**
  * Convert OTLP span format to internal span format.
@@ -62,7 +63,7 @@ function convertOtlpSpansToInternal(otlpRequest: any): any[] {
           }
           return {
             name: event.name || '',
-            time: event.timeUnixNano ? convertUnixNanoToMillis(event.timeUnixNano) : 0,
+            time: normalizeTimeToMillis(event.timeUnixNano || event.time) ?? 0,
             attributes: eventAttrs,
           };
         });
@@ -91,12 +92,16 @@ function convertOtlpSpansToInternal(otlpRequest: any): any[] {
         const spanId = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
         const parentSpanId = otlpSpan.parentSpanId ? bytesToHex(otlpSpan.parentSpanId) : undefined;
         
-        // Convert times
-        const startTime = otlpSpan.startTimeUnixNano ? convertUnixNanoToMillis(otlpSpan.startTimeUnixNano) : 0;
-        const endTime = otlpSpan.endTimeUnixNano ? convertUnixNanoToMillis(otlpSpan.endTimeUnixNano) : null;
+        // Convert times - support multiple formats
+        const startTime = normalizeTimeToMillis(
+          otlpSpan.startTimeUnixNano || otlpSpan.startTime
+        ) ?? 0;
+        const endTime = normalizeTimeToMillis(
+          otlpSpan.endTimeUnixNano || otlpSpan.endTime
+        );
         const duration = endTime !== null ? endTime - startTime : null;
         
-        // Convert status
+        // Convert status (enums are already numbers when parsed with enums: Number)
         const status = otlpSpan.status || {};
         const statusCode = status.code !== undefined ? status.code : 0;
         
@@ -179,11 +184,107 @@ function bytesToHex(bytes: any): string {
 }
 
 /**
- * Convert Unix nanoseconds to epoch milliseconds.
+ * Process OTLP trace export request.
+ * Handles rate limiting, token cost calculation, and storage.
+ * This is the shared logic used by both HTTP and gRPC endpoints.
+ * 
+ * @param otlpRequest - Parsed OTLP ExportTraceServiceRequest (JSON format)
+ * @param organisation - Organisation ID
+ * @returns Object with success status and optional error information
+ * @throws Error for connection errors (should be caught by caller)
  */
-function convertUnixNanoToMillis(unixNano: string | number): number {
-  const nano = typeof unixNano === 'string' ? parseInt(unixNano, 10) : unixNano;
-  return Math.floor(nano / 1_000_000);
+export async function processOtlpTraceExport(
+  otlpRequest: any,
+  organisation: string
+): Promise<{ success: boolean; error?: { code: number; message: string } }> {
+  // Convert OTLP spans to internal format
+  const spansArray = convertOtlpSpansToInternal(otlpRequest);
+  
+  if (spansArray.length === 0) {
+    // Empty request - return success per OTLP spec
+    return { success: true };
+  }
+  
+  // Get organisation account to check rate limit
+  const account = await getOrganisationAccountByOrganisation(organisation);
+  const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
+  
+  // Check rate limit before processing
+  const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);
+  if (rateLimitResult && !rateLimitResult.allowed) {
+    return {
+      success: false,
+      error: {
+        code: 14, // RESOURCE_EXHAUSTED / UNAVAILABLE per gRPC status codes
+        message: 'Rate limit exceeded',
+      },
+    };
+  }
+  
+  // Add organisation to each span
+  const spansWithOrg = spansArray.map(span => ({
+    ...span,
+    organisation,
+  }));
+  
+  // Add token cost
+  spansWithOrg.forEach(span => addTokenCost(span));
+  
+  // Save spans (may throw ConnectionError for Elasticsearch)
+  await bulkInsertSpans(spansWithOrg);
+  await recordSpanPosting(organisation, spansWithOrg.length);
+  
+  return { success: true };
+}
+
+/**
+ * Normalize time value to epoch milliseconds.
+ * Supports multiple input formats:
+ * - ISO string (e.g., "2024-01-01T00:00:00.000Z")
+ * - Epoch milliseconds (number, typically < 1e12 for dates before year 2286)
+ * - Epoch nanoseconds (number, typically >= 1e12)
+ * - HrTime format ([number, number] array with [seconds, nanoseconds])
+ */
+export function normalizeTimeToMillis(time: string | number | [number, number] | null | undefined): number | null {
+  if (time === null || time === undefined) {
+    return null;
+  }
+
+  // Handle HrTime format: [seconds, nanoseconds]
+  if (Array.isArray(time) && time.length === 2 && typeof time[0] === 'number' && typeof time[1] === 'number') {
+    return time[0] * 1000 + Math.floor(time[1] / 1_000_000);
+  }
+
+  // Handle string (ISO format)
+  if (typeof time === 'string') {
+    const date = new Date(time);
+    if (!isNaN(date.getTime())) {
+      return date.getTime();
+    }
+    // Try parsing as number string (epoch milliseconds or nanoseconds)
+    const num = parseFloat(time);
+    if (!isNaN(num)) {
+      // If it's a very large number (>= 1e12), assume nanoseconds
+      if (num >= 1e12) {
+        return Math.floor(num / 1_000_000);
+      }
+      return num;
+    }
+    return null;
+  }
+
+  // Handle number (epoch milliseconds or nanoseconds)
+  if (typeof time === 'number') {
+    // If it's a very large number (>= 1e12), assume nanoseconds
+    // This threshold is around year 2286 in milliseconds
+    if (time >= 1e12) {
+      return Math.floor(time / 1_000_000);
+    }
+    // Otherwise assume milliseconds
+    return time;
+  }
+
+  return null;
 }
 
 /**
@@ -191,51 +292,55 @@ function convertUnixNanoToMillis(unixNano: string | number): number {
  */
 export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void> {
   
+  // Register content type parser for protobuf
+  fastify.addContentTypeParser('application/x-protobuf', { parseAs: 'buffer' }, (req, body, done) => {
+    done(null, body);
+  });
+  fastify.addContentTypeParser('application/protobuf', { parseAs: 'buffer' }, (req, body, done) => {
+    done(null, body);
+  });
+  
   // ===== OTLP ENDPOINT =====
   // OTLP HTTP endpoint at /v1/traces following OpenTelemetry Protocol specification
-  // Accepts ExportTraceServiceRequest (JSON encoding) and returns ExportTraceServiceResponse
+  // Accepts ExportTraceServiceRequest in JSON or Protobuf encoding
+  // Content-Type: application/json (default) or application/x-protobuf
+  // Returns ExportTraceServiceResponse
   fastify.post('/v1/traces', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['trace', 'developer', 'admin'])) return;
     const organisation = request.organisation!;
     
     try {
-      const otlpRequest = request.body as any;
+      let otlpRequest: any;
       
-      // Convert OTLP spans to internal format
-      const spansArray = convertOtlpSpansToInternal(otlpRequest);
+      // Check Content-Type to determine encoding
+      const contentType = request.headers['content-type'] || '';
+      const isProtobuf = contentType.includes('application/x-protobuf') || contentType.includes('application/protobuf');
       
-      if (spansArray.length === 0) {
-        // Empty request - return success per OTLP spec
-        reply.code(200).send({});
-        return;
+      if (isProtobuf) {
+        // Parse Protobuf binary data
+        const rawBody = request.body as Buffer;
+        if (!rawBody || !Buffer.isBuffer(rawBody)) {
+          reply.code(400).send({
+            code: 3, // INVALID_ARGUMENT
+            message: 'Invalid protobuf data',
+          });
+          return;
+        }
+        otlpRequest = parseOtlpProtobuf(rawBody);
+      } else {
+        // Parse JSON (default)
+        otlpRequest = request.body as any;
       }
       
-      // Get organisation account to check rate limit
-      const account = await getOrganisationAccountByOrganisation(organisation);
-      const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
+      // Process the OTLP trace export (rate limiting, storage, etc.)
+      const result = await processOtlpTraceExport(otlpRequest, organisation);
       
-      // Check rate limit before processing
-      const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);
-      if (rateLimitResult && !rateLimitResult.allowed) {
-        reply.code(429).send({
-          code: 14, // UNAVAILABLE per gRPC status codes (OTLP uses gRPC status codes)
-          message: 'Rate limit exceeded',
-        });
+      if (!result.success && result.error) {
+        // Map error code to HTTP status
+        const httpStatus = result.error.code === 14 ? 429 : 400;
+        reply.code(httpStatus).send(result.error);
         return;
       }
-      
-      // Add organisation to each span
-      const spansWithOrg = spansArray.map(span => ({
-        ...span,
-        organisation,
-      }));
-      
-      // Add token cost
-      spansWithOrg.forEach(span => addTokenCost(span));
-      
-      // Save spans
-      await bulkInsertSpans(spansWithOrg);
-      await recordSpanPosting(organisation, spansWithOrg.length);
       
       // Return OTLP success response (empty ExportTraceServiceResponse)
       reply.code(200).send({});

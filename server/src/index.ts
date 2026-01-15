@@ -38,6 +38,7 @@ import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
 import { registerOrganisationRoutes } from './routes/organisations.js';
+import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
 import versionData from './version.json';
 
 dotenv.config();
@@ -70,6 +71,10 @@ initRedis(redisUrl).catch((err) => {
 const shutdown = async () => {
   fastify.log.info('Shutting down...');
   await fastify.close();
+  await stopGrpcServer().catch((err: any) => {
+    const message = err instanceof Error ? err.message : String(err);
+    fastify.log.warn(`Error stopping gRPC server: ${message}`);
+  });
   await closePool();
   await closeClient();
   await closeRedis();
@@ -520,9 +525,20 @@ const start = async () => {
     // Register organisation routes
     await registerOrganisationRoutes(fastify);
     
-    const port = parseInt(process.env.PORT || '4001');
+    const port = parseInt(process.env.PORT || '4318');
     await fastify.listen({ port, host: '0.0.0.0' });
-    fastify.log.info(`Server listening on port ${port}`);
+    fastify.log.info(`HTTP server listening on port ${port}`);
+    
+    // Start gRPC server for OTLP/gRPC (Protobuf) support
+    const grpcPort = parseInt(process.env.GRPC_PORT || '4317');
+    try {
+      await startGrpcServer(grpcPort);
+      fastify.log.info(`gRPC server listening on port ${grpcPort}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      fastify.log.warn(`Failed to start gRPC server: ${message}`);
+      fastify.log.warn('OTLP/gRPC (Protobuf) support will not be available. OTLP/HTTP (JSON and Protobuf) is still available.');
+    }
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

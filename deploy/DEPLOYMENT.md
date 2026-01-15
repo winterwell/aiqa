@@ -10,6 +10,7 @@ This guide explains how to set up 24x7 operation of the AIQA server and webapp o
 - Nginx installed: `sudo apt-get install nginx`
 - SSH access to the server
 - GitHub repository with Actions enabled
+- Git submodule configured (for OTLP/gRPC support): The `opentelemetry-proto` submodule is automatically initialized during CI/CD deployments
 
 ## Initial Server Setup
 
@@ -179,9 +180,11 @@ If you prefer to deploy manually instead of using CI/CD:
 
 ```bash
 cd server
+# Initialize git submodules (required for OTLP/gRPC support)
+git submodule update --init --recursive
 pnpm install --prod
 pnpm run build
-# Copy dist/, package.json, pnpm-lock.yaml to /opt/aiqa/server
+# Copy dist/, package.json, pnpm-lock.yaml, and opentelemetry-proto/ to /opt/aiqa/server
 # Create .env file (see step 4 above) if not using CI/CD
 sudo systemctl restart aiqa-server
 ```
@@ -264,6 +267,26 @@ ls -d node_modules/fastify || echo "ERROR: fastify still missing!"
 sudo systemctl restart aiqa-server
 ```
 
+### Missing proto files (OTLP/gRPC errors)
+
+If you see errors about missing OTLP proto files when starting the gRPC server:
+
+```bash
+cd /opt/aiqa/server
+# Verify opentelemetry-proto directory exists
+if [ ! -d opentelemetry-proto ]; then
+  echo "ERROR: opentelemetry-proto directory not found!"
+  echo "If using git, run: git submodule update --init --recursive"
+  echo "Otherwise, ensure proto files are copied to opentelemetry-proto/ directory"
+  exit 1
+fi
+# Verify trace_service.proto exists
+if [ ! -f opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto ]; then
+  echo "ERROR: trace_service.proto not found in opentelemetry-proto directory!"
+  exit 1
+fi
+```
+
 ### Port conflicts
 
 - Server defaults to port 4001 (set via `PORT` in `.env`)
@@ -308,7 +331,7 @@ After deployment, verify files are in the correct locations:
 ```bash
 # Server files
 ls -la /opt/aiqa/server/
-# Should see: dist/, package.json, pnpm-lock.yaml, .env, node_modules/
+# Should see: dist/, package.json, pnpm-lock.yaml, .env, node_modules/, opentelemetry-proto/
 
 # Webapp files
 ls -la /opt/aiqa/webapp/dist/

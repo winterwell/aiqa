@@ -9,18 +9,22 @@
     "test": "pnpm run build && tap test/**/*.ts",
     "start": "node dist/index.js",
     "schema": "node scripts/generate-schemas.js",
-    "retention": "pnpm run build && node dist/scripts/delete-old-spans.js"
+    "retention": "pnpm run build && node dist/scripts/delete-old-spans.js",
+    "postinstall": "if [ ! -d opentelemetry-proto ]; then git submodule update --init --recursive 2>/dev/null || echo 'Note: opentelemetry-proto not found. If using git submodules, run: git submodule update --init --recursive'; fi"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",
     "@fastify/compress": "^7.0.1",
     "@fastify/cors": "^9.0.1",
+    "@grpc/grpc-js": "^1.10.0",
+    "@grpc/proto-loader": "^0.7.13",
     "@opentelemetry/sdk-trace-base": "^1.24.0",
     "dotenv": "^16.6.1",
     "fastify": "^4.24.3",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0",
     "pg": "^8.11.3",
+    "protobufjs": "^7.3.0",
     "redis": "^4.6.12",
     "vm2": "^3.9.21"
   },
@@ -28,6 +32,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.11.0",
     "@types/pg": "^8.10.9",
+    "@types/protobufjs": "^6.0.0",
     "concurrently": "^8.2.2",
     "nodemon": "^3.0.2",
     "tap": "^19.0.0",

@@ -10,7 +10,7 @@ import TimeseriesChart from './dashboard/TimeseriesChart';
 import TokensTimeseriesChart from './dashboard/TokensTimeseriesChart';
 import CostTimeseriesChart from './dashboard/CostTimeseriesChart';
 import { useTraceMetrics, useHistogramData, useTokensHistogramData, useCostHistogramData, useTimeseriesData, useTokensTimeseriesData, useCostTimeseriesData } from './dashboard/useTraceMetrics';
-import { durationString, isRootSpan, getDurationMs } from '../utils/span-utils';
+import { durationString, isRootSpan, getDurationMs, prettyNumber } from '../utils/span-utils';
 import { FEEDBACK_ICONS } from './dashboard/chart-constants';
 
 interface TracesListDashboardProps {
@@ -54,9 +54,9 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
             label="Tokens" 
             value={
               <div>
-                <div>Avg: {Math.round(metrics.tokens.avg).toLocaleString()}</div>
-                <div className="mt-1">Max: {metrics.tokens.max.toLocaleString()}</div>
-                <div className="mt-1">Total: {metrics.tokens.total.toLocaleString()}</div>
+                <div>Avg: {prettyNumber(metrics.tokens.avg)}</div>
+                <div className="mt-1">Max: {prettyNumber(metrics.tokens.max)}</div>
+                <div className="mt-1">Total: {prettyNumber(metrics.tokens.total)}</div>
               </div>
             } 
           />
@@ -66,9 +66,9 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
             label="Cost" 
             value={
               <div>
-                <div>Avg: ${metrics.cost.avg.toFixed(4)}</div>
-                <div className="mt-1">Max: ${metrics.cost.max.toFixed(4)}</div>
-                <div className="mt-1">Total: ${metrics.cost.total.toFixed(4)}</div>
+                <div>Avg: ${prettyNumber(metrics.cost.avg)}</div>
+                <div className="mt-1">Max: ${prettyNumber(metrics.cost.max)}</div>
+                <div className="mt-1">Total: ${prettyNumber(metrics.cost.total)}</div>
               </div>
             } 
           />
@@ -78,9 +78,9 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
             label="Feedback" 
             value={
               <div>
-                <div className="text-success">{FEEDBACK_ICONS.positive} {metrics.positiveFeedback}</div>
-                <div className="text-danger mt-1">{FEEDBACK_ICONS.negative} {metrics.negativeFeedback}</div>
-                <div className="mt-1">Total: {metrics.positiveFeedback + metrics.negativeFeedback}</div>
+                <div className="text-success">{FEEDBACK_ICONS.positive} {prettyNumber(metrics.positiveFeedback)}</div>
+                <div className="text-danger mt-1">{FEEDBACK_ICONS.negative} {prettyNumber(metrics.negativeFeedback)}</div>
+                <div className="mt-1">Total: {prettyNumber(metrics.positiveFeedback + metrics.negativeFeedback)}</div>
               </div>
             } 
           />

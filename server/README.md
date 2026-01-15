@@ -1,5 +1,8 @@
 An API server which:
 
+Runs on port 4318.
+Our nginx config forwards server-aiqa.winterwell.com to that port.
+
 Language: typescript
 Fastify framework
 Database:
@@ -15,8 +18,20 @@ npm run test (runs the tests)
 npm run start (starts the server)
 
 Installation:
-After cloning or pulling changes, run: pnpm install
+After cloning or pulling changes:
+1. Initialize git submodules: `git submodule update --init --recursive`
+2. Install dependencies: `pnpm install`
 This installs dependencies including @fastify/compress for HTTP response compression.
+
+**Note:** The server requires the `opentelemetry-proto` git submodule for OTLP/gRPC (Protobuf) and OTLP/HTTP (Protobuf) support. 
+
+To set up the submodule (if not already configured):
+```bash
+cd server
+git submodule add https://github.com/open-telemetry/opentelemetry-proto.git opentelemetry-proto
+```
+
+The submodule is automatically initialized by the `postinstall` script when running `pnpm install`, but you can also run `git submodule update --init --recursive` manually.
 
 Package manager: pnpm
 

@@ -25,7 +25,7 @@ export const ApiKeyHowToUseSection: React.FC<ApiKeyHowToUseSectionProps> = ({ or
           <CardBody>
             <p>Use this curl command to test your API key by fetching your datasets:</p>
             <div className="d-flex align-items-start gap-2">
-              <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', margin: 0, overflowX: 'auto', minWidth: 0, maxWidth: '100%' }}>
+              <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', margin: 0, overflowX: 'auto', minWidth: 0, maxWidth: '100%', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                 {curlCommand}
               </pre>
               <CopyButton

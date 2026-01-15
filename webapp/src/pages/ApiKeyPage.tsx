@@ -186,7 +186,7 @@ const ApiKeyPage: React.FC = () => {
                     <Button close onClick={handleDismissNewKey} />
                   </div>
                   <div className="d-flex align-items-center gap-2">
-                    <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', wordBreak: 'break-all', margin: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}>
+                    <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', wordBreak: 'break-all', margin: 0, minWidth: 0, maxWidth: '100%', overflowX: 'auto', whiteSpace: 'normal' }}>
                       {newlyGeneratedKey}
                     </pre>
                     <CopyButton

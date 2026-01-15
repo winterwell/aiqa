@@ -326,7 +326,13 @@ export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, 
 	}
 
 	// For API keys, check role
-	if (request.authenticatedWith === 'api_key' && request.apiKey) {
+	if (request.authenticatedWith === 'api_key') {
+		if (!request.apiKey) {
+			console.error('checkAccess: authenticatedWith is api_key but apiKey is not set');
+			reply.code(500).send({ error: 'Internal error: API key object missing' });
+			return false;
+		}
+		
 		const apiKeyRole = request.apiKey.role;
 		if (!apiKeyRole) {
 			reply.code(403).send({ error: 'API key does not have a role' });
@@ -343,10 +349,14 @@ export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, 
 			reply.code(403).send({ error: `API key role '${apiKeyRole}' is not allowed. Required roles: ${allowedRoles.join(', ')}` });
 			return false;
 		}
+		
+		return true;
 	}
-	// How is this possible??
-	console.error('checkAccess: authenticatedWith is not set', request.authenticatedWith);
-	return true;
+	
+	// This should not happen if authentication middleware worked correctly
+	console.error('checkAccess: authenticatedWith is not set or has unexpected value', request.authenticatedWith);
+	reply.code(500).send({ error: 'Internal error: authentication state invalid' });
+	return false;
 }
 
 /**
@@ -373,6 +383,48 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
 	
 	// Otherwise, check if the user is a member
 	return aiqaOrg.members && aiqaOrg.members.includes(userId);
+}
+
+/**
+ * Authenticate from gRPC metadata (for gRPC server).
+ * Extracts Authorization header from gRPC metadata and performs authentication.
+ */
+export async function authenticateFromGrpcMetadata(request: AuthenticatedRequest): Promise<void> {
+  // gRPC metadata uses lowercase keys
+  const authHeader = (request.headers as any).authorization || (request.headers as any).Authorization;
+  
+  if (!authHeader) {
+    throw new Error('Missing Authorization header');
+  }
+
+  // Check for API key authentication: "ApiKey <api-key>"
+  if (authHeader.startsWith('ApiKey ')) {
+    const apiKey = authHeader.substring(7).trim();
+    const keyHash = hashApiKey(apiKey);
+    const apiKeyRecord = await getApiKeyByHash(keyHash);
+    
+    if (!apiKeyRecord) {
+      throw new Error('Invalid API key');
+    }
+    
+    request.organisation = apiKeyRecord.organisation;
+    request.apiKeyId = apiKeyRecord.id;
+    request.apiKey = apiKeyRecord;
+    request.authenticatedWith = 'api_key';
+    return;
+  }
+
+  // Check for JWT authentication: "Bearer <jwt-token>"
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    const jwtSuccess = await authenticateWithJwt(request, null as any, token);
+    if (!jwtSuccess) {
+      throw new Error('Invalid JWT token');
+    }
+    return;
+  }
+
+  throw new Error('Invalid Authorization header format. Use "Bearer <jwt-token>" or "ApiKey <api-key>"');
 }
 
 /**

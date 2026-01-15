@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -44,7 +46,7 @@ jobs:
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ env.DEPLOY_PORT }}
-          source: "server/dist,server/package.json,server/pnpm-lock.yaml"
+          source: "server/dist,server/package.json,server/pnpm-lock.yaml,server/opentelemetry-proto"
           target: "/opt/aiqa/server.new"
           strip_components: 1
 
@@ -81,6 +83,11 @@ jobs:
             sudo mv /opt/aiqa/server.new/dist /opt/aiqa/server/dist
             sudo mv /opt/aiqa/server.new/package.json /opt/aiqa/server/package.json
             sudo mv /opt/aiqa/server.new/pnpm-lock.yaml /opt/aiqa/server/pnpm-lock.yaml
+            # Move opentelemetry-proto directory if it exists
+            if [ -d /opt/aiqa/server.new/opentelemetry-proto ]; then
+              sudo rm -rf /opt/aiqa/server/opentelemetry-proto || true
+              sudo mv /opt/aiqa/server.new/opentelemetry-proto /opt/aiqa/server/opentelemetry-proto
+            fi
             
             # Clean up temp directory
             sudo rmdir /opt/aiqa/server.new || sudo rm -rf /opt/aiqa/server.new
@@ -173,6 +180,13 @@ jobs:
             if [ ! -d node_modules ] || [ ! -d node_modules/fastify ]; then
               echo "ERROR: node_modules missing or incomplete!"
               exit 1
+            fi
+            # Verify opentelemetry-proto directory exists (required for gRPC support)
+            if [ ! -d opentelemetry-proto ]; then
+              echo "WARNING: opentelemetry-proto directory not found. gRPC support will not be available."
+              echo "OTLP/HTTP (JSON and Protobuf) will still work."
+            elif [ ! -f opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto ]; then
+              echo "WARNING: trace_service.proto not found. gRPC support will not be available."
             fi
             # Reload systemd and restart service
             sudo systemctl daemon-reload

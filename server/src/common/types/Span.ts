@@ -4,7 +4,7 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
  * Span type extending OpenTelemetry's ReadableSpan interface.
  * Represents a completed span that can be read and exported.
  */
-export default interface Span extends ReadableSpan {
+export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'> {
 	/** Trace ID */
 	traceId: string;
   organisation: string;
@@ -20,6 +20,10 @@ export default interface Span extends ReadableSpan {
   inputHash?: string;
   /** If true, the span is starred by a user */
   starred: boolean;
+  /** Start time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
+  startTime: number;
+  /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
+  endTime: number;
 }
 
 export function getSpanInput(span:Span) {
@@ -39,14 +43,12 @@ export const getSpanId = (span: Span) => {
   };
 
   export  const getStartTime = (span: Span) => {
-    if (!(span as any).startTime) return null;
-    return new Date((span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000);
+    if (!span.startTime) return null;
+    return new Date(span.startTime);
   };
 
   export const getDuration = (span: Span) => {
-    if (!(span as any).startTime || !(span as any).endTime) return null;
-    const start = (span as any).startTime[0] * 1000 + (span as any).startTime[1] / 1000000;
-    const end = (span as any).endTime[0] * 1000 + (span as any).endTime[1] / 1000000;
-    return end - start;
+    if (!span.startTime || !span.endTime) return null;
+    return span.endTime - span.startTime;
   };
 
