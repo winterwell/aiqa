@@ -317,9 +317,15 @@ export async function authenticate(
  * @param request - Authenticated request
  * @param reply - Fastify reply object
  * @param allowedRoles - Array of roles that are allowed to access this endpoint. Admin is always allowed.
+ * @param organisationId - Optional organisation ID to verify membership. If provided, verifies the user belongs to this organisation.
  * @returns true if access is allowed, false if denied (and reply is sent)
  */
-export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, allowedRoles: ('trace' | 'developer' | 'admin')[]): boolean {
+export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, allowedRoles: ('trace' | 'developer' | 'admin')[], organisationId: string | null = null): boolean {
+	// they must be a member of the organisation
+	if (organisationId && request.organisation !== organisationId) {
+		reply.code(403).send({ error: 'User is not a member of this organisation' });
+		return false;
+	}
 	// JWT users always have full access (equivalent to admin)
 	if (request.authenticatedWith === 'jwt') {
 		return true;
@@ -358,6 +364,7 @@ export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, 
 	reply.code(500).send({ error: 'Internal error: authentication state invalid' });
 	return false;
 }
+
 
 /**
  * Check if the user is a super admin (member of AIQA organisation).

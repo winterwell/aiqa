@@ -31,13 +31,14 @@ import {
   bulkInsertExamples,
   searchExamples,
 } from './db/db_es.js';
-import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, checkAccess } from './server_auth.js';
+import { authenticate, AuthenticatedRequest, checkAccess } from './server_auth.js';
 import SearchQuery from './common/SearchQuery.js';
 import Example from './common/types/Example.js';
 import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
 import { registerOrganisationRoutes } from './routes/organisations.js';
+import { registerUserRoutes } from './routes/users.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
 import versionData from './version.json';
 
@@ -105,123 +106,6 @@ fastify.get('/version', async () => {
   return versionData;
 });
 
-// ===== USER ENDPOINTS (PostgreSQL) =====
-// Security: JWT token required (via authenticateWithJwtFromHeader). User can only create themselves (email/sub from JWT).
-fastify.post('/user', async (request, reply) => {
-  // get details from JWT token
-  let jwtToken = await authenticateWithJwtFromHeader(request);
-  if (!jwtToken) {
-    reply.code(401).send({ error: 'Invalid JWT token' });
-    return;
-  }
-  const newUser = request.body as any;
-  newUser.email = jwtToken.email;
-  newUser.sub = jwtToken.userId;
-  
-  if (!newUser.name) {
-    newUser.name = newUser.email.split('@')[0];
-  }
-  
-  console.log("creating user: "+newUser.email+" "+newUser.sub+" from JWT token "+JSON.stringify(jwtToken));
-  const user = await createUser(newUser);
-  return user;
-});
-
-// Security: No authentication required. Any user can view any user by ID (or use "jwt" to get own user via JWT token).
-fastify.get('/user/:id', async (request, reply) => {
-	try {
-		let jwtToken = await authenticateWithJwtFromHeader(request);
-		let { id } = request.params as { id: string };
-		if (id === "jwt") {
-			if (!jwtToken) {
-				reply.code(401).send({ error: 'Invalid JWT token' });
-				return;
-			}
-			const sub = jwtToken.userId;
-			if (!sub) {
-				reply.code(401).send({ error: 'JWT token missing user ID' });
-				return;
-			}
-			const users = await listUsers(new SearchQuery(`sub:${sub}`));
-			if (users.length === 0) {
-				reply.code(404).send({ error: 'User not found with sub: '+sub });
-				return;
-			}
-			return users[0];
-		}
-		const user = await getUser(id);
-		if (!user) {
-			reply.code(404).send({ error: 'User not found' });
-			return;
-		}
-		return user;
-	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		fastify.log.error(`Error in /user/:id endpoint: ${errorMessage}`);
-		fastify.log.error(error);
-		reply.code(500).send({ error: 'Internal server error', details: errorMessage });
-	}
-});
-
-// Security: Authenticated users only. No organisation filtering - returns all users matching search query.
-fastify.get('/user', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const query = (request.query as any).q as string | undefined;
-  const searchQuery = query ? new SearchQuery(query) : null;
-  const users = await listUsers(searchQuery);
-  return users;
-});
-
-// Security: JWT token required. Users can only update their own profile (verified by matching JWT userId/sub or email to target user).
-fastify.put('/user/:id', async (request, reply) => {
-	let jwtToken = await authenticateWithJwtFromHeader(request);
-	if (!jwtToken) {
-    reply.code(401).send({ error: 'Invalid JWT token' });
-    return;
-  }  
-  let { id } = request.params as { id: string };
-  if (id === "jwt") {
-    id = jwtToken.userId;
-  }
-  // Authorization check: user can only update themselves
-  // Get the user being updated and verify JWT token matches
-  const targetUser = await getUser(id);
-  if (!targetUser) {
-    reply.code(404).send({ error: 'User not found' });
-    return;
-  }
-  
-  // Verify the JWT token matches the user being updated
-  const tokenMatches = 
-    (jwtToken.userId && targetUser.sub === jwtToken.userId) ||
-    (jwtToken.email && targetUser.email === jwtToken.email);
-  
-  if (!tokenMatches) {
-    reply.code(403).send({ error: 'You can only update your own user profile' });
-    return;
-  }
-  
-  console.log("updating user: "+id+" from JWT token "+JSON.stringify(jwtToken));
-  const user = await updateUser(id, request.body as any);
-  if (!user) {
-    reply.code(404).send({ error: 'User not found' });
-    return;
-  }
-  return user;
-});
-
-// Security: Authenticated users only. No ownership check - any authenticated user can delete any user by ID.
-fastify.delete('/user/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['admin'])) return;
-  const { id } = request.params as { id: string };
-  const deleted = await deleteUser(id);
-  if (!deleted) {
-    reply.code(404).send({ error: 'User not found' });
-    return;
-  }
-  return { success: true };
-});
-
 // ===== API KEY ENDPOINTS (PostgreSQL) =====
 // Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided. Only accepts key_hash (not plaintext).
 fastify.post('/api-key', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
@@ -265,7 +149,7 @@ fastify.get('/api-key/:id', {preHandler: authenticate}, async (request: Authenti
 // Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in database (listApiKeys).
 fastify.get('/api-key', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
   if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const organisationId = (request.query as any).organisation as string | undefined;
+  const organisationId = request.organisation;
   if (!organisationId) {
     reply.code(400).send({ error: 'organisation query parameter is required' });
     return;
@@ -288,10 +172,20 @@ fastify.put('/api-key/:id', { preHandler: authenticate }, async (request: Authen
   return apiKey;
 });
 
-// Security: Authenticated users only. No organisation check - any authenticated user can delete any API key by ID.
+// Security: Authenticated users only. User must be a member of the organisation that owns the API key.
 fastify.delete('/api-key/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
   const { id } = request.params as { id: string };
+  
+  // Get the API key to find its organisation
+  const apiKey = await getApiKey(id);
+  if (!apiKey) {
+    reply.code(404).send({ error: 'API key not found' });
+    return;
+  }
+  
+  // Check access and organisation membership
+  if (!checkAccess(request, reply, ['developer', 'admin'], apiKey.organisation)) return;
+  
   const deleted = await deleteApiKey(id);
   if (!deleted) {
     reply.code(404).send({ error: 'API key not found' });
@@ -524,6 +418,9 @@ const start = async () => {
     
     // Register organisation routes
     await registerOrganisationRoutes(fastify);
+    
+    // Register user routes
+    await registerUserRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4318');
     await fastify.listen({ port, host: '0.0.0.0' });
