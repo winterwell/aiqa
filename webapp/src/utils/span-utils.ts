@@ -85,6 +85,11 @@ export const getTraceId = (span: Span): string => {
   return (span as any).client_trace_id || (span as any).traceId || (span as any).spanContext?.()?.traceId || '';
 };
 
+/**
+ * Does NOT recurse into children.
+ * @param span 
+ * @returns 
+ */
 export const getTotalTokenCount = (span: Span): number | null => {
   const attributes = (span as any).attributes || {};
   const totalTokens = attributes['gen_ai.usage.total_tokens'] as number | undefined;

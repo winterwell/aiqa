@@ -94,6 +94,9 @@ export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { j
 	}
 
 	if (Array.isArray(json)) {
+		if (json.length === 0) {
+			return <span className="text-muted">[]</span>;
+		}
 		const itemsToShow = arrayFullyExpanded ? json.length : Math.min(3, json.length);
 		const hasMore = json.length > 3;
 
@@ -145,6 +148,10 @@ export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { j
 	if (typeof (json) === 'object' && json !== null) {
 		const hasKeys = Object.keys(json).length > 0;
 		const keyCount = Object.keys(json).length;
+		// no keys - show as empty object without a new line
+		if (keyCount === 0) {
+			return <span className="text-muted">{'{}'}</span>;
+		}
 
 		if (!expanded) {
 			let summary;

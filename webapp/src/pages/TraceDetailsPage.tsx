@@ -4,7 +4,7 @@ import { Row, Col, Input } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { createExampleFromSpans, listDatasets } from '../api';
 import { Span } from '../common/types';
-import { getSpanId, getStartTime, getEndTime, getDurationMs, getDurationUnits, getTraceId } from '../utils/span-utils';
+import { getSpanId, getStartTime, getEndTime, getDurationMs, getDurationUnits, getTraceId, getTotalTokenCount, getCost, prettyNumber } from '../utils/span-utils';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import CopyButton from '../components/generic/CopyButton';
 import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
@@ -417,6 +417,8 @@ function SpanDetails({ span }: { span: Span }) {
 	const input = spanAny.attributes?.input;
 	const output = spanAny.attributes?.output;
 	const durationMs = getDurationMs(span);
+	const tokenCount = getTotalTokenCount(span);
+	const cost = getCost(span);
 
 	return (
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
@@ -425,6 +427,8 @@ function SpanDetails({ span }: { span: Span }) {
 				<div><strong>Name:</strong> {getSpanName(span) || 'Unnamed Span'}</div>
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
 				<div><strong>Duration:</strong> {durationMs ? `${durationMs}ms` : 'N/A'}</div>
+				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
+				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
 			</div>
 			{input && (
 				<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
