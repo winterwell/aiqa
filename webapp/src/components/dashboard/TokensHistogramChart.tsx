@@ -5,12 +5,14 @@ import { CHART_HEIGHT } from './chart-constants';
 
 interface TokensHistogramChartProps {
   data: TokensHistogramDataPoint[];
+  width?: number | `${number}%`;
+  height?: number;
 }
 
 /**
  * Histogram chart specifically for tokens data with custom formatting.
  */
-const TokensHistogramChart: React.FC<TokensHistogramChartProps> = ({ data }) => {
+const TokensHistogramChart: React.FC<TokensHistogramChartProps> = ({ data, width, height = CHART_HEIGHT }) => {
   const histogramData = useMemo<HistogramDataPoint[]>(() => {
     return data.map(({ tokens, count }) => ({
       bin: `${(tokens / 1000).toFixed(1)}k`,
@@ -25,7 +27,8 @@ const TokensHistogramChart: React.FC<TokensHistogramChartProps> = ({ data }) => 
   return (
     <Histogram 
       data={histogramData} 
-      height={CHART_HEIGHT}
+      width={width}
+      height={height}
       xAxisLabel="Tokens"
       yAxisLabel="Count"
       horizontalLabels={true}

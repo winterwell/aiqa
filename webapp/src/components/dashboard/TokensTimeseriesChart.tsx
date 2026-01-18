@@ -5,9 +5,11 @@ import { CHART_HEIGHT } from './chart-constants';
 
 interface TokensTimeseriesChartProps {
   data: TokensTimeseriesDataPoint[];
+  width?: number | `${number}%`;
+  height?: number;
 }
 
-const TokensTimeseriesChart: React.FC<TokensTimeseriesChartProps> = ({ data }) => {
+const TokensTimeseriesChart: React.FC<TokensTimeseriesChartProps> = ({ data, width = "100%", height = CHART_HEIGHT }) => {
   if (!data || data.length === 0) {
     return (
       <div className="text-center p-4 text-muted">
@@ -17,7 +19,7 @@ const TokensTimeseriesChart: React.FC<TokensTimeseriesChartProps> = ({ data }) =
   }
 
   return (
-    <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+    <ResponsiveContainer width={width} height={height}>
       <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis 

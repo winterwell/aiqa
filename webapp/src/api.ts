@@ -219,10 +219,31 @@ export async function searchSpans(args: {
 	});
 }
 
-export async function updateSpan(spanId: string, updates: { starred?: boolean }) {
+export async function updateSpan(spanId: string, updates: { starred?: boolean; tags?: string[] }) {
 	return fetchWithAuth(`/span/${encodeURIComponent(spanId)}`, {
 		method: 'PUT',
 		body: JSON.stringify(updates),
+	});
+}
+
+/** common base function for create example from input | span */
+async function _createExample(organisationId: string, datasetId: string, exampleData: Partial<any>) {
+	const example = {
+		id: crypto.randomUUID(),
+		dataset: datasetId,
+		organisation: organisationId,
+		created: new Date(),
+		updated: new Date(),
+		...exampleData,
+	};
+
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	params.append('dataset', datasetId);
+
+	return fetchWithAuth(`/example?${params.toString()}`, {
+		method: 'POST',
+		body: JSON.stringify(example),
 	});
 }
 
@@ -232,21 +253,28 @@ export async function createExampleFromSpans(args: {
 	spans:Span[]
 }) {
 	const {organisationId, datasetId, spans} = args;
-	// Create a proper Example with the span in the spans array
 	const traceId = spans[0].traceId;
-	const example = {
-		id: crypto.randomUUID(),
+	// Spans will be cleaned server-side
+	return _createExample(organisationId, datasetId, {
 		traceId: traceId,
-		dataset: datasetId,
-		organisation: organisationId,
-		spans:spans,
-		created: new Date(),
-		updated: new Date(),
-	};
+		spans: spans,
+	});
+}
 
-	return fetchWithAuth('/example', {
-		method: 'POST',
-		body: JSON.stringify(example),
+export async function createExampleFromInput(args: {
+	organisationId: string;
+	datasetId: string;
+	input?: any;
+	tags?: string[];
+}) {
+	const { organisationId, datasetId, input, tags } = args;
+	return _createExample(organisationId, datasetId, {
+		input: input,
+		tags: tags,
+		outputs: {
+			good: null,
+			bad: null,
+		},
 	});
 }
 
@@ -264,12 +292,38 @@ export async function searchExamples(
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);
 	if (query) params.append('q', query);
-	if (datasetId) params.append('dataset_id', datasetId);
+	if (datasetId) params.append('dataset', datasetId);
 	params.append('limit', limit.toString());
 	params.append('offset', offset.toString());
 
 	// Note: This endpoint requires API key authentication
 	return fetchWithAuth(`/example?${params.toString()}`);
+}
+
+export async function getExample(organisationId: string, exampleId: string) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/example/${encodeURIComponent(exampleId)}?${params.toString()}`);
+}
+
+export async function updateExample(organisationId: string, exampleId: string, updates: Partial<{
+	tags?: string[];
+	metrics?: any[];
+}>) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/example/${encodeURIComponent(exampleId)}?${params.toString()}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
+	});
+}
+
+export async function deleteExample(organisationId: string, exampleId: string) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/example/${encodeURIComponent(exampleId)}?${params.toString()}`, {
+		method: 'DELETE',
+	});
 }
 
 // User endpoints

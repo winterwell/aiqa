@@ -5,12 +5,14 @@ import { CHART_HEIGHT } from './chart-constants';
 
 interface CostHistogramChartProps {
   data: CostHistogramDataPoint[];
+  width?: number | `${number}%`;
+  height?: number;
 }
 
 /**
  * Histogram chart specifically for cost data with custom formatting.
  */
-const CostHistogramChart: React.FC<CostHistogramChartProps> = ({ data }) => {
+const CostHistogramChart: React.FC<CostHistogramChartProps> = ({ data, width, height = CHART_HEIGHT }) => {
   const histogramData = useMemo<HistogramDataPoint[]>(() => {
     return data.map(({ cost, count }) => ({
       bin: `$${cost.toFixed(4)}`,
@@ -25,7 +27,8 @@ const CostHistogramChart: React.FC<CostHistogramChartProps> = ({ data }) => {
   return (
     <Histogram 
       data={histogramData} 
-      height={CHART_HEIGHT}
+      width={width}
+      height={height}
       xAxisLabel="Cost (USD)"
       yAxisLabel="Count"
       horizontalLabels={true}

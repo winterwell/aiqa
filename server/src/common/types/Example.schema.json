@@ -17,6 +17,15 @@
         "organisation": {
           "type": "string"
         },
+        "name": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "spans": {
           "type": "array",
           "items": {
@@ -106,9 +115,17 @@
             }
           }
         },
-        "inputs": {
+        "input": {
           "type": "object",
           "additionalProperties": true
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "good": {},
+            "bad": {}
+          }
         },
         "created": {
           "type": "string",

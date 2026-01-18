@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge, Button } from 'reactstrap';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge, Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { getDataset, listExperiments, searchExamples, updateDataset } from '../api';
+import { getDataset, listExperiments, searchExamples, updateDataset, createExampleFromInput, updateExample, deleteExample } from '../api';
 import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
 import { Metric } from '../common/types/Dataset';
@@ -12,8 +12,13 @@ import { useToast } from '../utils/toast';
 
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import MetricModal from '../components/MetricModal';
-import CopyButton from '../components/generic/CopyButton';
+import AddExampleModal from '../components/AddExampleModal';
 import PropInput from '../components/generic/PropInput';
+import Tags from '../components/generic/Tags';
+import Page from '../components/generic/Page';
+import Spinner from '../components/generic/Spinner';
+import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { Trash } from '@phosphor-icons/react';
 
 // Helper to get the first span from an Example, or return the example itself if it has span-like fields
 function getFirstSpan(example: Example): Span | null {
@@ -37,11 +42,15 @@ const getTraceId = (example: Example) => {
 
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddExampleModalOpen, setIsAddExampleModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [exampleToDelete, setExampleToDelete] = useState<Example | null>(null);
 
   const { data: dataset, isLoading, error } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -53,6 +62,20 @@ const DatasetDetailsPage: React.FC = () => {
     mutationFn: (updates: Partial<Dataset>) => updateDataset(datasetId!, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dataset', datasetId] });
+    },
+  });
+
+  const deleteExampleMutation = useMutation({
+    mutationFn: (exampleId: string) => deleteExample(organisationId!, exampleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, datasetId] });
+      setDeleteModalOpen(false);
+      setExampleToDelete(null);
+      showToast('Example deleted successfully', 'success');
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to delete example: ${error.message}`, 'error');
     },
   });
 
@@ -99,16 +122,6 @@ const DatasetDetailsPage: React.FC = () => {
         },
       },
       {
-        id: 'spanId',
-        header: 'Span ID',
-        cell: ({ row }) => {
-          const span = getFirstSpan(row.original);
-          return span ? (
-            <code className="small">{getSpanId(span).substring(0, 16)}...</code>
-          ) : 'N/A';
-        },
-      },
-      {
         id: 'traceId',
         header: 'Trace ID',
         cell: ({ row }) => (
@@ -116,49 +129,76 @@ const DatasetDetailsPage: React.FC = () => {
         ),
       },
       {
-        id: 'startTime',
-        header: 'Start Time',
+        id: 'created',
+        header: 'Created',
         cell: ({ row }) => {
-          const span = getFirstSpan(row.original);
-          if (!span) return 'N/A';
-          const startTime = getStartTime(span);
-          return startTime ? startTime.toLocaleString() : 'N/A';
+          return <span>{new Date(row.original.created).toLocaleString()}</span>;
         },
       },
       {
-        id: 'duration',
-        header: 'Duration',
-        cell: ({ row }) => {
-          const span = getFirstSpan(row.original);
-          if (!span) return 'N/A';
-          const duration = getDurationMs(span);
-          return duration !== null ? `${duration.toFixed(2)}ms` : 'N/A';
+        id: 'tags',
+        header: 'Tags',
+        accessorFn: (row) => {
+          // Sort by first tag alphabetically, or empty string if no tags
+          if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
+            return '';
+          }
+          return row.tags[0] || '';
         },
+        cell: ({ row }) => {
+          const example = row.original;
+          return (
+            <Tags
+              compact={true}
+              tags={example.tags}
+              setTags={async (newTags) => {
+                try {
+                  if (example.id && organisationId) {
+                    await updateExample(organisationId, example.id, {
+                      tags: newTags,
+                    });
+                    queryClient.invalidateQueries({ queryKey: ['table-data'] });
+                  }
+                } catch (error) {
+                  console.error('Failed to update example tags:', error);
+                  showToast(`Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+                }
+              }}
+            />
+          );
+        },
+        enableSorting: true,
       },
       {
-        id: 'status',
-        header: 'Status',
+        id: 'delete',
+        header: 'Delete',
         cell: ({ row }) => {
-          const span = getFirstSpan(row.original);
-          if (!span) return 'N/A';
-          const status = (span as any).status;
-          if (!status) return 'N/A';
-          const code = status.code === 1 ? 'OK' : status.code === 2 ? 'ERROR' : 'UNSET';
-          return <Badge color={code === 'ERROR' ? 'danger' : code === 'OK' ? 'success' : 'secondary'}>{code}</Badge>;
+          const example = row.original;
+          return (
+            <Button
+              color="danger"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent row click navigation
+                setExampleToDelete(example);
+                setDeleteModalOpen(true);
+              }}
+              disabled={deleteExampleMutation.isPending}
+            >
+              <Trash size={16} />
+            </Button>
+          );
         },
+        enableSorting: false,
       },
     ],
-    []
+    [organisationId, queryClient, showToast, deleteExampleMutation.isPending]
   );
 
   if (isLoading) {
     return (
       <Container>
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner centered />
       </Container>
     );
   }
@@ -180,13 +220,11 @@ const DatasetDetailsPage: React.FC = () => {
   const datasetExperiments = experiments || [];
 
   return (
-    <Container className="mt-4">
-      <Row>
-        <Col>
-          <Link to={`/organisation/${organisationId}/dataset`} className="btn btn-link mb-3">
-            ← Back to Datasets
-          </Link>
-          <h1>Dataset: <PropInput 
+    <Page
+      header={
+        <span className="d-flex align-items-center gap-2">
+          <span>Dataset:</span>
+          <PropInput 
             item={dataset} 
             prop="name" 
             label="" 
@@ -194,50 +232,37 @@ const DatasetDetailsPage: React.FC = () => {
             onChange={() => {
               updateDatasetMutation.mutate({ name: dataset.name });
             }}
-          /></h1>
-		  <ListGroup flush>
-			<ListGroupItem>
-				<div className="d-flex align-items-center gap-2">
-					<strong>Dataset ID:</strong> <code>{dataset.id}</code>
-					<CopyButton
-						content={dataset.id}
-						className="btn btn-outline-secondary btn-sm"
-						showToast={showToast}
-						successMessage="Dataset ID copied to clipboard!"
-					/>
-				</div>
-			</ListGroupItem>
-                <ListGroupItem>
-                  <PropInput 
-                    item={dataset} 
-                    prop="description" 
-                    type="textarea"
-                    onChange={() => {
-                      updateDatasetMutation.mutate({ description: dataset.description });
-                    }}
-                  />
-                </ListGroupItem>
-                <ListGroupItem>
-                  <strong>Tags:</strong>{' '}
-                  {dataset.tags && dataset.tags.length > 0 ? (
-                    <div className="mt-1">
-                      {dataset.tags.map((tag, idx) => (
-                        <Badge key={idx} color="secondary" className="me-1">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-muted">None</span>
-                  )}
-                </ListGroupItem>
-                <ListGroupItem>
-                  <strong>Created:</strong> {new Date(dataset.created).toLocaleString()}
-                </ListGroupItem>
-                <ListGroupItem>
-                  <strong>Updated:</strong> {new Date(dataset.updated).toLocaleString()}
-                </ListGroupItem>
-              </ListGroup>
+          />
+        </span>
+      }
+      back={`/organisation/${organisationId}/dataset`}
+      backLabel="Datasets"
+      item={{
+        id: dataset.id,
+        created: dataset.created,
+        updated: dataset.updated,
+      }}
+    >
+      <Row className="mt-3">
+        <Col>
+          <ListGroup flush>
+            <ListGroupItem>
+              <PropInput 
+                item={dataset} 
+                prop="description" 
+                type="text"
+                onChange={() => {
+                  updateDatasetMutation.mutate({ description: dataset.description });
+                }}
+              />
+            </ListGroupItem>
+            <ListGroupItem>
+              <Tags
+                tags={dataset.tags || []}
+                setTags={(tags) => updateDatasetMutation.mutate({ tags })}
+              />
+            </ListGroupItem>
+          </ListGroup>
         </Col>
       </Row>
 
@@ -255,68 +280,87 @@ const DatasetDetailsPage: React.FC = () => {
               </Button>
             </CardHeader>
             <CardBody>
-              {dataset.metrics && dataset.metrics.length > 0 ? (
-                <Row>
-                  {dataset.metrics.map((metric, index) => (
-                    <Col md={6} lg={4} key={index} className="mb-3">
-                      <Card>
-                        <CardBody>
-                          <div className="d-flex justify-content-between align-items-start mb-2">
-                            <h6 className="mb-0">{metric.name}</h6>
-                            <div className="d-flex gap-1">
-                              <Button
-                                color="primary"
-                                size="sm"
-                                onClick={() => {
-                                  setEditingIndex(index);
-                                  setEditingMetric({
-                                    name: metric.name,
-                                    description: metric.description || '',
-                                    unit: metric.unit || '',
-                                    type: metric.type,
-                                    parameters: metric.parameters || {},
-                                  });
-                                  setIsAddModalOpen(true);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                color="danger"
-                                size="sm"
-                                onClick={() => {
-                                  const updatedMetrics = dataset.metrics!.filter((_, i) => i !== index);
-                                  updateDatasetMutation.mutate({ metrics: updatedMetrics });
-                                }}
-                              >
-                                ×
-                              </Button>
-                            </div>
+              <Row>
+                {/* Default system metrics - always shown, no edit buttons */}
+                {DEFAULT_SYSTEM_METRICS.map((metric, index) => (
+                  <Col md={6} lg={4} key={`system-${index}`} className="mb-3">
+                    <Card>
+                      <CardBody>
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <h6 className="mb-0">{metric.name}</h6>
+                        </div>
+                        {metric.description && (
+                          <p className="text-muted small mb-1">{metric.description}</p>
+                        )}
+                        <div className="d-flex gap-2 flex-wrap">
+                          <Badge color="info">{metric.type}</Badge>
+                          {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
+                        </div>
+                      </CardBody>
+                    </Card>
+                  </Col>
+                ))}
+                {/* User-defined metrics - with edit buttons */}
+                {dataset.metrics && dataset.metrics.length > 0 && dataset.metrics.map((metric, index) => (
+                  <Col md={6} lg={4} key={`user-${index}`} className="mb-3">
+                    <Card>
+                      <CardBody>
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <h6 className="mb-0">{metric.name}</h6>
+                          <div className="d-flex gap-1">
+                            <Button
+                              color="primary"
+                              size="sm"
+                              onClick={() => {
+                                setEditingIndex(index);
+                                setEditingMetric({
+                                  name: metric.name,
+                                  description: metric.description || '',
+                                  unit: metric.unit || '',
+                                  type: metric.type,
+                                  parameters: metric.parameters || {},
+                                });
+                                setIsAddModalOpen(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              color="danger"
+                              size="sm"
+                              onClick={() => {
+                                const updatedMetrics = dataset.metrics!.filter((_, i) => i !== index);
+                                updateDatasetMutation.mutate({ metrics: updatedMetrics });
+                              }}
+                            >
+                              ×
+                            </Button>
                           </div>
-                          {metric.description && (
-                            <p className="text-muted small mb-1">{metric.description}</p>
-                          )}
-                          <div className="d-flex gap-2 flex-wrap">
-                            <Badge color="info">{metric.type}</Badge>
-                            {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
-                          </div>
-                          {metric.parameters && Object.keys(metric.parameters).length > 0 && (
-                            <details className="mt-2">
-                              <summary className="small text-muted" style={{ cursor: 'pointer' }}>
-                                Parameters
-                              </summary>
-                              <pre className="small bg-light p-2 mt-1 mb-0">
-                                {JSON.stringify(metric.parameters, null, 2)}
-                              </pre>
-                            </details>
-                          )}
-                        </CardBody>
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-              ) : (
-                <p className="text-muted">No metrics defined. Click "Add Metric" to create one.</p>
+                        </div>
+                        {metric.description && (
+                          <p className="text-muted small mb-1">{metric.description}</p>
+                        )}
+                        <div className="d-flex gap-2 flex-wrap">
+                          <Badge color="info">{metric.type}</Badge>
+                          {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
+                        </div>
+                        {metric.parameters && Object.keys(metric.parameters).length > 0 && (
+                          <details className="mt-2">
+                            <summary className="small text-muted" style={{ cursor: 'pointer' }}>
+                              Parameters
+                            </summary>
+                            <pre className="small bg-light p-2 mt-1 mb-0">
+                              {JSON.stringify(metric.parameters, null, 2)}
+                            </pre>
+                          </details>
+                        )}
+                      </CardBody>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+              {(!dataset.metrics || dataset.metrics.length === 0) && (
+                <p className="text-muted mt-3">No custom metrics defined. Click "Add Metric" to create one.</p>
               )}
             </CardBody>
           </Card>
@@ -351,18 +395,81 @@ const DatasetDetailsPage: React.FC = () => {
 
       <Row className="mt-3">
         <Col>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h5>Examples</h5>
+            <Button 
+              color="primary" 
+              size="sm" 
+              onClick={() => setIsAddExampleModalOpen(true)}
+            >
+              + Add Simple Example
+            </Button>
+          </div>
           <TableUsingAPI
             loadData={loadExamplesData}
+            showSearch={true}
             columns={columns}
             searchPlaceholder="Search examples..."
             searchDebounceMs={500}
             pageSize={50}
             enableInMemoryFiltering={true}
+            queryKeyPrefix={['dataset-examples', organisationId, datasetId]}
+            onRowClick={(example) => {
+              if (example.id && organisationId) {
+                navigate(`/organisation/${organisationId}/example/${example.id}`);
+              }
+            }}
           />
         </Col>
       </Row>
 
-    </Container>
+      <AddExampleModal
+        isOpen={isAddExampleModalOpen}
+        toggle={() => setIsAddExampleModalOpen(false)}
+        onSave={async (input, tags) => {
+          try {
+            await createExampleFromInput({
+              organisationId: organisationId!,
+              datasetId: datasetId!,
+              input: input,
+              tags: tags.length > 0 ? tags : undefined,
+            });
+            queryClient.invalidateQueries({ queryKey: ['table-data'] });
+            setIsAddExampleModalOpen(false);
+            showToast('Example added successfully!', 'success');
+          } catch (error) {
+            showToast(`Failed to add example: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+          }
+        }}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal isOpen={deleteModalOpen} toggle={() => setDeleteModalOpen(false)}>
+        <ModalHeader toggle={() => setDeleteModalOpen(false)}>
+          Delete Example
+        </ModalHeader>
+        <ModalBody>
+          <p>Are you sure you want to delete this example?</p>
+          <p className="text-danger">This action cannot be undone.</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button 
+            color="danger" 
+            onClick={() => {
+              if (exampleToDelete?.id) {
+                deleteExampleMutation.mutate(exampleToDelete.id);
+              }
+            }}
+            disabled={deleteExampleMutation.isPending}
+          >
+            {deleteExampleMutation.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+          <Button color="secondary" onClick={() => setDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </Page>
   );
 };
 

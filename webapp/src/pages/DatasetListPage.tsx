@@ -4,6 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, Input, Table, Button, 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listDatasets, createDataset } from '../api';
 import { Dataset } from '../common/types';
+import Spinner from '../components/generic/Spinner';
 
 const DatasetListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
@@ -50,11 +51,7 @@ const DatasetListPage: React.FC = () => {
   if (isLoading) {
     return (
       <Container>
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner centered />
       </Container>
     );
   }

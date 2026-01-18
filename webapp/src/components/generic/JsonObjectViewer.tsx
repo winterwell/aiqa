@@ -5,6 +5,19 @@ import CopyButton from './CopyButton';
 import ExpandCollapseControl from './ExpandCollapseControl';
 import { truncate } from '../../common/utils/miscutils';
 
+function getMessageContent(json: any): string | null {
+	let baseContent = json.content || (json.choices?.length > 0 ? json.choices[0].message?.content : null);
+	if ( ! baseContent) return null;
+	// unwrap common chat message formats
+	if (Array.isArray(baseContent) && baseContent.length === 1) {
+		baseContent = baseContent[0];
+	}
+	if (typeof baseContent === "object" && baseContent.type === "text") {
+		baseContent = baseContent.text;
+	}
+	return baseContent;
+}
+
 /**
  * A component to display a JSON object in a readable format.
  * with expandable/collapsable sections for each key.
@@ -15,14 +28,8 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const TextComponent = textComponent;
 	const [expanded, setExpanded] = useState(false);
 	const $copyButton = <CopyButton content={json} logToConsole />
-	let content = json.content || json.choices[0].message?.content;
-	// unwrap common chat message formats
-	if (Array.isArray(content) && content.length === 1) {
-		content = content[0];
-	}
-	if (typeof content === "object" && content.type === "text") {
-		content = content.text;
-	}
+	let content = getMessageContent(json);
+	
 	const otherKVs = { ...json };
 	delete otherKVs.role;
 	delete otherKVs.content;
@@ -44,7 +51,7 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 			</div>
 			<span className="ms-auto">{$copyButton}</span>
 		</div>
-		<div className="my-1">
+		{content && <div className="my-1">
 			<div style={{ display: 'flex', alignItems: 'center' }}>
 				<b>Content:</b>
 				<ExpandCollapseControl
@@ -57,7 +64,7 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 				? (typeof content === "string" ? <TextComponent text={content} depth={depth - 1} /> : <JsonObjectViewer json={content} textComponent={textComponent} depth={depth - 1} />)
 				: <TruncatedText text={typeof content === "string" ? content : JSON.stringify(content)} maxLength={100} setExpanded={setExpanded} />
 			}			
-		</div>
+		</div>}
 		{Object.keys(otherKVs).length > 0 && (
 			<div className="my-2 ps-2" style={{ borderLeft: '2px solid #e0e0e0', maxWidth: '100%', minWidth: 0 }}>
 				Other: <JsonObjectViewer json={otherKVs} textComponent={textComponent} depth={depth - 1} />
@@ -74,6 +81,17 @@ function TruncatedText({ text, maxLength, setExpanded }: { text: string, maxLeng
 }
 
 
+function isChatMessage(json: any): boolean {
+	if ( ! json) return false;
+	if (json.role && json.content) return true;
+	if (json.role ==="assistant") return true;
+	// HACK is this an LLM chat response? Recognise OpenAI and other common formats
+	if (json.choices && json.choices.length > 0 && json.choices[0].message?.content) {
+		return true;
+	}
+	return false;
+}
+
 export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { json: any, textComponent?: React.ComponentType<{ text: string, depth?: number }>, depth?: number }) {	
 	const [localDepth, setLocalDepth] = useState<number | null>(null);
 	const effectiveDepth = localDepth !== null ? localDepth : depth;
@@ -85,11 +103,7 @@ export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { j
 	const $copyButton = <CopyButton content={json} logToConsole />
 
 	// HACK is this a chat message?
-	if (json.role && json.content) {
-		return <MessageViewer json={json} textComponent={textComponent} depth={depth} />
-	}
-	// HACK is this an LLM chat response? Recognise OpenAI and other common formats
-	if (json.choices && json.choices.length > 0 && json.choices[0].message?.content) {
+	if (isChatMessage(json)) {
 		return <MessageViewer json={json} textComponent={textComponent} depth={depth} />
 	}
 
@@ -151,6 +165,10 @@ export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { j
 		// no keys - show as empty object without a new line
 		if (keyCount === 0) {
 			return <span className="text-muted">{'{}'}</span>;
+		}
+		// if keyCount == 1 then expand by default
+		if (keyCount === 1 && localDepth === null && !expanded) {
+			setLocalDepth(1);
 		}
 
 		if (!expanded) {

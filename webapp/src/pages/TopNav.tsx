@@ -3,6 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import { Navbar, Nav, NavItem, Dropdown, DropdownToggle, DropdownMenu, DropdownItem, NavLink } from 'reactstrap';
 import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
+import AvatarBadge from '../components/AvatarBadge';
 import { getOrganisation } from '../api';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -32,10 +33,10 @@ const TopNav: React.FC = () => {
   console.log('organisation', organisation);
 
   return (
-    <Navbar color="light" light expand="md" className="border-bottom">
+    <Navbar color="light" light expand="md" className="border-bottom top-nav-compact">
       <div className="container-fluid d-flex align-items-center">
 		<NavLink href="https://aiqa.winterwell.com" target="_blank" rel="noopener">
-		<Logo size={32} showText={true} />
+		<Logo size={28} showText={true} />
 		</NavLink>
         <Nav className="ms-auto" navbar>
 			<NavItem>
@@ -46,17 +47,11 @@ const TopNav: React.FC = () => {
           <NavItem>
             <Dropdown isOpen={dropdownOpen} toggle={toggle}>
               <DropdownToggle caret nav>
-                <span className="d-inline-flex align-items-center">
-                  {user?.picture && (
-                    <img
-                      src={user.picture}
-                      alt={user.name || 'Profile'}
-                      className="rounded-circle me-2"
-                      style={{ width: '32px', height: '32px' }}
-                    />
-                  )}
-                  <span>{user?.name || user?.email || 'Profile'}</span>
-                </span>
+                <AvatarBadge
+                  picture={user?.picture}
+                  name={user?.name}
+                  email={user?.email}
+                />
               </DropdownToggle>
               <DropdownMenu end>
                 <DropdownItem header>

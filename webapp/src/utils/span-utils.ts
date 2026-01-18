@@ -92,6 +92,7 @@ export const getTraceId = (span: Span): string => {
  */
 export const getTotalTokenCount = (span: Span): number | null => {
   const attributes = (span as any).attributes || {};
+  // First check standard OpenTelemetry semantic convention attributes
   const totalTokens = attributes['gen_ai.usage.total_tokens'] as number | undefined;
   if (totalTokens !== undefined) {
     return totalTokens;
@@ -101,6 +102,22 @@ export const getTotalTokenCount = (span: Span): number | null => {
   const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
   if (inputTokens !== undefined || outputTokens !== undefined) {
     return (inputTokens || 0) + (outputTokens || 0);
+  }
+  // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
+  const output = attributes.output;
+  if (output && typeof output === 'object' && output.usage) {
+    const usage = output.usage;
+    if (typeof usage === 'object') {
+      const nestedTotal = usage.total_tokens as number | undefined;
+      if (nestedTotal !== undefined) {
+        return nestedTotal;
+      }
+      const nestedInput = usage.input_tokens as number | undefined;
+      const nestedOutput = usage.output_tokens as number | undefined;
+      if (nestedInput !== undefined || nestedOutput !== undefined) {
+        return (nestedInput || 0) + (nestedOutput || 0);
+      }
+    }
   }
   return null;
 };
@@ -112,10 +129,23 @@ export const getCost = (span: Span): number | null => {
   if (cost !== undefined && cost !== null) {
     return cost;
   }
+  // Check standard OpenTelemetry attributes first
   const inputTokens = attributes['gen_ai.usage.input_tokens'] as number | undefined;
   const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
   if (inputTokens || outputTokens) {
     // TODO calculate cost from token usage -- should be done server side   
+  }
+  // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
+  const output = attributes.output;
+  if (output && typeof output === 'object' && output.usage) {
+    const usage = output.usage;
+    if (typeof usage === 'object') {
+      const nestedInput = usage.input_tokens as number | undefined;
+      const nestedOutput = usage.output_tokens as number | undefined;
+      if (nestedInput || nestedOutput) {
+        // TODO calculate cost from token usage -- should be done server side   
+      }
+    }
   }
    return null; 
 };

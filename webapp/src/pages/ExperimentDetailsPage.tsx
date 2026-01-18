@@ -122,8 +122,11 @@ const ExperimentDetailsPage: React.FC = () => {
 
 	<ExperimentDetailsDashboard experiment={experiment} />
 
-		<TableUsingAPI data={{ hits: experiment.results || [] }} 
-		columns={columns} />
+		<TableUsingAPI 
+			data={{ hits: experiment.results || [] }} 
+			columns={columns}
+			queryKeyPrefix={['experiment-results', organisationId, experimentId]}
+		/>
     </Container>
   );
 };

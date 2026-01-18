@@ -10,6 +10,115 @@ import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
 
 /**
+ * Convert OTLP KeyValue array to object.
+ */
+function convertKeyValueArray(kvArray: any[] | undefined): Record<string, any> {
+  const result: Record<string, any> = {};
+  if (!kvArray) return result;
+  for (const kv of kvArray) {
+    if (kv.key && kv.value) {
+      result[kv.key] = convertOtlpValue(kv.value);
+    }
+  }
+  return result;
+}
+
+/**
+ * Convert OTLP scopeSpan to internal span format.
+ * Processes all spans within a single scopeSpan.
+ */
+function convertOtlpSpansToInternalScopeSpan(
+  scopeSpan: any,
+  resourceAttrs: Record<string, any>
+): any[] {
+  const internalSpans: any[] = [];
+  const scope = scopeSpan.scope || {};
+  const spans = scopeSpan.spans || [];
+  
+  for (const otlpSpan of spans) {
+    // Convert span attributes and merge resource attributes
+    const attributes = { ...convertKeyValueArray(otlpSpan.attributes), ...resourceAttrs };
+    
+    // Convert events
+    const events = (otlpSpan.events || []).map((event: any) => ({
+      name: event.name || '',
+      time: normalizeTimeToMillis(event.timeUnixNano || event.time) ?? 0,
+      attributes: convertKeyValueArray(event.attributes),
+    }));
+    
+    // Convert links
+    const links = (otlpSpan.links || []).map((link: any) => ({
+      context: {
+        traceId: link.traceId ? bytesToHex(link.traceId) : '',
+        spanId: link.spanId ? bytesToHex(link.spanId) : '',
+        traceState: link.traceState || undefined,
+      },
+      attributes: convertKeyValueArray(link.attributes),
+    }));
+    
+    // Convert trace ID and span ID from bytes to hex
+    const traceId = otlpSpan.traceId ? bytesToHex(otlpSpan.traceId) : '';
+    const spanId = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
+    const parentSpanId = otlpSpan.parentSpanId ? bytesToHex(otlpSpan.parentSpanId) : undefined;
+    
+    // Convert times - support multiple formats
+    const startTime = normalizeTimeToMillis(otlpSpan.startTimeUnixNano || otlpSpan.startTime) ?? 0;
+    const endTime = normalizeTimeToMillis(otlpSpan.endTimeUnixNano || otlpSpan.endTime);
+    const duration = endTime !== null ? endTime - startTime : null;
+    
+    // Convert status (enums are already numbers when parsed with enums: Number)
+    const status = otlpSpan.status || {};
+    const statusCode = status.code ?? 0;
+    
+    // Extract dropped counts (default to 0)
+    const droppedAttributesCount = otlpSpan.droppedAttributesCount ?? 0;
+    const droppedEventsCount = otlpSpan.droppedEventsCount ?? 0;
+    const droppedLinksCount = otlpSpan.droppedLinksCount ?? 0;
+    
+    // Extract example and experiment from attributes (set by experiment runner)
+    // These are special fields that should be top-level, not in attributes
+    const exampleId = attributes.example;
+    const experimentId = attributes.experiment;
+    // Remove from attributes so they don't appear twice
+    if (exampleId !== undefined) delete attributes.example;
+    if (experimentId !== undefined) delete attributes.experiment;
+    
+    internalSpans.push({
+      name: otlpSpan.name || '',
+      kind: otlpSpan.kind ?? 0,
+      parentSpanId,
+      startTime,
+      endTime,
+      status: {
+        code: statusCode,
+        message: status.message || undefined,
+      },
+      attributes,
+      links,
+      events,
+      resource: { attributes: resourceAttrs },
+      traceId,
+      spanId,
+      traceFlags: otlpSpan.flags ?? 0,
+      duration,
+      ended: endTime !== null,
+      instrumentationLibrary: {
+        name: scope.name || '',
+        version: scope.version || undefined,
+      },
+      droppedAttributesCount,
+      droppedEventsCount,
+      droppedLinksCount,
+      starred: false,
+      ...(exampleId !== undefined && { example: exampleId }),
+      ...(experimentId !== undefined && { experiment: experimentId }),
+    });
+  }
+  
+  return internalSpans;
+}
+
+/**
  * Convert OTLP span format to internal span format.
  * OTLP format: ResourceSpans -> ScopeSpans -> Spans
  */
@@ -22,117 +131,12 @@ function convertOtlpSpansToInternal(otlpRequest: any): any[] {
   
   for (const resourceSpan of otlpRequest.resourceSpans) {
     const resource = resourceSpan.resource || {};
-    const resourceAttributes = resource.attributes || [];
-    
-    // Convert resource attributes from keyValue array to object
-    const resourceAttrs: Record<string, any> = {};
-    for (const kv of resourceAttributes) {
-      if (kv.key && kv.value) {
-        resourceAttrs[kv.key] = convertOtlpValue(kv.value);
-      }
-    }
+    const resourceAttrs = convertKeyValueArray(resource.attributes);
     
     const scopeSpans = resourceSpan.scopeSpans || [];
     for (const scopeSpan of scopeSpans) {
-      const scope = scopeSpan.scope || {};
-      const spans = scopeSpan.spans || [];
-      
-      for (const otlpSpan of spans) {
-        // Convert span attributes
-        const attributes: Record<string, any> = {};
-        if (otlpSpan.attributes) {
-          for (const kv of otlpSpan.attributes) {
-            if (kv.key && kv.value) {
-              attributes[kv.key] = convertOtlpValue(kv.value);
-            }
-          }
-        }
-        
-        // Merge resource attributes into span attributes
-        Object.assign(attributes, resourceAttrs);
-        
-        // Convert events
-        const events = (otlpSpan.events || []).map((event: any) => {
-          const eventAttrs: Record<string, any> = {};
-          if (event.attributes) {
-            for (const kv of event.attributes) {
-              if (kv.key && kv.value) {
-                eventAttrs[kv.key] = convertOtlpValue(kv.value);
-              }
-            }
-          }
-          return {
-            name: event.name || '',
-            time: normalizeTimeToMillis(event.timeUnixNano || event.time) ?? 0,
-            attributes: eventAttrs,
-          };
-        });
-        
-        // Convert links
-        const links = (otlpSpan.links || []).map((link: any) => {
-          const linkAttrs: Record<string, any> = {};
-          if (link.attributes) {
-            for (const kv of link.attributes) {
-              if (kv.key && kv.value) {
-                linkAttrs[kv.key] = convertOtlpValue(kv.value);
-              }
-            }
-          }
-          return {
-            context: {
-              traceId: link.traceId ? bytesToHex(link.traceId) : '',
-              spanId: link.spanId ? bytesToHex(link.spanId) : '',
-            },
-            attributes: linkAttrs,
-          };
-        });
-        
-        // Convert trace ID and span ID from bytes to hex
-        const traceId = otlpSpan.traceId ? bytesToHex(otlpSpan.traceId) : '';
-        const spanId = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
-        const parentSpanId = otlpSpan.parentSpanId ? bytesToHex(otlpSpan.parentSpanId) : undefined;
-        
-        // Convert times - support multiple formats
-        const startTime = normalizeTimeToMillis(
-          otlpSpan.startTimeUnixNano || otlpSpan.startTime
-        ) ?? 0;
-        const endTime = normalizeTimeToMillis(
-          otlpSpan.endTimeUnixNano || otlpSpan.endTime
-        );
-        const duration = endTime !== null ? endTime - startTime : null;
-        
-        // Convert status (enums are already numbers when parsed with enums: Number)
-        const status = otlpSpan.status || {};
-        const statusCode = status.code !== undefined ? status.code : 0;
-        
-        internalSpans.push({
-          name: otlpSpan.name || '',
-          kind: otlpSpan.kind !== undefined ? otlpSpan.kind : 0,
-          parentSpanId: parentSpanId,
-          startTime: startTime,
-          endTime: endTime,
-          status: {
-            code: statusCode,
-            message: status.message || undefined,
-          },
-          attributes: attributes,
-          links: links,
-          events: events,
-          resource: {
-            attributes: resourceAttrs,
-          },
-          traceId: traceId,
-          spanId: spanId,
-          traceFlags: otlpSpan.flags !== undefined ? otlpSpan.flags : 0,
-          duration: duration,
-          ended: endTime !== null,
-          instrumentationLibrary: {
-            name: scope.name || '',
-            version: scope.version || undefined,
-          },
-          starred: false,
-        });
-      }
+      const spans = convertOtlpSpansToInternalScopeSpan(scopeSpan, resourceAttrs);
+      internalSpans.push(...spans);
     }
   }
   
@@ -160,27 +164,25 @@ function convertOtlpValue(value: any): any {
     return obj;
   }
   if (value.bytesValue) {
-    // Return bytes as base64 string
-    return Buffer.from(value.bytesValue, 'base64').toString('base64');
+    // Return bytes as base64 string (already in base64 format from protobuf)
+    return value.bytesValue;
   }
   return null;
 }
 
 /**
- * Convert bytes (base64 or Uint8Array) to hex string.
+ * Convert bytes (base64 string, array, or Uint8Array) to hex string.
  */
 function bytesToHex(bytes: any): string {
-  if (typeof bytes === 'string') {
-    // Assume base64
-    return Buffer.from(bytes, 'base64').toString('hex');
+  if (!bytes) return '';
+  try {
+    const buffer = typeof bytes === 'string' 
+      ? Buffer.from(bytes, 'base64')
+      : Buffer.from(bytes);
+    return buffer.toString('hex');
+  } catch {
+    return '';
   }
-  if (Array.isArray(bytes)) {
-    return Buffer.from(bytes).toString('hex');
-  }
-  if (bytes instanceof Uint8Array) {
-    return Buffer.from(bytes).toString('hex');
-  }
-  return '';
 }
 
 /**
@@ -346,7 +348,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       reply.code(200).send({});
       
     } catch (error: any) {
-      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+      if (isConnectionError(error)) {
         reply.code(503).send({
           code: 14, // UNAVAILABLE
           message: 'Elasticsearch service unavailable',
@@ -382,32 +384,23 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       reply.code(400).send({ error: 'organisation query parameter is required (JWT authentication) or organisation must be associated with API key' });
       return;
     }
-    console.log("organisationId", organisationId);
     const query = (request.query as any).q as string | undefined;  
     const limit = parseInt((request.query as any).limit || '100');
     const offset = parseInt((request.query as any).offset || '0');
     const fieldsParam = (request.query as any).fields as string | undefined;
 	const excludeFieldsParam = (request.query as any).exclude as string | undefined;
 
-    // Parse fields parameter for Elasticsearch _source filtering. Exclude attributes and unindexed_attributes by default if not specified.
-    let _source_includes: string[] | null | undefined = undefined;
-    let _source_excludes: string[] | null | undefined = undefined;
+    // Parse fields parameter for Elasticsearch _source filtering
+    let _source_includes: string[] | undefined;
+    let _source_excludes: string[] | undefined;
     
-    // Handle fields="*" first - this means include all fields, no exclusions
     if (fieldsParam === "*") {
+      // Include all fields, no exclusions
       _source_includes = undefined;
       _source_excludes = undefined;
     } else {
-      // Parse fields parameter
-      if (fieldsParam) {
-        _source_includes = fieldsParam.split(',').map(f => f.trim()).filter(f => f.length > 0);
-      }
-      
-      // Parse exclude parameter
-      if (excludeFieldsParam) {
-        _source_excludes = excludeFieldsParam.split(',').map(f => f.trim()).filter(f => f.length > 0);
-      }
-      
+      _source_includes = parseFieldList(fieldsParam);
+      _source_excludes = parseFieldList(excludeFieldsParam);
       // Default: exclude attributes and unindexed_attributes if neither fields nor exclude is specified
       if (!fieldsParam && !excludeFieldsParam) {
         _source_excludes = ['attributes', 'unindexed_attributes'];
@@ -415,13 +408,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
 
     // If query is blank, add parentSpanId:unset to get root spans only
-    let searchQuery: SearchQuery | null = null;
-    if (query && query.trim().length > 0) {
-      searchQuery = new SearchQuery(query);
-    } else {
-      // Query is blank or empty - add parentSpanId:unset to get root spans only (to avoid returning big data unless explicitly requested)
-      searchQuery = new SearchQuery('parentSpanId:unset');
-    }
+    const searchQuery = new SearchQuery(query?.trim() || 'parentSpanId:unset');
 
     // Pass sourceFields to Elasticsearch for efficient field filtering at the source
     try {
@@ -433,7 +420,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         offset,
       };
     } catch (error: any) {
-      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+      if (isConnectionError(error)) {
         reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
         return;
       }
@@ -458,8 +445,8 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     const { id } = request.params as { id: string };
     const updates = request.body as Partial<Span>;
 
-    // Validate that updates only contain allowed fields (for now, just starred)
-    const allowedFields = ['starred'];
+    // Validate that updates only contain allowed fields
+    const allowedFields = ['starred', 'tags'];
     const updateKeys = Object.keys(updates);
     const invalidFields = updateKeys.filter(key => !allowedFields.includes(key));
     if (invalidFields.length > 0) {
@@ -476,12 +463,28 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
       return updatedSpan;
     } catch (error: any) {
-      if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
+      if (isConnectionError(error)) {
         reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
         return;
       }
       throw error;
     }
   });
+}
+
+/**
+ * Check if error is a ConnectionError from Elasticsearch.
+ */
+function isConnectionError(error: any): boolean {
+  return error.name === 'ConnectionError' || error.message?.includes('ConnectionError');
+}
+
+/**
+ * Parse comma-separated field list.
+ */
+function parseFieldList(fields: string | undefined): string[] | undefined {
+  if (!fields) return undefined;
+  const parsed = fields.split(',').map(f => f.trim()).filter(f => f.length > 0);
+  return parsed.length > 0 ? parsed : undefined;
 }
 

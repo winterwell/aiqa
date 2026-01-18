@@ -2,7 +2,8 @@
  * Shared constants for chart components
  */
 
-export const CHART_HEIGHT = 400;
+export const CHART_HEIGHT = 250;
+export const CHART_WIDTH = 300;
 
 export const CHART_COLORS = {
   primary: '#8884d8',

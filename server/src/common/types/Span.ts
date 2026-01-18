@@ -8,6 +8,8 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
 	/** Trace ID */
 	traceId: string;
   organisation: string;
+  /** Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example */
+  example?: string;
   /** Only set for spans in the `spans` index IF created during an experiment */
   experiment?: string;
   /** Client-set span ID (goes alongside OpenTelemetry span ID if provided) */
@@ -15,7 +17,7 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   /** Client-set trace ID (goes alongside OpenTelemetry trace ID if provided) */
   clientTraceId?: string;
   /** Client-set tags for the span */
-  tags?: Record<string, any>;
+  tags?: string[];
   /** Hash of the input for looking up same-input spans */
   inputHash?: string;
   /** If true, the span is starred by a user */
@@ -35,11 +37,15 @@ export function getSpanOutput(span:Span) {
 
 
 export const getSpanId = (span: Span) => {
-    return (span as any).span?.id || (span as any).client_span_id || 'N/A';
+    // Check direct properties first (as stored in ES), then OpenTelemetry spanContext() method
+    if (!span) return undefined;
+    return (span as any)?.spanId || (span as any)?.id || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.spanId : undefined);
   };
 
   export  const getTraceId = (span: Span) => {
-    return (span as any).trace?.id || (span as any).client_trace_id || 'N/A';
+    // Check direct traceId property first, then OpenTelemetry spanContext() method
+    if (!span) return undefined;
+    return span.traceId || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.traceId : undefined);
   };
 
   export  const getStartTime = (span: Span) => {
@@ -47,6 +53,11 @@ export const getSpanId = (span: Span) => {
     return new Date(span.startTime);
   };
 
+  /**
+   * 
+   * @param span 
+   * @returns milliseconds or null
+   */
   export const getDuration = (span: Span) => {
     if (!span.startTime || !span.endTime) return null;
     return span.endTime - span.startTime;

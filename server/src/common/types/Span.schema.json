@@ -193,8 +193,10 @@
           "description": "Client-set trace ID (overrides OpenTelemetry trace ID if provided)"
         },
         "tags": {
-          "type": "object",
-          "additionalProperties": true,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
           "description": "Client-set tags for the span"
         },
         "inputHash": {

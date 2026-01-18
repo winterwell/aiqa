@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Outer hexagon with rounded corners - thick stamp border -->
+  <path d="M 100,8 L 192,54 L 192,146 L 100,192 L 8,146 L 8,54 Z" 
+        fill="black" 
+        stroke="black" 
+        stroke-width="10"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+  
+  <!-- Inner hexagon border with rounded corners - creates layered stamp effect -->
+  <path d="M 100,18 L 182,59 L 182,141 L 100,182 L 18,141 L 18,59 Z" 
+        fill="black" 
+        stroke="white" 
+        stroke-width="4"
+        stroke-linejoin="round"
+        stroke-linecap="round"/>
+  
+  <!-- Three stars - output nodes of neural network, moved higher -->
+  <g fill="white">
+    <!-- Left star (centered at x=80) -->
+    <path d="M 80 45 L 83 52 L 90 52 L 85 57 L 87 64 L 80 60 L 73 64 L 75 57 L 70 52 L 77 52 Z"/>
+    <!-- Center star (centered at x=100) -->
+    <path d="M 100 45 L 103 52 L 110 52 L 105 57 L 107 64 L 100 60 L 93 64 L 95 57 L 90 52 L 97 52 Z"/>
+    <!-- Right star (centered at x=120) -->
+    <path d="M 120 45 L 123 52 L 130 52 L 125 57 L 127 64 L 120 60 L 113 64 L 115 57 L 110 52 L 117 52 Z"/>
+  </g>
+  
+  <!-- Neural network connections: output layer (stars) to hidden layer -->
+  <g stroke="white" stroke-width="1" opacity="0.6">
+    <!-- Connections from left star to hidden layer -->
+    <line x1="80" y1="64" x2="50" y2="130"/>
+    <line x1="80" y1="64" x2="75" y2="130"/>
+    <line x1="80" y1="64" x2="100" y2="130"/>
+    <line x1="80" y1="64" x2="125" y2="130"/>
+    <line x1="80" y1="64" x2="150" y2="130"/>
+    <!-- Connections from center star to hidden layer -->
+    <line x1="100" y1="64" x2="50" y2="130"/>
+    <line x1="100" y1="64" x2="75" y2="130"/>
+    <line x1="100" y1="64" x2="100" y2="130"/>
+    <line x1="100" y1="64" x2="125" y2="130"/>
+    <line x1="100" y1="64" x2="150" y2="130"/>
+    <!-- Connections from right star to hidden layer -->
+    <line x1="120" y1="64" x2="50" y2="130"/>
+    <line x1="120" y1="64" x2="75" y2="130"/>
+    <line x1="120" y1="64" x2="100" y2="130"/>
+    <line x1="120" y1="64" x2="125" y2="130"/>
+    <line x1="120" y1="64" x2="150" y2="130"/>
+  </g>
+  
+  <!-- AIQA rectangle - centered horizontally and vertically, white border, rounded corners -->
+  <rect x="7" y="77" width="184" height="44" 
+        fill="black" 
+        stroke="white" 
+        stroke-width="2.5" 
+        rx="4" 
+        ry="4"/>
+  <text x="100" y="102" 
+        font-family="Arial, sans-serif" 
+        font-size="28"
+        font-weight="bold" 
+        fill="white" 
+        text-anchor="middle" 
+        dominant-baseline="middle" 
+        letter-spacing="2">A I Q A</text>
+  
+  <!-- Hidden layer nodes - spaced to span 100 width -->
+  <g fill="white">
+    <circle cx="50" cy="130" r="4"/>
+    <circle cx="75" cy="130" r="4"/>
+    <circle cx="100" cy="130" r="4"/>
+    <circle cx="125" cy="130" r="4"/>
+    <circle cx="150" cy="130" r="4"/>
+  </g>
+  
+  <!-- Neural network connections: hidden layer to input layer -->
+  <g stroke="white" stroke-width="1" opacity="0.6">
+    <!-- Connections from hidden layer to input layer -->
+    <line x1="50" y1="134" x2="75" y2="155"/>
+    <line x1="50" y1="134" x2="100" y2="155"/>
+    <line x1="50" y1="134" x2="125" y2="155"/>
+    <line x1="75" y1="134" x2="75" y2="155"/>
+    <line x1="75" y1="134" x2="100" y2="155"/>
+    <line x1="75" y1="134" x2="125" y2="155"/>
+    <line x1="100" y1="134" x2="75" y2="155"/>
+    <line x1="100" y1="134" x2="100" y2="155"/>
+    <line x1="100" y1="134" x2="125" y2="155"/>
+    <line x1="125" y1="134" x2="75" y2="155"/>
+    <line x1="125" y1="134" x2="100" y2="155"/>
+    <line x1="125" y1="134" x2="125" y2="155"/>
+    <line x1="150" y1="134" x2="75" y2="155"/>
+    <line x1="150" y1="134" x2="100" y2="155"/>
+    <line x1="150" y1="134" x2="125" y2="155"/>
+  </g>
+  
+  <!-- Input layer nodes -->
+  <g fill="white">
+    <circle cx="75" cy="155" r="4"/>
+    <circle cx="100" cy="155" r="4"/>
+    <circle cx="125" cy="155" r="4"/>
+  </g>
+</svg>
+

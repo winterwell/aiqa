@@ -14,6 +14,17 @@ import {
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download } from '@phosphor-icons/react';
+import Spinner from './Spinner';
+
+// Extend ColumnDef to support custom CSV value extraction
+export type ExtendedColumnDef<T> = ColumnDef<T> & {
+  /**
+   * Optional function to extract a string value for CSV export.
+   * If not provided, falls back to accessorFn, accessorKey, or a default string conversion.
+   */
+  csvValue?: (row: T) => string | null | undefined;
+};
 
 export interface PageableData<T> {
   hits: T[];
@@ -31,7 +42,8 @@ export interface TableUsingAPIProps<T> {
    * The function to load data from the server (if not providing `data`)
    */
   loadData?: (query: string) => Promise<PageableData<T>>;
-  columns: ColumnDef<T>[];
+  columns: ExtendedColumnDef<T>[];
+  showSearch?: boolean;
   searchPlaceholder?: string;
   searchDebounceMs?: number;
   pageSize?: number;
@@ -39,12 +51,18 @@ export interface TableUsingAPIProps<T> {
   initialSorting?: SortingState;
   refetchInterval?: number;
   onRowClick?: (row: T) => void;
+  /**
+   * Unique identifier for this table instance to prevent cache collisions.
+   * Should be unique per page/context where the table is used.
+   */
+  queryKeyPrefix?: string | string[];
 }
 
 function TableUsingAPI<T extends Record<string, any>>({
 	data,
   loadData,
   columns,
+  showSearch = true,
   searchPlaceholder = 'Search...',
   searchDebounceMs = 1000,
   pageSize = 50,
@@ -52,6 +70,7 @@ function TableUsingAPI<T extends Record<string, any>>({
   initialSorting = [],
   refetchInterval,
   onRowClick,
+  queryKeyPrefix,
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = useState('');
@@ -76,8 +95,19 @@ function TableUsingAPI<T extends Record<string, any>>({
     return () => clearTimeout(timer);
   }, [inputValue, searchDebounceMs]);
   
+  // Build unique query key to prevent cache collisions between different table instances
+  const queryKey = useMemo(() => {
+    const baseKey = ['table-data'];
+    if (queryKeyPrefix) {
+      const prefix = Array.isArray(queryKeyPrefix) ? queryKeyPrefix : [queryKeyPrefix];
+      baseKey.push(...prefix);
+    }
+    baseKey.push(serverQuery);
+    return baseKey;
+  }, [queryKeyPrefix, serverQuery]);
+  
   const { data: loadedData, isLoading, error: loadError } = useQuery({
-    queryKey: ['table-data', serverQuery],
+    queryKey,
     queryFn: () => loadData(serverQuery),
 	refetchInterval,
   });
@@ -87,7 +117,87 @@ function TableUsingAPI<T extends Record<string, any>>({
   const limit = loadedData?.limit || pageSize;
 
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['table-data', serverQuery] });
+    queryClient.invalidateQueries({ queryKey });
+  };
+
+  // Generate CSV from all rows (not just paginated)
+  const generateCSV = (): string => {
+    const visibleColumns = columns.filter(col => {
+      // Skip columns without headers (like action buttons)
+      const header = typeof col.header === 'string' ? col.header : (col as any).id || '';
+      return header !== '';
+    });
+
+    // Get header row
+    const headers = visibleColumns.map(col => {
+      const header = typeof col.header === 'string' ? col.header : (col as any).id || '';
+      return escapeCSVValue(header);
+    });
+
+    // Get data rows from all filtered/sorted rows
+    const rows = allRows.map(row => {
+      return visibleColumns.map(col => {
+        // Use csvValue if provided
+        if ((col as ExtendedColumnDef<T>).csvValue) {
+          const value = (col as ExtendedColumnDef<T>).csvValue!(row.original);
+          return escapeCSVValue(value);
+        }
+        
+        // Try accessorFn (may not exist on all ColumnDef variants)
+        const accessorFn = (col as any).accessorFn;
+        if (accessorFn) {
+          const value = accessorFn(row.original, row.index);
+          return escapeCSVValue(value);
+        }
+        
+        // Try accessorKey (may not exist on all ColumnDef variants)
+        const accessorKey = (col as any).accessorKey;
+        if (accessorKey) {
+          const value = (row.original as any)[accessorKey];
+          return escapeCSVValue(value);
+        }
+        
+        // Fallback: try to get value by column id
+        const colId = (col as any).id;
+        if (colId) {
+          const value = (row.original as any)[colId];
+          return escapeCSVValue(value);
+        }
+        
+        return '';
+      });
+    });
+
+    // Combine headers and rows
+    const csvRows = [headers, ...rows];
+    return csvRows.map(row => row.join(',')).join('\n');
+  };
+
+  // Escape CSV value (handle commas, quotes, newlines)
+  const escapeCSVValue = (value: any): string => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    
+    const str = String(value);
+    // If contains comma, quote, or newline, wrap in quotes and escape quotes
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const handleDownloadCSV = () => {
+    const csv = generateCSV();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `table-export-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Configure table with sorting and filtering
@@ -136,11 +246,7 @@ function TableUsingAPI<T extends Record<string, any>>({
     return (
       <Card>
         <CardBody>
-          <div className="text-center">
-            <div className="spinner-border" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-          </div>
+          <Spinner centered />
         </CardBody>
       </Card>
     );
@@ -161,15 +267,28 @@ function TableUsingAPI<T extends Record<string, any>>({
 
   return (
     <div className="table-container">
-        <div className="mb-3">
+        {showSearch && <div className="mb-3 d-flex align-items-center" style={{ gap: '0.5rem' }}>
           <Input
             type="search"
             placeholder={searchPlaceholder}
             value={inputValue}
             onChange={handleSearchChange}
+            className="flex-grow-1"
           />
-		  <Button onClick={refresh}>Refresh</Button>
-        </div>
+          <Button onClick={refresh} className="flex-shrink-0">Refresh</Button>
+          <Button onClick={handleDownloadCSV} className="flex-shrink-0" color="secondary">
+            <Download size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
+            Download CSV
+          </Button>
+        </div>}
+        {!showSearch && totalRows > 0 && (
+          <div className="mb-3 d-flex justify-content-end">
+            <Button onClick={handleDownloadCSV} className="flex-shrink-0" color="secondary">
+              <Download size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
+              Download CSV
+            </Button>
+          </div>
+        )}
 
         {totalRows === 0 ? (
           <p className="text-muted">No data found.</p>

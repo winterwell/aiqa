@@ -7,6 +7,7 @@ import { Experiment } from '../common/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ExperimentsListMetricsDashboard from '../components/ExperimentListMetricsDashboard';
 import A from '../components/generic/A';
+import Spinner from '../components/generic/Spinner';
 
 const ExperimentsListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
@@ -75,11 +76,7 @@ const ExperimentsListPage: React.FC = () => {
   if (isLoading) {
     return (
       <Container>
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner centered />
       </Container>
     );
   }

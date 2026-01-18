@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+  </defs>
+  
+  <!-- Main group -->
+  <g id="logoGroup">
+    <!-- Outer hexagon with rounded corners - thick stamp border -->
+    <path d="M 100,8 L 192,54 L 192,146 L 100,192 L 8,146 L 8,54 Z" 
+          fill="black" 
+          stroke="black" 
+          stroke-width="10"
+          stroke-linejoin="round"
+          stroke-linecap="round"/>
+    
+    <!-- Inner hexagon border with rounded corners - creates layered stamp effect -->
+    <path d="M 100,18 L 182,59 L 182,141 L 100,182 L 18,141 L 18,59 Z" 
+          fill="black" 
+          stroke="white" 
+          stroke-width="4"
+          stroke-linejoin="round"
+          stroke-linecap="round"/>
+    
+    <!-- Three stars - output nodes of neural network, moved higher -->
+    <g fill="white">
+      <!-- Left star (centered at x=80) -->
+      <path d="M 80 45 L 83 52 L 90 52 L 85 57 L 87 64 L 80 60 L 73 64 L 75 57 L 70 52 L 77 52 Z"/>
+      <!-- Center star (centered at x=100) -->
+      <path d="M 100 45 L 103 52 L 110 52 L 105 57 L 107 64 L 100 60 L 93 64 L 95 57 L 90 52 L 97 52 Z"/>
+      <!-- Right star (centered at x=120) -->
+      <path d="M 120 45 L 123 52 L 130 52 L 125 57 L 127 64 L 120 60 L 113 64 L 115 57 L 110 52 L 117 52 Z"/>
+    </g>
+    
+    <!-- Neural network connections: output layer (stars) to hidden layer - base lines -->
+    <g stroke="white" stroke-width="1" opacity="0.6">
+      <!-- Connections from left star to hidden layer -->
+      <line x1="80" y1="64" x2="50" y2="130"/>
+      <line x1="80" y1="64" x2="75" y2="130"/>
+      <line x1="80" y1="64" x2="100" y2="130"/>
+      <line x1="80" y1="64" x2="125" y2="130"/>
+      <line x1="80" y1="64" x2="150" y2="130"/>
+      <!-- Connections from center star to hidden layer -->
+      <line x1="100" y1="64" x2="50" y2="130"/>
+      <line x1="100" y1="64" x2="75" y2="130"/>
+      <line x1="100" y1="64" x2="100" y2="130"/>
+      <line x1="100" y1="64" x2="125" y2="130"/>
+      <line x1="100" y1="64" x2="150" y2="130"/>
+      <!-- Connections from right star to hidden layer -->
+      <line x1="120" y1="64" x2="50" y2="130"/>
+      <line x1="120" y1="64" x2="75" y2="130"/>
+      <line x1="120" y1="64" x2="100" y2="130"/>
+      <line x1="120" y1="64" x2="125" y2="130"/>
+      <line x1="120" y1="64" x2="150" y2="130"/>
+    </g>
+    
+    <!-- Pulse lines for energy flow: hidden to output layer - continuous pulsing -->
+    <g stroke="white" stroke-width="2" opacity="0.9" stroke-dasharray="4,2">
+      <!-- Pulse from hidden layer to stars -->
+      <line x1="50" y1="130" x2="80" y2="64">
+        <animate attributeName="stroke-dashoffset" values="0;-100" dur="0.8s" begin="0s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0s" repeatCount="indefinite"/>
+      </line>
+      <line x1="75" y1="130" x2="100" y2="64">
+        <animate attributeName="stroke-dashoffset" values="0;-100" dur="0.8s" begin="0.1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.1s" repeatCount="indefinite"/>
+      </line>
+      <line x1="100" y1="130" x2="120" y2="64">
+        <animate attributeName="stroke-dashoffset" values="0;-100" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+      </line>
+      <line x1="125" y1="130" x2="100" y2="64">
+        <animate attributeName="stroke-dashoffset" values="0;-100" dur="0.8s" begin="0.3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.3s" repeatCount="indefinite"/>
+      </line>
+      <line x1="150" y1="130" x2="120" y2="64">
+        <animate attributeName="stroke-dashoffset" values="0;-100" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+      </line>
+    </g>
+    
+    <!-- AIQA rectangle - stamps down at 2s, stays until 6s, fades out quickly -->
+    <g id="aiqaGroup" opacity="0" transform="translate(99, 99)">
+      <!-- Opacity: appears at 2s (after 0.3s stamp), stays until 6s, fades out 6s-6.2s, cycle restarts at 6.2s -->
+      <animate attributeName="opacity" values="0;1;1;0" dur="4.2s" begin="2s; 6.2s" repeatCount="indefinite" fill="freeze" keyTimes="0;0.071;0.952;1" calcMode="linear"/>
+      <!-- Scale: stamps down quickly at 2s (1.3->1 in 0.3s), stays at 1, resets to 1.3 at 6.2s -->
+      <animateTransform attributeName="transform" 
+                        type="scale" 
+                        values="1.3;1;1;1.3" 
+                        dur="4.2s" 
+                        begin="2s; 6.2s"
+                        repeatCount="indefinite"
+                        fill="freeze"
+                        keyTimes="0;0.071;0.952;1"
+                        additive="sum"/>
+      <g transform="translate(-99, -99)">
+        <rect x="7" y="77" width="184" height="44" 
+              fill="black" 
+              stroke="white" 
+              stroke-width="2.5" 
+              rx="4" 
+              ry="4"/>
+        <text x="100" y="102" 
+              font-family="Arial, sans-serif" 
+              font-size="28"
+              font-weight="bold" 
+              fill="white" 
+              text-anchor="middle" 
+              dominant-baseline="middle" 
+              letter-spacing="2">
+          <!-- Subtle yellow fade effect: happens once at 3s, then stays white -->
+          <animate attributeName="fill" values="white;#ffffaa;white" dur="0.8s" begin="3s; 6.2s" repeatCount="indefinite" fill="freeze" keyTimes="0;0.5;1"/>
+          A I Q A
+        </text>
+      </g>
+    </g>
+    
+    <!-- Hidden layer nodes - spaced to span 100 width -->
+    <g fill="white">
+      <circle cx="50" cy="130" r="4"/>
+      <circle cx="75" cy="130" r="4"/>
+      <circle cx="100" cy="130" r="4"/>
+      <circle cx="125" cy="130" r="4"/>
+      <circle cx="150" cy="130" r="4"/>
+    </g>
+    
+    <!-- Neural network connections: hidden layer to input layer - base lines -->
+    <g stroke="white" stroke-width="1" opacity="0.6">
+      <!-- Connections from hidden layer to input layer -->
+      <line x1="50" y1="134" x2="75" y2="155"/>
+      <line x1="50" y1="134" x2="100" y2="155"/>
+      <line x1="50" y1="134" x2="125" y2="155"/>
+      <line x1="75" y1="134" x2="75" y2="155"/>
+      <line x1="75" y1="134" x2="100" y2="155"/>
+      <line x1="75" y1="134" x2="125" y2="155"/>
+      <line x1="100" y1="134" x2="75" y2="155"/>
+      <line x1="100" y1="134" x2="100" y2="155"/>
+      <line x1="100" y1="134" x2="125" y2="155"/>
+      <line x1="125" y1="134" x2="75" y2="155"/>
+      <line x1="125" y1="134" x2="100" y2="155"/>
+      <line x1="125" y1="134" x2="125" y2="155"/>
+      <line x1="150" y1="134" x2="75" y2="155"/>
+      <line x1="150" y1="134" x2="100" y2="155"/>
+      <line x1="150" y1="134" x2="125" y2="155"/>
+    </g>
+    
+    <!-- Pulse lines for energy flow: input to hidden layer - continuous pulsing -->
+    <g stroke="white" stroke-width="2" opacity="0.9" stroke-dasharray="4,2">
+      <!-- Pulse from input layer to hidden layer -->
+      <line x1="75" y1="155" x2="50" y2="130">
+        <animate attributeName="stroke-dashoffset" values="100;0" dur="0.8s" begin="0s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0s" repeatCount="indefinite"/>
+      </line>
+      <line x1="100" y1="155" x2="75" y2="130">
+        <animate attributeName="stroke-dashoffset" values="100;0" dur="0.8s" begin="0.1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.1s" repeatCount="indefinite"/>
+      </line>
+      <line x1="125" y1="155" x2="100" y2="130">
+        <animate attributeName="stroke-dashoffset" values="100;0" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>
+      </line>
+      <line x1="100" y1="155" x2="125" y2="130">
+        <animate attributeName="stroke-dashoffset" values="100;0" dur="0.8s" begin="0.3s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.3s" repeatCount="indefinite"/>
+      </line>
+      <line x1="125" y1="155" x2="150" y2="130">
+        <animate attributeName="stroke-dashoffset" values="100;0" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values="0;0.9;0" dur="0.8s" begin="0.4s" repeatCount="indefinite"/>
+      </line>
+    </g>
+    
+    <!-- Input layer nodes -->
+    <g fill="white">
+      <circle cx="75" cy="155" r="4"/>
+      <circle cx="100" cy="155" r="4"/>
+      <circle cx="125" cy="155" r="4"/>
+    </g>
+  </g>
+</svg>
+

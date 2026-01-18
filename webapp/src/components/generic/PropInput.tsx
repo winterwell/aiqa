@@ -53,8 +53,8 @@ export default function PropInput({ label, item, prop, type, help, className, on
 			setLocalValue(newValue);
 		}
 	}, [prop, item, item[prop], localValue]);
-
-	if (!label) label = prettyString(prop);
+    // label="" means no label
+	if (label===null || label===undefined) label = prettyString(prop);
 	const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		let newValue: string | string[] | boolean = e.target.value;
 		

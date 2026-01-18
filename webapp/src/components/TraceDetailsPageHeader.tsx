@@ -32,7 +32,7 @@ export default function TraceDetailsPageHeader({
   return (
     <Row>
       <Col>
-        <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-3">
+        <Link to={`/organisation/${organisationId}/traces`} className="btn btn-link mb-1">
           ← Back to Traces
         </Link>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>

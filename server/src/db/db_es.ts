@@ -145,10 +145,23 @@ function generateExampleMappings(): any {
     mappings.spans.properties = spanMappings;
   }
   
-  // Special handling for inputs field - store as-is, not indexed
-  if (mappings.inputs) {
-    mappings.inputs = { type: 'object', enabled: false };
-  }  
+  // Special handling for input field - use flattened type for searchable but avoiding mapping explosion
+  if (mappings.input) {
+    mappings.input = { type: 'flattened' };
+  }
+  
+  // Special handling for outputs field - store but not searchable
+  if (mappings.outputs) {
+    mappings.outputs = { type: 'object', enabled: false };
+  }
+  
+  // Special handling for metrics array - parameters should be stored but not searchable
+  if (mappings.metrics && mappings.metrics.type === 'nested' && mappings.metrics.properties) {
+    if (mappings.metrics.properties.parameters) {
+      mappings.metrics.properties.parameters = { type: 'object', enabled: false };
+    }
+  }
+  
   return mappings;
 }
 
@@ -367,6 +380,15 @@ function transformExampleForEs(doc: any): any {
     transformed.spans = transformed.spans.map((span: any) => transformSpanForEs(span));
   }
   
+  // Normalize input field: Elasticsearch flattened type expects an object, so wrap strings
+  // Only wrap if it's a primitive (string, number, boolean) - objects are already fine
+  if (transformed.input !== undefined && transformed.input !== null) {
+    if (typeof transformed.input === 'string' || typeof transformed.input === 'number' || typeof transformed.input === 'boolean') {
+      transformed.input = { value: transformed.input };
+    }
+    // If it's already an object or array, leave it as-is
+  }
+  
   // Process example-level attributes
   const { truncated: attrsTruncated, bigAttributes: attrsBig } = processAttributes(transformed.attributes);
   transformed.attributes = attrsTruncated;
@@ -377,13 +399,13 @@ function transformExampleForEs(doc: any): any {
   return transformed;
 }
 
-// Generic bulk insert function
-async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (doc: any) => any): Promise<void> {
+/** Generic bulk insert function. Returns the IDs of the documents that were inserted. */
+async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (doc: any) => any): Promise<{ id: string }[]> {
   if (!client) {
     throw new Error('Elasticsearch client not initialized.');
   }
 
-  if (documents.length === 0) return;
+  if (documents.length === 0) return [];
 
   const transform = transformFn || transformSpanForEs;
 
@@ -418,6 +440,7 @@ async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (d
       throw new Error(`Bulk insert errors: ${JSON.stringify(erroredDocuments, null, 2).slice(0, 1000)}...`);
     }
   }
+  return response.items.map((action: any) => ({ id: action.index._id }));
 }
 
 /**Generic search function wrapper. This is the function for getting entities from Elasticsearch. */
@@ -581,7 +604,7 @@ export async function createIndices(): Promise<void> {
 /**
  * Bulk insert spans into 'traces' index. Spans should have organisation set.
  */
-export async function bulkInsertSpans(spans: Span[]): Promise<void> {
+export async function bulkInsertSpans(spans: Span[]): Promise<{id: string}[]> {
   return bulkInsert<Span>(SPAN_INDEX_ALIAS, spans);
 }
 
@@ -686,8 +709,156 @@ export async function updateSpan(
 /**
  * Bulk insert examples into 'DATASET_EXAMPLES' index. Examples should have organisation and dataset set.
  */
-export async function bulkInsertExamples(examples: Example[]): Promise<void> {
+export async function bulkInsertExamples(examples: Example[]): Promise<{ id: string }[]> {
   return bulkInsert<Example>(DATASET_EXAMPLES_INDEX_ALIAS, examples, transformExampleForEs);
+}
+
+/**
+ * Get a single example by ID from Elasticsearch.
+ * @param id - Example ID
+ * @param organisationId - Optional organisation ID for verification
+ * @returns Example or null if not found
+ */
+export async function getExample(id: string, organisationId?: string): Promise<Example | null> {
+  const result = await searchExamples(`id:${id}`, organisationId, undefined, 1, 0);
+  // searchExamples already handles unwrapping input.value, so we can just return the first hit
+  return result.hits.length > 0 ? result.hits[0] : null;
+}
+
+/**
+ * Update an example by ID in ElasticSearch. Performs partial update (only updates provided fields).
+ * @param exampleId - The ID of the example to update (used as document _id in ElasticSearch)
+ * @param updates - Partial example object with fields to update
+ * @param organisationId - Optional organisation ID to verify ownership
+ * @returns The updated example, or null if not found
+ */
+export async function updateExample(
+  exampleId: string,
+  updates: Partial<Example>,
+  organisationId?: string
+): Promise<Example | null> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  try {
+    // Get the current document to verify it exists and belongs to the organisation
+    const getResponse = await client.get({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      id: exampleId,
+    });
+
+    const currentExample = getResponse._source as any;
+    
+    // Verify organisation if provided
+    if (organisationId && currentExample.organisation !== organisationId) {
+      return null; // Example doesn't belong to this organisation
+    }
+
+    // Prepare update document - only include fields that are being updated
+    const updateDoc: any = {};
+    Object.keys(updates).forEach(key => {
+      if (updates[key as keyof Example] !== undefined) {
+        updateDoc[key] = updates[key as keyof Example];
+      }
+    });
+
+    if (Object.keys(updateDoc).length === 0) {
+      // No updates to apply, return current example
+      return currentExample as Example;
+    }
+
+    // Normalize input field if being updated: Elasticsearch flattened type expects an object
+    if (updateDoc.input !== undefined && updateDoc.input !== null) {
+      if (typeof updateDoc.input === 'string' || typeof updateDoc.input === 'number' || typeof updateDoc.input === 'boolean') {
+        updateDoc.input = { value: updateDoc.input };
+      }
+    }
+
+    // Add updated timestamp
+    updateDoc.updated = new Date();
+
+    // Update the document by its _id
+    await client.update({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      id: exampleId,
+      body: {
+        doc: updateDoc,
+      },
+      refresh: 'wait_for', // Make update immediately visible
+    });
+
+    // Fetch and return the updated document
+    const updatedResponse = await client.get({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      id: exampleId,
+    });
+
+    const updatedExample = updatedResponse._source as any;
+    
+    // Unwrap input.value structure if it exists (for backward compatibility with string inputs)
+    if (updatedExample.input && typeof updatedExample.input === 'object' && !Array.isArray(updatedExample.input) && updatedExample.input.value !== undefined && Object.keys(updatedExample.input).length === 1) {
+      updatedExample.input = updatedExample.input.value;
+    }
+    
+    return updatedExample as Example;
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      return null; // Example not found
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete an example by ID from Elasticsearch.
+ * @param exampleId - The ID of the example to delete (used as document _id in ElasticSearch)
+ * @param organisationId - Optional organisation ID to verify ownership
+ * @returns true if deleted, false if not found
+ */
+export async function deleteExample(
+  exampleId: string,
+  organisationId?: string
+): Promise<boolean> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  try {
+    // Get the current document to verify it exists and belongs to the organisation
+    const getResponse = await client.get({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      id: exampleId,
+    });
+
+    const currentExample = getResponse._source as any;
+    
+    // Verify organisation if provided
+    if (organisationId && currentExample.organisation !== organisationId) {
+      return false; // Example doesn't belong to this organisation
+    }
+
+    // Delete the document by its _id
+    await client.delete({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      id: exampleId,
+      refresh: 'wait_for', // Make deletion immediately visible
+    });
+
+    return true;
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      return false; // Example not found
+    }
+    throw error;
+  }
+}
+
+/**
+ * Quick but not foolproof check if a string is a JSON object or array.
+ */
+function isJsonString(str?: string): boolean {
+  return str && typeof str === 'string' && (str[0] == '{' || str[0] == '[');
 }
 
 /**
@@ -704,13 +875,23 @@ export async function searchExamples(
   const filters: Record<string, string> = {};
   if (organisationId) filters.organisation = organisationId;
   if (datasetId) filters.dataset = datasetId;
-  return searchEntities<Example>(
+  const result = await searchEntities<Example>(
     DATASET_EXAMPLES_INDEX_ALIAS,
     searchQuery,
     hasKeys(filters) ? filters : undefined,
     limit,
     offset
   );
+  
+  // Unwrap input.value structure if it exists (for backward compatibility with string inputs)
+  result.hits = result.hits.map((example: any) => {
+    if (example.input && typeof example.input === 'object' && !Array.isArray(example.input) && example.input.value !== undefined && Object.keys(example.input).length === 1) {
+      example.input = example.input.value;
+    }
+    return example;
+  });
+  
+  return result;
 }
 
 /**

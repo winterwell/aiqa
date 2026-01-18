@@ -18,11 +18,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopNav />
-      <Row className="flex-grow-1 g-0" style={{ margin: 0 }}>
-        <Col xs="auto" className="p-0" style={{ maxWidth: '175px' }}>
+      <Row className="flex-grow-1 g-0" style={{ margin: 0, flex: '1 1 auto', minHeight: 0 }}>
+        <Col xs="auto" className="p-0" style={{ maxWidth: '175px', minWidth: '175px', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
           <LeftNav />
         </Col>
-        <Col className="p-4">
+        <Col className="p-4" style={{ overflow: 'auto', minWidth: 0 }}>
           <div className="page-enter">
             {children}
           </div>

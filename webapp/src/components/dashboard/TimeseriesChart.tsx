@@ -6,6 +6,8 @@ import { TimeseriesTooltip } from './TimeseriesTooltip';
 
 interface TimeseriesChartProps {
   data: TimeseriesDataPoint[];
+  width?: number | `${number}%`;
+  height?: number;
 }
 
 const getFeedbackColor = (feedback: number): string => {
@@ -14,7 +16,7 @@ const getFeedbackColor = (feedback: number): string => {
   return CHART_COLORS.neutral;
 };
 
-const TimeseriesChart: React.FC<TimeseriesChartProps> = ({ data }) => {
+const TimeseriesChart: React.FC<TimeseriesChartProps> = ({ data, width = "100%", height = CHART_HEIGHT }) => {
   if (!data || data.length === 0) {
     return (
       <div className="text-center p-4 text-muted">
@@ -24,7 +26,7 @@ const TimeseriesChart: React.FC<TimeseriesChartProps> = ({ data }) => {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+    <ResponsiveContainer width={width} height={height}>
       <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis 

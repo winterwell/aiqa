@@ -16,29 +16,17 @@ import {
   listUsers,
   updateUser,
   deleteUser,
-  createApiKey,
-  getApiKey,
-  listApiKeys,
-  updateApiKey,
-  deleteApiKey,
-  createDataset,
-  getDataset,
-  listDatasets,
-  updateDataset,
-  deleteDataset,
 } from './db/db_sql.js';
-import {
-  bulkInsertExamples,
-  searchExamples,
-} from './db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from './server_auth.js';
 import SearchQuery from './common/SearchQuery.js';
-import Example from './common/types/Example.js';
 import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
 import { registerOrganisationRoutes } from './routes/organisations.js';
 import { registerUserRoutes } from './routes/users.js';
+import { registerExampleRoutes } from './routes/examples.js';
+import { registerDatasetRoutes } from './routes/datasets.js';
+import { registerApiKeyRoutes } from './routes/api-keys.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
 import versionData from './version.json';
 
@@ -106,227 +94,6 @@ fastify.get('/version', async () => {
   return versionData;
 });
 
-// ===== API KEY ENDPOINTS (PostgreSQL) =====
-// Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided. Only accepts key_hash (not plaintext).
-fastify.post('/api-key', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const body = request.body as any;
-  
-  // Ensure we only accept key_hash, not key (security: frontend should hash before sending)
-  if (body.key) {
-    reply.code(400).send({ error: 'Cannot accept plaintext key. Send key_hash instead.' });
-    return;
-  }
-  
-  if (!body.key_hash) {
-    reply.code(400).send({ error: 'key_hash is required' });
-    return;
-  }
-  
-  const apiKey = await createApiKey({
-    organisation: body.organisation,
-    name: body.name,
-    key_hash: body.key_hash,
-    key_end: body.key_end,
-    role: body.role || 'developer',
-  });
-  
-  return apiKey;
-});
-
-// Security: Authenticated users only. No organisation check - any authenticated user can view any API key by ID.
-fastify.get('/api-key/:id', {preHandler: authenticate}, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const apiKey = await getApiKey(id);
-  if (!apiKey) {
-    reply.code(404).send({ error: 'API key not found' });
-    return;
-  }
-  return apiKey;
-});
-
-// Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in database (listApiKeys).
-fastify.get('/api-key', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const organisationId = request.organisation;
-  if (!organisationId) {
-    reply.code(400).send({ error: 'organisation query parameter is required' });
-    return;
-  }
-  const query = (request.query as any).q as string | undefined;
-  const searchQuery = query ? new SearchQuery(query) : null;
-  const apiKeys = await listApiKeys(organisationId, searchQuery);
-  return apiKeys;
-});
-
-// Security: Authenticated users only. No organisation check - any authenticated user can update any API key by ID.
-fastify.put('/api-key/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const apiKey = await updateApiKey(id, request.body as any);
-  if (!apiKey) {
-    reply.code(404).send({ error: 'API key not found' });
-    return;
-  }
-  return apiKey;
-});
-
-// Security: Authenticated users only. User must be a member of the organisation that owns the API key.
-fastify.delete('/api-key/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  const { id } = request.params as { id: string };
-  
-  // Get the API key to find its organisation
-  const apiKey = await getApiKey(id);
-  if (!apiKey) {
-    reply.code(404).send({ error: 'API key not found' });
-    return;
-  }
-  
-  // Check access and organisation membership
-  if (!checkAccess(request, reply, ['developer', 'admin'], apiKey.organisation)) return;
-  
-  const deleted = await deleteApiKey(id);
-  if (!deleted) {
-    reply.code(404).send({ error: 'API key not found' });
-    return;
-  }
-  return { success: true };
-});
-
-// ===== DATASET ENDPOINTS (PostgreSQL) =====
-// Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided.
-fastify.post('/dataset', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-	if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-	const organisationId = (request.query as any).organisation as string | undefined;
-  if (!organisationId) {
-    reply.code(400).send({ error: 'organisation query parameter is required' });
-    return;
-  }
-  const dataset = await createDataset(request.body as any);
-  return dataset;
-});
-
-// Security: Authenticated users only. No organisation check - any authenticated user can view any dataset by ID.
-fastify.get('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const dataset = await getDataset(id);
-  if (!dataset) {
-    reply.code(404).send({ error: 'Dataset not found' });
-    return;
-  }
-  return dataset;
-});
-
-// Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in database (listDatasets).
-fastify.get('/dataset', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const organisationId = (request.query as any).organisation as string | undefined;
-  if (!organisationId) {
-    reply.code(400).send({ error: 'organisation query parameter is required' });
-    return;
-  }
-  const query = (request.query as any).q as string | undefined;
-  const searchQuery = query ? new SearchQuery(query) : null;
-  const datasets = await listDatasets(organisationId, searchQuery);
-  return datasets;
-});
-
-// Security: Authenticated users only. No organisation check - any authenticated user can update any dataset by ID.
-fastify.put('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const dataset = await updateDataset(id, request.body as any);
-  if (!dataset) {
-    reply.code(404).send({ error: 'Dataset not found' });
-    return;
-  }
-  return dataset;
-});
-
-// Security: Authenticated users only. No organisation check - any authenticated user can delete any dataset by ID.
-fastify.delete('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const { id } = request.params as { id: string };
-  const deleted = await deleteDataset(id);
-  if (!deleted) {
-    reply.code(404).send({ error: 'Dataset not found' });
-    return;
-  }
-  return { success: true };
-});
-
-// ===== EXAMPLE ENDPOINTS (ElasticSearch) =====
-// Security: Authenticated users only. Organisation set from authenticate middleware (request.organisation). Examples stored with organisation field.
-fastify.post('/example', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const organisation = request.organisation!;
-  const examples = request.body as Example | Example[];
-
-  const examplesArray = Array.isArray(examples) ? examples : [examples];
-  
-  // Validate dataset is present
-  for (const example of examplesArray) {
-    if (!example.dataset) {
-      reply.code(400).send({ error: 'dataset is required for example documents' });
-      return;
-    }
-  }
-  
-  // Check for duplicates: same traceId + dataset combination
-  for (const example of examplesArray) {
-    if (example.traceId) {
-      // Build a search query for traceId AND dataset
-      let searchQuery = SearchQuery.setProp(null, 'traceId', example.traceId);
-      searchQuery = SearchQuery.setProp(searchQuery, 'dataset', example.dataset);
-      
-      const existing = await searchExamples(searchQuery, organisation, example.dataset, 1, 0);
-      if (existing.total > 0) {
-        reply.code(409).send({ 
-          error: `Example with traceId "${example.traceId}" and dataset "${example.dataset}" already exists` 
-        });
-        return;
-      }
-    }
-  }
-  
-  // Add organisation and timestamps to each example
-  const now = new Date();
-  const examplesWithOrg = examplesArray.map(example => ({
-    ...example,
-    organisation,
-    created: example.created || now,
-    updated: example.updated || now,
-  }));
-
-  await bulkInsertExamples(examplesWithOrg);
-  return { success: true, count: examplesWithOrg.length };
-});
-
-// Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in Elasticsearch (searchExamples).
-fastify.get('/example', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-  if (!checkAccess(request, reply, ['developer', 'admin'])) return;
-  const organisationId = (request.query as any).organisation as string | undefined;
-  if (!organisationId) {
-    reply.code(400).send({ error: 'organisation query parameter is required' });
-    return;
-  }
-  const query = (request.query as any).q as string | undefined;
-  const datasetId = (request.query as any).dataset_id as string | undefined;
-  const limit = parseInt((request.query as any).limit || '100');
-  const offset = parseInt((request.query as any).offset || '0');
-
-  const searchQuery = query ? new SearchQuery(query) : null;
-  const result = await searchExamples(searchQuery, organisationId, datasetId, limit, offset);
-  
-  return {
-    hits: result.hits,
-    total: result.total,
-    limit,
-    offset,
-  };
-});
 
 // Initialize AIQA organisation and admin user
 async function initializeAiqaOrg(): Promise<void> {
@@ -421,6 +188,15 @@ const start = async () => {
     
     // Register user routes
     await registerUserRoutes(fastify);
+    
+    // Register example routes
+    await registerExampleRoutes(fastify);
+    
+    // Register dataset routes
+    await registerDatasetRoutes(fastify);
+    
+    // Register API key routes
+    await registerApiKeyRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4318');
     await fastify.listen({ port, host: '0.0.0.0' });

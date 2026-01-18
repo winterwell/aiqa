@@ -14,12 +14,14 @@ import TracesListPage from './TracesListPage';
 import TraceDetailsPage from './TraceDetailsPage';
 import DatasetListPage from './DatasetListPage';
 import DatasetDetailsPage from './DatasetDetailsPage';
+import ExampleDetailsPage from './ExampleDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
 import ApiKeyPage from './ApiKeyPage';
 import CodeSetupPage from './CodeSetupPage';
 import ExperimentCodePage from './ExperimentCodePage';
-import MetricsPage from './MetricsPage';
+import MetricsListPage from './MetricsListPage';
+import MetricDetailsPage from './MetricDetailsPage';
 import ProfilePage from './ProfilePage';
 import AccountPage from './AccountPage';
 import AdminPage from './AdminPage';
@@ -153,7 +155,15 @@ const AppRoutes: React.FC = () => {
         path="/organisation/:organisationId/metrics"
         element={
           <ProtectedRoute>
-            <MetricsPage />
+            <MetricsListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/metric/:metricName"
+        element={
+          <ProtectedRoute>
+            <MetricDetailsPage />
           </ProtectedRoute>
         }
       />
@@ -186,6 +196,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <DatasetDetailsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/example/:exampleId"
+        element={
+          <ProtectedRoute>
+            <ExampleDetailsPage />
           </ProtectedRoute>
         }
       />

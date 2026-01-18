@@ -120,8 +120,10 @@ interface TraceDetailsContentProps {
   filterState: FilterState;
   durationUnit: 'ms' | 's' | 'm' | 'h' | 'd' | null;
   onSpanUpdate?: (span: Span) => void;
-  SpanDetails: React.ComponentType<{ span: Span }>;
+  SpanDetails: React.ComponentType<{ span: Span; organisationId?: string; datasets?: any[] }>;
   FullJson: React.ComponentType<{ json: any }>;
+  organisationId?: string;
+  datasets?: any[];
 }
 
 /**
@@ -265,6 +267,8 @@ export default function TraceDetailsContent({
   onSpanUpdate,
   SpanDetails,
   FullJson,
+  organisationId,
+  datasets,
 }: TraceDetailsContentProps) {
   return (
     <>
@@ -300,7 +304,7 @@ export default function TraceDetailsContent({
         <Col md={8} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
           <h3>Span Details: {selectedSpan ? getSpanName(selectedSpan) : treeState.selectedSpanId}</h3>
           {selectedSpan ? (
-            <SpanDetails span={selectedSpan} />
+            <SpanDetails span={selectedSpan} organisationId={organisationId} datasets={datasets} />
           ) : (
             <div>Select a span to view details</div>
           )}

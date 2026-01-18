@@ -1,13 +1,24 @@
-import React from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
 import { Nav, NavItem, NavLink } from 'reactstrap';
+import { useQuery } from '@tanstack/react-query';
 import { useStepCompletion, STEP_FLOW } from '../utils/stepProgress';
+import { listDatasets } from '../api';
 import '../utils/animations.css';
 
 const LeftNav: React.FC = () => {
 	const { organisationId } = useParams<{ organisationId: string }>();
 	const location = useLocation();
+	const navigate = useNavigate();
 	const completion = useStepCompletion(organisationId);
+	const [animatingDataset, setAnimatingDataset] = useState(false);
+
+	// Query datasets to check if there's only one
+	const { data: datasets } = useQuery({
+		queryKey: ['datasets', organisationId],
+		queryFn: () => listDatasets(organisationId!),
+		enabled: !!organisationId,
+	});
 
 	// Use STEP_FLOW as the source of truth for navigation items
 	const navItems = STEP_FLOW.map(step => ({
@@ -15,11 +26,48 @@ const LeftNav: React.FC = () => {
 		path: step.path(organisationId || ''),
 	}));
 
-	const isActive = (path: string) => {
-		if (path === `/organisation/${organisationId}` || path === '/organisation') {
-			return location.pathname === path;
+	const isActive = (path: string, itemId: string) => {
+		const currentPath = location.pathname;
+		
+		// Special handling for organisation: only match exact paths
+		if (itemId === 'organisation') {
+			return currentPath === '/organisation' || 
+			       (organisationId && currentPath === `/organisation/${organisationId}`);
 		}
-		return location.pathname.startsWith(path);
+		
+		// Special handling for metrics: base path is /metrics but detail pages use /metric (singular)
+		if (itemId === 'metrics') {
+			const basePath = `/organisation/${organisationId}/metrics`;
+			if (currentPath === basePath) {
+				return true;
+			}
+			// Check for detail page: /organisation/{id}/metric/{metricName}
+			const detailPathPattern = `/organisation/${organisationId}/metric/`;
+			if (currentPath.startsWith(detailPathPattern)) {
+				const pathAfterDetail = currentPath.slice(detailPathPattern.length);
+				const segments = pathAfterDetail.split('/');
+				// Active if there's exactly one segment (the metric name) and no deeper paths
+				return segments.length === 1 && segments[0] !== '';
+			}
+			return false;
+		}
+		
+		// For other nav items: match base path or one level deeper (sub-pages)
+		if (!currentPath.startsWith(path)) {
+			return false;
+		}
+		
+		// If it's exactly the base path, it's active
+		if (currentPath === path) {
+			return true;
+		}
+		
+		// Check if it's exactly one segment deeper (e.g., /dataset/{id})
+		const pathAfterBase = currentPath.slice(path.length);
+		// Remove leading slash if present
+		const segments = pathAfterBase.replace(/^\//, '').split('/');
+		// Active if there's exactly one additional segment (the ID)
+		return segments.length === 1 && segments[0] !== '';
 	};
 
 	// Calculate overall progress
@@ -29,7 +77,7 @@ const LeftNav: React.FC = () => {
 	const isDisabled = (path: string) => path !== '/organisation' && (!organisationId || path.includes('undefined'));
 
 	return (
-		<Nav vertical className="p-3 border-end left-nav">
+		<Nav vertical className="p-3 border-end left-nav" style={{ flex: '1 1 auto', overflow: 'auto' }}>
 			{/* Progress bar */}
 			<div className="progress-section mb-3 w-100">
 				<div className="d-flex justify-content-between align-items-center mb-2">
@@ -48,16 +96,35 @@ const LeftNav: React.FC = () => {
 
 			{navItems.map((item, index) => {
 				const isDone = completion[item.id];
-				const isCurrent = isActive(item.path);
+				const isCurrent = isActive(item.path, item.id);
 				const disabled = isDisabled(item.path);
 				const isSmall = isDone && (item.id === 'code-setup' || item.id === 'experiment-code');
+				const isDatasets = item.id === 'datasets';
+				const hasSingleDataset = isDatasets && datasets && Array.isArray(datasets) && datasets.length === 1;
+				// Check if currently on a dataset details page (not the list page)
+				const isOnDatasetDetailsPage = isDatasets && location.pathname.match(/\/organisation\/[^/]+\/dataset\/[^/]+$/);
+				
+				const handleClick = (e: React.MouseEvent) => {
+					// Only auto-navigate if there's a single dataset AND we're not already on a details page
+					if (isDatasets && hasSingleDataset && !disabled && !isOnDatasetDetailsPage) {
+						e.preventDefault();
+						setAnimatingDataset(true);
+						// Short animation before navigation
+						setTimeout(() => {
+							navigate(`/organisation/${organisationId}/dataset/${datasets[0].id}`);
+							setAnimatingDataset(false);
+						}, 300);
+					}
+				};
+
 				return (
 					<NavItem key={item.id}>
 						<NavLink
 							tag={Link}
 							to={item.path}
+							onClick={handleClick}
 							active={isCurrent}
-							className={`nav-link-item mb-2 ${isDone ? 'progress-step-complete' : ''} ${disabled ? 'disabled' : ''}`}
+							className={`nav-link-item mb-2 ${isDone ? 'progress-step-complete' : ''} ${disabled ? 'disabled' : ''} ${animatingDataset && isDatasets ? 'dataset-nav-animate' : ''}`}
 							disabled={disabled}
 							style={{
 								fontSize: isSmall ? '0.8rem' : '1rem',

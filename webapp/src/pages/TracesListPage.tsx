@@ -7,8 +7,11 @@ import { searchSpans } from '../api';
 import { Span } from '../common/types';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
-import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost } from '../utils/span-utils';
+import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost, getSpanId } from '../utils/span-utils';
 import StarButton from '../components/generic/StarButton';
+import Page from '../components/generic/Page';
+import Tags from '../components/generic/Tags';
+import { updateSpan } from '../api';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
@@ -37,6 +40,7 @@ const REQUIRED_ATTRIBUTES = [
   'endTime',
   'name',
   'attributes',
+  'tags',
 ].join(',');
 
 // Attributes we need for feedback spans
@@ -255,6 +259,10 @@ const TracesListPage: React.FC = () => {
 		{
 			id: 'starred',
 			header: '',
+			accessorFn: (row) => {
+			  // Sort: false (0) comes before true (1)
+			  return row.starred ? 1 : 0;
+			},
 			cell: ({ row }) => {
 			  return (
 				<StarButton 
@@ -274,7 +282,7 @@ const TracesListPage: React.FC = () => {
 				/>
 			  );
 			},
-			enableSorting: false,
+			enableSorting: true,
 		},
 		{
 			id: 'startTime',
@@ -285,7 +293,25 @@ const TracesListPage: React.FC = () => {
 			},
 			cell: ({ row }) => {
 			  const startTime = getStartTime(row.original);
-			  return <span>{startTime ? startTime.toLocaleString() : 'N/A'}</span>;
+			  return (
+				<span>
+				  {startTime
+					? startTime.toLocaleString(undefined, {
+						year: 'numeric',
+						month: '2-digit',
+						day: '2-digit',
+						hour: '2-digit',
+						minute: '2-digit',
+						hour12: false,
+					  })
+					: null}
+				</span>
+			  );
+			},
+			csvValue: (row) => {
+			  // Export as ISO 8601 format string
+			  const startTime = getStartTime(row);
+			  return startTime ? startTime.toISOString() : '';
 			},
 			enableSorting: true,
 		  },
@@ -377,6 +403,18 @@ const TracesListPage: React.FC = () => {
       {
         id: 'feedback',
         header: 'Feedback',
+        accessorFn: (row) => {
+          // Sort: no feedback (0) < negative (1) < neutral (2) < positive (3)
+          const traceId = getTraceId(row);
+          const feedback = traceId ? feedbackMap.get(traceId) : null;
+          if (!feedback) return 0;
+          switch (feedback.type) {
+            case 'negative': return 1;
+            case 'neutral': return 2;
+            case 'positive': return 3;
+            default: return 0;
+          }
+        },
         cell: ({ row }) => {
           const traceId = getTraceId(row.original);
           const feedback = traceId ? feedbackMap.get(traceId) : null;
@@ -396,6 +434,53 @@ const TracesListPage: React.FC = () => {
             </span>
           );
         },
+        enableSorting: true,
+      },
+      {
+        id: 'tags',
+        header: 'Tags',
+        accessorFn: (row) => {
+          // Sort by first tag alphabetically, or empty string if no tags
+          if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
+            return '';
+          }
+          // Sort by first tag (alphabetically), with empty tags at the end
+          return row.tags[0] || '';
+        },
+        cell: ({ row }) => {
+          const span = row.original;
+          const spanId = getSpanId(span);
+          
+          return (
+            <Tags
+            compact={true}
+              tags={span.tags}
+              setTags={async (newTags) => {
+                try {
+                  const updatedSpan = await updateSpan(spanId, {
+                    tags: newTags,
+                  });
+                  // Update the span in the enriched spans map
+                  const traceId = getTraceId(updatedSpan);
+                  if (traceId) {
+                    setEnrichedSpans(prev => {
+                      const next = new Map(prev);
+                      next.set(traceId, updatedSpan);
+                      return next;
+                    });
+                  }
+                } catch (error) {
+                  console.error('Failed to update span tags:', error);
+                }
+              }}
+            />
+          );
+        },
+        csvValue: (row) => {
+          // Export tags as comma-separated string for CSV
+          return row.tags && Array.isArray(row.tags) && row.tags.length > 0 ? row.tags.join(', ') : '';
+        },
+        enableSorting: true,
       },
     ],
     [organisationId, feedbackMap]
@@ -432,13 +517,7 @@ const TracesListPage: React.FC = () => {
   };
 
   return (
-    <Container>
-      <Row>
-        <Col>
-          <h1>Traces</h1>
-        </Col>
-      </Row>
-
+    <Page header="Traces">
       <Row className="mt-3">
         <Col>
           <Form>
@@ -498,13 +577,13 @@ const TracesListPage: React.FC = () => {
         <Col>
           <TableUsingAPI
             loadData={loadData}
+            showSearch={false}
 			refetchInterval={30000} // 30 seconds
             columns={columns}
-            searchPlaceholder="Search traces"
-            searchDebounceMs={500}
             pageSize={50}
             enableInMemoryFiltering={true}
             initialSorting={[{ id: 'startTime', desc: true }]}
+            queryKeyPrefix={['traces', organisationId]}
             onRowClick={(span) => {
               const traceId = getTraceId(span);
               if (traceId) {
@@ -514,7 +593,7 @@ const TracesListPage: React.FC = () => {
           />
         </Col>
       </Row>
-    </Container>
+    </Page>
   );
 };
 

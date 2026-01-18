@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Row, Col, Input } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
+import { Row, Col, Input, Button, FormGroup, Label } from 'reactstrap';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createExampleFromSpans, listDatasets } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getStartTime, getEndTime, getDurationMs, getDurationUnits, getTraceId, getTotalTokenCount, getCost, prettyNumber } from '../utils/span-utils';
@@ -154,6 +154,10 @@ function organiseSpansIntoTree(spans: Span[], parent: Span | null, traceIds?: st
 	return tree;
 }
 
+/**
+ * The main container widget
+ * @returns 
+ */
 const TraceDetailsPage: React.FC = () => {
   const { organisationId, traceId } = useParams<{ organisationId: string; traceId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -241,9 +245,9 @@ const TraceDetailsPage: React.FC = () => {
   }, [spanTree]);
 
   const {data:datasets, isLoading:isLoadingDataSets} = useQuery({
-     queryKey: ['datasets'],
+     queryKey: ['datasets', organisationId],
 	 queryFn: async () => {
-		const result = await listDatasets(organisationId);
+		const result = await listDatasets(organisationId!);
 		return result;
 	 },
 	 enabled: !!organisationId
@@ -320,7 +324,7 @@ const TraceDetailsPage: React.FC = () => {
   }
 
   return (
-    <div className="mt-4" style={containerStyle}>
+    <div className="" style={containerStyle}>
       <TraceDetailsPageHeader
         organisationId={organisationId!}
         traceId={traceId!}
@@ -349,6 +353,8 @@ const TraceDetailsPage: React.FC = () => {
         onSpanUpdate={handleSpanUpdate}
         SpanDetails={SpanDetails}
         FullJson={FullJson}
+        organisationId={organisationId}
+        datasets={datasets}
       />
     </div>
   );
@@ -411,7 +417,7 @@ function FullJson({ json }: { json: any }) {
 	  )
 }
 
-function SpanDetails({ span }: { span: Span }) {
+function SpanDetails({ span, organisationId, datasets }: { span: Span; organisationId?: string; datasets?: any[] }) {
 	const spanId = getSpanId(span);
 	const spanAny = span as any;
 	const input = spanAny.attributes?.input;
@@ -419,6 +425,39 @@ function SpanDetails({ span }: { span: Span }) {
 	const durationMs = getDurationMs(span);
 	const tokenCount = getTotalTokenCount(span);
 	const cost = getCost(span);
+	const { showToast } = useToast();
+	const queryClient = useQueryClient();
+	const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
+
+	const addToDatasetMutation = useMutation({
+		mutationFn: async (datasetId: string) => {
+			if (!organisationId) {
+				throw new Error('Organisation ID is required');
+			}
+			return createExampleFromSpans({
+				organisationId,
+				datasetId,
+				spans: [span],
+			});
+		},
+		onSuccess: () => {
+			showToast('Span added to dataset successfully!', 'success');
+			queryClient.invalidateQueries({ queryKey: ['examples'] });
+			queryClient.invalidateQueries({ queryKey: ['table-data'] });
+			setSelectedDatasetId('');
+		},
+		onError: (error: Error) => {
+			showToast(`Failed to add span to dataset: ${error.message}`, 'error');
+		},
+	});
+
+	const handleAddToDataset = () => {
+		if (!selectedDatasetId) {
+			showToast('Please select a dataset', 'error');
+			return;
+		}
+		addToDatasetMutation.mutate(selectedDatasetId);
+	};
 
 	return (
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
@@ -430,6 +469,52 @@ function SpanDetails({ span }: { span: Span }) {
 				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
 				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
 			</div>
+			
+			{organisationId && Array.isArray(datasets) && datasets.length > 0 && (
+				<div style={{ marginTop: '15px', marginBottom: '15px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px' }}>
+					{datasets.length === 1 ? (
+						<Button
+							color="primary"
+							onClick={() => {
+								if (datasets[0].id) {
+									addToDatasetMutation.mutate(datasets[0].id);
+								}
+							}}
+							disabled={addToDatasetMutation.isPending}
+						>
+							{addToDatasetMutation.isPending ? 'Adding...' : `Add to Dataset: ${datasets[0].name || datasets[0].id}`}
+						</Button>
+					) : (
+						<FormGroup>
+							<Label for="datasetSelect">Add to Dataset</Label>
+							<div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+								<Input
+									type="select"
+									id="datasetSelect"
+									value={selectedDatasetId}
+									onChange={(e) => setSelectedDatasetId(e.target.value)}
+									style={{ flex: 1 }}
+								>
+									<option value="">Select a dataset...</option>
+									{datasets.map((dataset) => (
+										<option key={dataset.id} value={dataset.id}>
+											{dataset.name || dataset.id}
+										</option>
+									))}
+								</Input>
+								<Button
+									color="primary"
+									onClick={handleAddToDataset}
+									disabled={!selectedDatasetId || addToDatasetMutation.isPending}
+								>
+									{addToDatasetMutation.isPending ? 'Adding...' : 'Add to Dataset'}
+								</Button>
+							</div>
+						</FormGroup>
+					)}
+				</div>
+			)}
+
 			{input && (
 				<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Input:</strong>

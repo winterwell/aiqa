@@ -1,9 +1,16 @@
 
 export interface Metric {
-  name: string;
+  /** often the same as name */
+  id: string;
+  name?: string;
   description?: string;
   unit?: string;
-  type: 'javascript' | 'llm' | 'number'
+  /**how is this metric calculated?
+   * number: a number the user should calculate themselves
+   * llm: LLM as judge, e.g. "this answer should be a joke about cats"
+   * system: a built in metric AIQA handles eg token count, duration, etc
+  */
+  type: 'javascript' | 'llm' | 'number' | 'system'
   parameters?: Record<string, any>;
 }
 

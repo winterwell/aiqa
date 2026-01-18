@@ -11,7 +11,7 @@ import TokensTimeseriesChart from './dashboard/TokensTimeseriesChart';
 import CostTimeseriesChart from './dashboard/CostTimeseriesChart';
 import { useTraceMetrics, useHistogramData, useTokensHistogramData, useCostHistogramData, useTimeseriesData, useTokensTimeseriesData, useCostTimeseriesData } from './dashboard/useTraceMetrics';
 import { durationString, isRootSpan, getDurationMs, prettyNumber } from '../utils/span-utils';
-import { FEEDBACK_ICONS } from './dashboard/chart-constants';
+import { CHART_HEIGHT, CHART_WIDTH, FEEDBACK_ICONS } from './dashboard/chart-constants';
 
 interface TracesListDashboardProps {
   spans: Span[];
@@ -97,25 +97,25 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
             <Col md={4}>
               <h6 className="text-center mb-3">Duration</h6>
               {viewMode === 'histogram' ? (
-                <HistogramChart data={durationHistogramData} />
+                <HistogramChart data={durationHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
-                <TimeseriesChart data={durationTimeseriesData} />
+                <TimeseriesChart data={durationTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
             </Col>
             <Col md={4}>
               <h6 className="text-center mb-3">Tokens</h6>
               {viewMode === 'histogram' ? (
-                <TokensHistogramChart data={tokensHistogramData} />
+                <TokensHistogramChart data={tokensHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
-                <TokensTimeseriesChart data={tokensTimeseriesData} />
+                <TokensTimeseriesChart data={tokensTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
             </Col>
             <Col md={4}>
               <h6 className="text-center mb-3">Cost</h6>
               {viewMode === 'histogram' ? (
-                <CostHistogramChart data={costHistogramData} />
+                <CostHistogramChart data={costHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
-                <CostTimeseriesChart data={costTimeseriesData} />
+                <CostTimeseriesChart data={costTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
             </Col>
           </Row>

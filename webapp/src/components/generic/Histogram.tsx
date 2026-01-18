@@ -54,6 +54,8 @@ interface HistogramProps {
 	data?: HistogramDataPoint[];
 	/** Number of bins for the histogram (default: 8) */
 	numBins?: number;
+	/** Width of the chart in pixels or percentage (default: "100%") */
+	width?: number | `${number}%`;
 	/** Height of the chart in pixels (default: 300) */
 	height?: number;
 	/** X-axis label text */
@@ -75,6 +77,7 @@ export default function Histogram({
 	values, 
 	data, 
 	numBins = 8, 
+	width = "100%",
 	height = 300,
 	xAxisLabel,
 	yAxisLabel = 'Count',
@@ -89,7 +92,7 @@ export default function Histogram({
 	}
 
 	return (
-		<ResponsiveContainer width="100%" height={height}>
+		<ResponsiveContainer width={width} height={height}>
 			<BarChart data={histogramData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
 				<CartesianGrid strokeDasharray="3 3" />
 				<XAxis 

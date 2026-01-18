@@ -74,6 +74,65 @@ Types are mostly auto-generated from the TypeScript code.
 The Span type is maintained manually.
 scripts/generate-schemas.js is used to generate the schema files.
 
+## Connecting to Remote Elasticsearch via SSH Tunnel
+
+When developing locally, you may want to connect to Elasticsearch running on a remote server. The easiest way is to use an SSH tunnel.
+
+### Setting Up an SSH Tunnel
+
+1. **Create the SSH tunnel** (run this in a separate terminal):
+```bash
+ssh -L 9200:localhost:9200 user@remote-server
+```
+
+This forwards your local port 9200 to the remote server's port 9200 (where Elasticsearch is running).
+
+**Alternative:** If Elasticsearch is on a different port on the remote server:
+```bash
+ssh -L 9200:localhost:9300 user@remote-server
+# This forwards local:9200 -> remote:9300
+```
+
+**With custom SSH port:**
+```bash
+ssh -L 9200:localhost:9200 -p 2222 user@remote-server
+```
+
+2. **Keep the tunnel running** - Leave this terminal open while you run the server.
+
+3. **Configure your `.env` file** - Point to the local tunnel endpoint:
+```bash
+ELASTICSEARCH_URL=http://localhost:9200
+```
+
+4. **Run your server** - The server will connect to Elasticsearch through the tunnel as if it were local.
+
+### Background SSH Tunnel (Optional)
+
+To run the tunnel in the background:
+```bash
+ssh -f -N -L 9200:localhost:9200 user@remote-server
+```
+
+- `-f`: Run in background
+- `-N`: Don't execute remote commands (just forward ports)
+
+To stop the background tunnel:
+```bash
+# Find the process
+ps aux | grep "ssh -f -N -L 9200"
+# Kill it
+kill <PID>
+```
+
+### Testing the Connection
+
+Test that the tunnel works:
+```bash
+curl http://localhost:9200
+# Should return Elasticsearch cluster info
+```
+
 ## Redis Setup (Rate Limiting)
 
 The server uses Redis for rate limiting span posting per organisation. Rate limits are configured per organisation via the `rate_limit_per_hour` field (defaults to 1000 if not set).

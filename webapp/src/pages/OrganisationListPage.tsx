@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listOrganisations, getOrCreateUser } from '../api';
 import Organisation from '../common/types/Organisation';
 import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
+import Spinner from '../components/generic/Spinner';
 
 const OrganisationListPage: React.FC = () => {
   const { user: auth0User } = useAuth0();
@@ -47,11 +48,7 @@ const OrganisationListPage: React.FC = () => {
   if (isLoadingUser || isLoadingOrgs) {
     return (
       <Container>
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner centered />
       </Container>
     );
   }

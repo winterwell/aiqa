@@ -6,20 +6,29 @@ import { Metric } from "./Dataset";
  */
 export default interface Example {
 	id: string;
-	/* matches the Spans */
+	/* If created from spans */
 	traceId?: string;
 	dataset: string;
 	organisation: string;
+	name?: string;
+	tags?: string[];
+	/** blank if input is used 
+	 * spans is a way to provide the input for running this example,
+	 * by copying from a trace. This is convenient for creating real examples
+	 * from actual usage. Example.spans is not for tracing, and the spans are stripped
+	 * down to name, id, input, and tree-structure (parentSpanId)
+	*/
 	spans?: any[]; // Note: generate-schema.js fails if this is Span[]
 	/** Blank if spans are used. Alternative to Spans */
 	input?: any;
-	/** target good/bad outputs for similarity judgement */
-	outputs: {
+	/** example target good/bad outputs for similarity judgement. 
+	*/
+	outputs?: {
 		good: any;
 		bad: any;
 	};
-	created: Date;
-	updated: Date;
 	/** Can be blank - only needed for per-example tests, e.g. "llm:this answer should be a joke about cats" */
 	metrics?: Metric[];
+	created: Date;
+	updated: Date;
 }
