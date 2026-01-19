@@ -108,7 +108,7 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
 
 
 // Generate Elasticsearch mappings from Span schema
-function generateSpanMappings(): any {
+export function generateSpanMappings(): any {
   const spanSchema = loadSchema('Span');
   const spanDef = getTypeDefinition(spanSchema, 'Span');
   
@@ -411,7 +411,7 @@ async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (d
 
   const body = documents.flatMap(doc => {
     const transformed = transform(doc);
-    const docId = (doc as any).spanId || (doc as any).id;
+    const docId = (doc as any).id || (doc as any).spanId;
     const indexAction = docId 
       ? { index: { _index: indexName, _id: docId } }
       : { index: { _index: indexName } };

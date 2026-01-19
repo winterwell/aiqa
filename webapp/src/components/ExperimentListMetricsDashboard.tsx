@@ -6,6 +6,8 @@ import { getDataset } from '../api';
 import type Dataset from '../common/types/Dataset';
 import type { Metric } from '../common/types/Dataset';
 import type Experiment from '../common/types/Experiment';
+import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { asArray } from '../common/utils/miscutils';
 
 type ScatterDataPoint = {
 	x: number;
@@ -29,18 +31,21 @@ function processOneMetricData(metric: Metric, experiments: Experiment[], dataset
 
 	experiments.forEach((exp: Experiment) => {
 		const dataset = datasetMap.get(exp.dataset);
-		// For Overall Score, skip dataset check (it's a computed metric)
+		// For Overall Score and system metrics, skip dataset check (they're computed/always available)
 		// For other metrics, only process experiments whose dataset has this metric
-		if (metric.name !== 'Overall Score') {
-			if (!dataset || !dataset.metrics?.some(m => m.name === metric.name)) {
+		if (metric.name !== 'Overall Score' && metric.type !== 'system') {
+			if (!dataset || !dataset.metrics) {
+				return;
+			}
+			const metricsArray = asArray(dataset.metrics) as Metric[];
+			if (!metricsArray.some(m => m.name === metric.name || m.id === metric.id)) {
 				return;
 			}
 		}
 
 		const summaryResults = exp.summary_results || {};
-		// Try to find the metric value in summary_results
-		// It could be directly under the metric name, or under a nested structure
-		let metricValue: any = summaryResults[metric.name];
+		// Use metric.id for lookup (metric.name is just for display)
+		let metricValue: any = summaryResults[metric.id];
 		
 		// If the value is an object (nested structure like {mean: 835.8, max: 985, ...}),
 		// extract a numeric value from common statistical keys
@@ -153,15 +158,25 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 		return map;
 	}, [datasetQueries, datasetIds]);
 
-	// Collect all unique metrics from all datasets
+	// Collect all unique metrics from all datasets, always including system metrics
 	const metrics = useMemo(() => {
 		const metricMap = new Map<string, Metric>();
+		
+		// Add system metrics first (always included)
+		DEFAULT_SYSTEM_METRICS.forEach(metric => {
+			const key = metric.id || metric.name || '';
+			if (key) {
+				metricMap.set(key, metric);
+			}
+		});
+		
+		// Add dataset metrics (they can override system metrics if same id/name)
 		datasetMap.forEach(dataset => {
 			if (dataset.metrics) {
-				dataset.metrics.forEach(metric => {
-					// Use metric name as key to avoid duplicates
-					if (!metricMap.has(metric.name)) {
-						metricMap.set(metric.name, metric);
+				(asArray(dataset.metrics) as Metric[]).forEach(metric => {
+					const key = metric.id || metric.name || '';
+					if (key) {
+						metricMap.set(key, metric);
 					}
 				});
 			}
@@ -174,7 +189,7 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 			return overallScore && (overallScore.mean !== undefined || overallScore.avg !== undefined || overallScore.average !== undefined);
 		});
 		if (hasOverallScore && !metricMap.has('Overall Score')) {
-			metricMap.set('Overall Score', { name: 'Overall Score', type: 'number' });
+			metricMap.set('Overall Score', { id: 'Overall Score', name: 'Overall Score', type: 'number' });
 		}
 		
 		return Array.from(metricMap.values());
@@ -256,7 +271,7 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 	return (
 		<Card>
 			<CardHeader>
-				<h5>{metric.name}</h5>
+				<h5>{metric.name || metric.id}</h5>
 				{metric.description && (
 					<p className="text-muted small mb-0">{metric.description}</p>
 				)}
@@ -274,11 +289,6 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 					</Alert>
 				) : (
 					<>
-						{ignoredCount > 0 && (
-							<Alert color="warning" className="mb-2 small">
-								{ignoredCount} experiment{ignoredCount !== 1 ? 's' : ''} had missing or non-numeric values and were ignored.
-							</Alert>
-						)}
 						<ResponsiveContainer width="100%" height={300}>
 							<ScatterChart
 								margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
@@ -326,6 +336,11 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 						<p className="text-muted small mt-2 mb-0">
 							{data.length} data point{data.length !== 1 ? 's' : ''} shown
 						</p>
+						{ignoredCount > 0 && (
+							<p color="warning" className="mb-2 small">
+								{ignoredCount} experiment{ignoredCount !== 1 ? 's' : ''} had missing or non-numeric values and were ignored.
+							</p>
+						)}
 					</>
 				)}
 			</CardBody>

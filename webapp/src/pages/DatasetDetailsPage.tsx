@@ -18,27 +18,9 @@ import Tags from '../components/generic/Tags';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { asArray } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
-
-// Helper to get the first span from an Example, or return the example itself if it has span-like fields
-function getFirstSpan(example: Example): Span | null {
-  if (example.spans && example.spans.length > 0) {
-    return example.spans[0] as Span;
-  }
-  // If no spans array, check if example itself has span-like fields (for backward compatibility)
-  if ((example as any).name || (example as any).spanId) {
-    return example as any as Span;
-  }
-  return null;
-}
-
-const getTraceId = (example: Example) => {
-  const span = getFirstSpan(example);
-  if (span) {
-    return (span as any).trace?.id || (span as any).client_trace_id || span.traceId || example.traceId || 'N/A';
-  }
-  return example.traceId || 'N/A';
-};
+import { getExampleInput, getExampleInputString, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
 
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
@@ -124,9 +106,25 @@ const DatasetDetailsPage: React.FC = () => {
       {
         id: 'traceId',
         header: 'Trace ID',
-        cell: ({ row }) => (
-          <code className="small">{getTraceId(row.original).substring(0, 16)}...</code>
-        ),
+        cell: ({ row }) => {
+          const traceId = getExampleTraceId(row.original);
+          return (
+            <code className="small">{(traceId || 'N/A').substring(0, 16)}...</code>
+          );
+        },
+      },
+      {
+        id: 'input',
+        header: 'Input',
+        cell: ({ row }) => {
+          const input = getExampleInput(row.original);
+          const inputStr = getExampleInputString(input, 100);
+          return (
+            <span className="small" title={inputStr}>
+              {inputStr || 'N/A'}
+            </span>
+          );
+        },
       },
       {
         id: 'created',
@@ -237,13 +235,9 @@ const DatasetDetailsPage: React.FC = () => {
       }
       back={`/organisation/${organisationId}/dataset`}
       backLabel="Datasets"
-      item={{
-        id: dataset.id,
-        created: dataset.created,
-        updated: dataset.updated,
-      }}
+      item={dataset}
     >
-      <Row className="mt-3">
+      {/* TODO but not yet <Row className="">
         <Col>
           <ListGroup flush>
             <ListGroupItem>
@@ -264,7 +258,7 @@ const DatasetDetailsPage: React.FC = () => {
             </ListGroupItem>
           </ListGroup>
         </Col>
-      </Row>
+      </Row> */}
 
       <Row className="mt-3">
         <Col>
@@ -301,7 +295,9 @@ const DatasetDetailsPage: React.FC = () => {
                   </Col>
                 ))}
                 {/* User-defined metrics - with edit buttons */}
-                {dataset.metrics && dataset.metrics.length > 0 && dataset.metrics.map((metric, index) => (
+                {(() => {
+                  const userMetrics = asArray(dataset.metrics) as Metric[];
+                  return userMetrics.length > 0 && userMetrics.map((metric, index) => (
                   <Col md={6} lg={4} key={`user-${index}`} className="mb-3">
                     <Card>
                       <CardBody>
@@ -329,7 +325,7 @@ const DatasetDetailsPage: React.FC = () => {
                               color="danger"
                               size="sm"
                               onClick={() => {
-                                const updatedMetrics = dataset.metrics!.filter((_, i) => i !== index);
+                                const updatedMetrics = (asArray(dataset.metrics) as Metric[]).filter((_, i) => i !== index);
                                 updateDatasetMutation.mutate({ metrics: updatedMetrics });
                               }}
                             >
@@ -357,11 +353,15 @@ const DatasetDetailsPage: React.FC = () => {
                       </CardBody>
                     </Card>
                   </Col>
-                ))}
+                  ));
+                })()}
               </Row>
-              {(!dataset.metrics || dataset.metrics.length === 0) && (
-                <p className="text-muted mt-3">No custom metrics defined. Click "Add Metric" to create one.</p>
-              )}
+              {(() => {
+                const userMetrics = asArray(dataset.metrics) as Metric[];
+                return userMetrics.length === 0 && (
+                  <p className="text-muted mt-3">Custom metrics can be used to score e.g. accuracy, helpfulness, or length of response. Click "Add Metric" to create one.</p>
+                );
+              })()}
             </CardBody>
           </Card>
         </Col>

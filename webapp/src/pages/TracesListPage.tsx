@@ -7,7 +7,7 @@ import { searchSpans } from '../api';
 import { Span } from '../common/types';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
-import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost, getSpanId } from '../utils/span-utils';
+import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost, getSpanId, durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import StarButton from '../components/generic/StarButton';
 import Page from '../components/generic/Page';
 import Tags from '../components/generic/Tags';
@@ -115,6 +115,10 @@ const TracesListPage: React.FC = () => {
     return '';
   });
   
+  // Get search query from URL params
+  const searchQuery = searchParams.get('search') || '';
+  const [searchInput, setSearchInput] = useState<string>(searchQuery);
+  
   // Update URL params when date filter changes
   const updateDateFilter = (type: DateFilterType, since?: string, until?: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -177,11 +181,23 @@ const TracesListPage: React.FC = () => {
 
   // Main loadData function
   const loadData = async (query: string): Promise<PageableData<Span>> => {
-    // Build combined query with date filter
+    // Build combined query with date filter and search query
     const dateFilter = buildDateFilterQuery();
-    const combinedQuery = dateFilter 
-      ? (query ? `(${query}) AND (${dateFilter})` : dateFilter)
-      : query;
+    const parts: string[] = [];
+    
+    if (query) {
+      parts.push(`(${query})`);
+    }
+    
+    if (searchQuery) {
+      parts.push(`(${searchQuery})`);
+    }
+    
+    if (dateFilter) {
+      parts.push(`(${dateFilter})`);
+    }
+    
+    const combinedQuery = parts.length > 0 ? parts.join(' AND ') : '';
     
     // Load root spans with required attributes directly
     const result = await searchSpans({ 
@@ -343,16 +359,7 @@ const TracesListPage: React.FC = () => {
         cell: ({ row }) => {
           const duration = getDurationMs(row.original);
           if (duration === null) return <span>N/A</span>;
-          // Format duration nicely
-          if (duration < 1000) {
-            return <span>{Math.round(duration)}ms</span>;
-          } else if (duration < 60000) {
-            return <span>{(duration / 1000).toFixed(2)}s</span>;
-          } else {
-            const minutes = Math.floor(duration / 60000);
-            const seconds = ((duration % 60000) / 1000).toFixed(0);
-            return <span>{minutes}m {seconds}s</span>;
-          }
+          return <span>{durationString(duration)}</span>;
         },
         enableSorting: true,
       },
@@ -365,7 +372,7 @@ const TracesListPage: React.FC = () => {
         },
         cell: ({ row }) => {
           const tokenCount = getTotalTokenCount(row.original);
-          return <span>{tokenCount !== null ? tokenCount.toLocaleString() : 'N/A'}</span>;
+          return <span>{tokenCount !== null ? prettyNumber(tokenCount) : 'N/A'}</span>;
         },
         enableSorting: true,
       },
@@ -379,14 +386,7 @@ const TracesListPage: React.FC = () => {
         cell: ({ row }) => {
           const cost = getCost(row.original);
           if (cost === null) return <span>N/A</span>;
-          // Format cost with appropriate precision
-          if (cost < 0.01) {
-            return <span>${cost.toFixed(4)}</span>;
-          } else if (cost < 1) {
-            return <span>${cost.toFixed(3)}</span>;
-          } else {
-            return <span>${cost.toFixed(2)}</span>;
-          }
+          return <span>{formatCost(cost)}</span>;
         },
         enableSorting: true,
       },
@@ -515,55 +515,96 @@ const TracesListPage: React.FC = () => {
     const newType = e.target.value as DateFilterType;
     updateDateFilter(newType);
   };
+  
+  // Handle search input changes
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchInput(value);
+    
+    // Update URL params
+    const newParams = new URLSearchParams(searchParams);
+    if (value) {
+      newParams.set('search', value);
+    } else {
+      newParams.delete('search');
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+  
+  // Sync searchInput with URL param when it changes externally
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
 
   return (
     <Page header="Traces">
-      <Row className="mt-3">
+      {/* filtering is buggy so off for now <Row className="mt-3">
         <Col>
           <Form>
-            <FormGroup>
-              <Label for="dateFilter">Date Filter</Label>
-              <Input
-                type="select"
-                id="dateFilter"
-                value={dateFilterType}
-                onChange={handleDateFilterTypeChange}
-                style={{ maxWidth: '200px' }}
-              >
-                <option value="1h">1 hour</option>
-                <option value="1d">1 day</option>
-                <option value="1w">1 week</option>
-                <option value="custom">Custom</option>
-              </Input>
-            </FormGroup>
+            <Row>
+              <Col md="auto">
+                <FormGroup>
+                  <Label for="dateFilter">Date Filter</Label>
+                  <Input
+                    type="select"
+                    id="dateFilter"
+                    value={dateFilterType}
+                    onChange={handleDateFilterTypeChange}
+                    style={{ maxWidth: '200px' }}
+                  >
+                    <option value="1h">1 hour</option>
+                    <option value="1d">1 day</option>
+                    <option value="1w">1 week</option>
+                    <option value="custom">Custom</option>
+                  </Input>
+                </FormGroup>
+              </Col>
+              <Col md="auto">
+                <FormGroup>
+                  <Label for="search">Search</Label>
+                  <Input
+                    type="search"
+                    id="search"
+                    placeholder="Search traces..."
+                    value={searchInput}
+                    onChange={handleSearchChange}
+                    style={{ maxWidth: '300px' }}
+                  />
+                </FormGroup>
+              </Col>
+            </Row>
             
             {dateFilterType === 'custom' && (
-              <>
-                <FormGroup>
-                  <Label for="customSince">Since</Label>
-                  <Input
-                    type="datetime-local"
-                    id="customSince"
-                    value={customSince ? new Date(customSince).toISOString().slice(0, 16) : ''}
-                    onChange={handleCustomSinceChange}
-                    style={{ maxWidth: '300px' }}
-                  />
-                </FormGroup>
-                <FormGroup>
-                  <Label for="customUntil">Until</Label>
-                  <Input
-                    type="datetime-local"
-                    id="customUntil"
-                    value={customUntil ? new Date(customUntil).toISOString().slice(0, 16) : ''}
-                    onChange={handleCustomUntilChange}
-                    style={{ maxWidth: '300px' }}
-                  />
-                </FormGroup>
-              </>
+              <Row>
+                <Col md="auto">
+                  <FormGroup>
+                    <Label for="customSince">Since</Label>
+                    <Input
+                      type="datetime-local"
+                      id="customSince"
+                      value={customSince ? new Date(customSince).toISOString().slice(0, 16) : ''}
+                      onChange={handleCustomSinceChange}
+                      style={{ maxWidth: '300px' }}
+                    />
+                  </FormGroup>
+                </Col>
+                <Col md="auto">
+                  <FormGroup>
+                    <Label for="customUntil">Until</Label>
+                    <Input
+                      type="datetime-local"
+                      id="customUntil"
+                      value={customUntil ? new Date(customUntil).toISOString().slice(0, 16) : ''}
+                      onChange={handleCustomUntilChange}
+                      style={{ maxWidth: '300px' }}
+                    />
+                  </FormGroup>
+                </Col>
+              </Row>
             )}
           </Form>
         </Col>
-      </Row>
+      </Row> */}
 
       {enrichedSpans.size > 0 && (
         <Row className="mt-3">
@@ -583,7 +624,7 @@ const TracesListPage: React.FC = () => {
             pageSize={50}
             enableInMemoryFiltering={true}
             initialSorting={[{ id: 'startTime', desc: true }]}
-            queryKeyPrefix={['traces', organisationId]}
+            queryKeyPrefix={['traces', organisationId, searchQuery, dateFilterType, sinceParam, untilParam]}
             onRowClick={(span) => {
               const traceId = getTraceId(span);
               if (traceId) {

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { listDatasets } from '../api';
 import Dataset, { Metric } from '../common/types/Dataset';
 import Spinner from '../components/generic/Spinner';
+import { asArray } from '../common/utils/miscutils';
 
 interface MetricWithSource {
   metric: Metric;
@@ -35,8 +36,9 @@ const MetricsListPage: React.FC = () => {
     
     const metrics: MetricWithSource[] = [];
     datasets.forEach((dataset: Dataset) => {
-      if (dataset.metrics && dataset.metrics.length > 0) {
-        dataset.metrics.forEach((metric: Metric) => {
+      const metricsArray = asArray(dataset.metrics) as Metric[];
+      if (metricsArray.length > 0) {
+        metricsArray.forEach((metric: Metric) => {
           metrics.push({
             metric,
             datasetId: dataset.id,

@@ -123,21 +123,6 @@ export async function createDataset(dataset: {
 	output_schema?: any;
 	metrics?: any;
 }) {
-	if (!dataset.metrics) {
-		dataset.metrics = [{
-			name: 'duration',
-			description: 'Duration of the dataset',
-			unit: 'ms',
-		}, {
-			name: 'cost',
-			description: 'Estimated cost of tokens',
-			unit: 'USD',
-		}, {
-			name: 'token_usage',
-			description: 'Total number of tokens used',
-			unit: 'tokens',
-		}];
-	}
 	return fetchWithAuth('/dataset?organisation=' + dataset.organisation, {
 		method: 'POST',
 		body: JSON.stringify(dataset),
@@ -178,6 +163,12 @@ export async function createExperiment(experiment: {
 	return fetchWithAuth('/experiment', {
 		method: 'POST',
 		body: JSON.stringify(experiment),
+	});
+}
+
+export async function deleteExperiment(id: string) {
+	return fetchWithAuth(`/experiment/${id}`, {
+		method: 'DELETE',
 	});
 }
 
@@ -423,6 +414,43 @@ export async function updateApiKey(id: string, updates: {
 
 export async function deleteApiKey(id: string) {
 	return fetchWithAuth(`/api-key/${id}`, {
+		method: 'DELETE',
+	});
+}
+
+// Model endpoints
+export async function listModels(organisationId: string, query?: string, includeApiKey?: boolean) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	if (query) params.append('q', query);
+	if (includeApiKey) params.append('fields', 'api_key');
+	return fetchWithAuth(`/model?${params.toString()}`);
+}
+
+export async function getModel(id: string, includeApiKey?: boolean) {
+	const params = new URLSearchParams();
+	if (includeApiKey) params.append('fields', 'api_key');
+	const queryString = params.toString();
+	return fetchWithAuth(`/model/${id}${queryString ? `?${queryString}` : ''}`);
+}
+
+export async function createModel(organisationId: string, model: {
+	provider: 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'other';
+	name: string;
+	api_key: string;
+	version?: string;
+	description?: string;
+}) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/model?${params.toString()}`, {
+		method: 'POST',
+		body: JSON.stringify(model),
+	});
+}
+
+export async function deleteModel(id: string) {
+	return fetchWithAuth(`/model/${id}`, {
 		method: 'DELETE',
 	});
 }

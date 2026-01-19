@@ -18,6 +18,7 @@ import ExampleDetailsPage from './ExampleDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
 import ApiKeyPage from './ApiKeyPage';
+import LLMKeysPage from './LLMKeysPage';
 import CodeSetupPage from './CodeSetupPage';
 import ExperimentCodePage from './ExperimentCodePage';
 import MetricsListPage from './MetricsListPage';
@@ -132,6 +133,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <ApiKeyPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/llm-key"
+        element={
+          <ProtectedRoute>
+            <LLMKeysPage />
           </ProtectedRoute>
         }
       />

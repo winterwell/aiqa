@@ -6,6 +6,8 @@ import type Dataset from '../common/types/Dataset';
 import type { Metric } from '../common/types/Dataset';
 import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
+import { asArray } from '../common/utils/miscutils';
+import { extractMetricValues } from '../utils/metric-utils';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -26,19 +28,7 @@ function processMetricData(metrics: Metric[], experiment: Experiment): MetricDat
 	const totalResults = results.length;
 	
 	return metrics.map((metric: Metric) => {
-		const values: number[] = [];
-		
-		results.forEach((result) => {
-			const score = result.scores?.[metric.name];
-			if (score !== undefined && score !== null) {
-				const numericValue = typeof score === 'number' ? score : 
-					(typeof score === 'string' && !isNaN(parseFloat(score)) ? parseFloat(score) : null);
-				
-				if (numericValue !== null && !isNaN(numericValue) && isFinite(numericValue)) {
-					values.push(numericValue);
-				}
-			}
-		});
+		const values = extractMetricValues(metric, results);
 		
 		const count = values.length;
 		const unmeasuredCount = totalResults - count;
@@ -88,7 +78,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 
 	// Get metrics from dataset, or extract from results if dataset not available
 	const metrics = useMemo(() => {
-		const datasetMetrics = dataset?.metrics || [];
+		const datasetMetrics = asArray(dataset?.metrics);
 		const resultMetrics = new Set<string>();
 		
 		// Also collect metrics from results
@@ -110,7 +100,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		
 		resultMetrics.forEach(metricName => {
 			if (!metricMap.has(metricName)) {
-				metricMap.set(metricName, { name: metricName, type: 'number' });
+				metricMap.set(metricName, { id: metricName, name: metricName, type: 'number' });
 			}
 		});
 		
@@ -121,30 +111,6 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	const metricData = useMemo(() => {
 		return processMetricData(metrics, experiment);
 	}, [metrics, experiment]);
-
-	if (isLoading) {
-		return (
-			<Alert color="info" className="mt-3">
-				Loading dataset...
-			</Alert>
-		);
-	}
-
-	if (error) {
-		return (
-			<Alert color="warning" className="mt-3">
-				Could not load dataset, but showing metrics from results.
-			</Alert>
-		);
-	}
-
-	if (metrics.length === 0) {
-		return (
-			<Alert color="info" className="mt-3">
-				No metrics found. Add metrics to the dataset or ensure results contain scores.
-			</Alert>
-		);
-	}
 
 	// Extract Overall Score from summary_results
 	const overallScoreStats = useMemo(() => {
@@ -167,30 +133,84 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		return { mean, min, max, count };
 	}, [experiment.summary_results]);
 
+	if (isLoading) {
+		return (
+			<Alert color="info" className="mt-3" fade={false}>
+				Loading dataset...
+			</Alert>
+		);
+	}
+
+	if (error) {
+		return (
+			<Alert color="warning" className="mt-3" fade={false}>
+				Could not load dataset, but showing metrics from results.
+			</Alert>
+		);
+	}
+
+	if (metrics.length === 0) {
+		return (
+			<Alert color="info" className="mt-3" fade={false}>
+				No metrics found. Add metrics to the dataset or ensure results contain scores.
+			</Alert>
+		);
+	}
+
 	// Filter to only metrics with numerical data
 	const metricsWithData = metricData.filter(md => md.count > 0);
 
 	if (metricsWithData.length === 0 && !overallScoreStats) {
 		return (
-			<Alert color="info" className="mt-3">
+			<Alert color="info" className="mt-3" fade={false}>
 				No numerical data found for any metrics. Ensure experiment results contain numeric scores.
 			</Alert>
 		);
 	}
 
-	// Calculate column width based on number of metrics (including Overall Score)
+	// Calculate responsive column widths based on number of metrics (including Overall Score)
+	// Responsive: up to 6 cards per row, but grow to fill if fewer cards
 	const totalMetrics = metricsWithData.length + (overallScoreStats ? 1 : 0);
-	const getColumnWidth = () => {
-		if (totalMetrics <= 1) return 12;
-		if (totalMetrics === 2) return 6;
-		return 4; // 3 or more metrics
+	
+	// Calculate optimal column widths for different breakpoints
+	// Bootstrap breakpoints: xs (default), sm (≥576px), md (≥768px), lg (≥992px), xl (≥1200px), xxl (≥1400px)
+	const getResponsiveCols = () => {
+		// On very small screens (xs): always 1 card per row for readability
+		const xs = 12;
+		
+		// On small screens (sm): up to 2 cards per row, but grow to fill
+		const sm = totalMetrics === 1 ? 12 : 6;
+		
+		// On medium screens (md): up to 3 cards per row, but grow to fill
+		const md = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : 4;
+		
+		// On large screens (lg): up to 4 cards per row, but grow to fill
+		const lg = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : totalMetrics === 3 ? 4 : 3;
+		
+		// On extra large screens (xl): up to 6 cards per row, but grow to fill
+		const xl = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : totalMetrics === 3 ? 4 : totalMetrics === 4 ? 3 : 2;
+		
+		// On extra extra large screens (xxl): same as xl
+		const xxl = xl;
+		
+		return { xs, sm, md, lg, xl, xxl };
 	};
-	const colWidth = getColumnWidth();
+	
+	const responsiveCols = getResponsiveCols();
 
 	return (
 		<Row className="mt-3">
 			{overallScoreStats && (
-				<Col md={colWidth} key="Overall Score" className="mb-4">
+				<Col 
+					xs={responsiveCols.xs}
+					sm={responsiveCols.sm}
+					md={responsiveCols.md}
+					lg={responsiveCols.lg}
+					xl={responsiveCols.xl}
+					xxl={responsiveCols.xxl}
+					key="Overall Score" 
+					className="mb-4"
+				>
 					<Card>
 						<CardHeader>
 							<h5>Overall Score</h5>
@@ -213,7 +233,16 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 				</Col>
 			)}
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
-				<Col md={colWidth} key={metric.name} className="mb-4">
+				<Col 
+					xs={responsiveCols.xs}
+					sm={responsiveCols.sm}
+					md={responsiveCols.md}
+					lg={responsiveCols.lg}
+					xl={responsiveCols.xl}
+					xxl={responsiveCols.xxl}
+					key={metric.name} 
+					className="mb-4"
+				>
 					<MetricDataCard
 						metric={metric}
 						histogram={histogram}
@@ -246,7 +275,7 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 	return (
 		<Card>
 			<CardHeader>
-				<h5>{metric.name}</h5>
+				<h5>{metric.name || metric.id}</h5>
 				{metric.description && (
 					<p className="text-muted small mb-0">{metric.description}</p>
 				)}
@@ -256,13 +285,13 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 			</CardHeader>
 			<CardBody>
 				{histogram.length === 0 ? (
-					<Alert color="warning" className="mb-0">
+					<Alert color="warning" className="mb-0" fade={false}>
 						No valid data points found for this metric.
 					</Alert>
 				) : (
 					<>
 						{unmeasuredCount > 0 && (
-							<Alert color="warning" className="mb-2 small">
+							<Alert color="warning" className="mb-2 small" fade={false}>
 								{unmeasuredCount} of {totalResults} result{totalResults !== 1 ? 's' : ''} had missing or invalid values.
 							</Alert>
 						)}

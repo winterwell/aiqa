@@ -27,6 +27,7 @@ import { registerUserRoutes } from './routes/users.js';
 import { registerExampleRoutes } from './routes/examples.js';
 import { registerDatasetRoutes } from './routes/datasets.js';
 import { registerApiKeyRoutes } from './routes/api-keys.js';
+import { registerModelRoutes } from './routes/models.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
 import versionData from './version.json';
 
@@ -197,6 +198,9 @@ const start = async () => {
     
     // Register API key routes
     await registerApiKeyRoutes(fastify);
+    
+    // Register model routes
+    await registerModelRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4318');
     await fastify.listen({ port, host: '0.0.0.0' });

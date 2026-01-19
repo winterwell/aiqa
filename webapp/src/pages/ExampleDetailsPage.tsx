@@ -1,45 +1,25 @@
 import React, { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { getExample, updateExample, getDataset } from '../api';
+import { getExample, updateExample, getDataset, deleteExample } from '../api';
+import { useToast } from '../utils/toast';
 import type { Example, Span } from '../common/types';
 import { Metric } from '../common/types/Dataset';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import Tags from '../components/generic/Tags';
 import MetricModal from '../components/MetricModal';
-import { getTraceId } from '../utils/span-utils';
+import Page from '../components/generic/Page';
+import { getStartTime, getDurationMs, getTotalTokenCount, getCost, durationString, prettyNumber, formatCost } from '../utils/span-utils';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
-
-// Helper to get the first span from an Example
-function getFirstSpan(example: Example): Span | null {
-  if (example.spans && example.spans.length > 0) {
-    return example.spans[0] as Span;
-  }
-  // If no spans array, check if example itself has span-like fields (for backward compatibility)
-  if ((example as any).name || (example as any).spanId) {
-    return example as any as Span;
-  }
-  return null;
-}
-
-const getExampleTraceId = (example: Example): string | null => {
-  const span = getFirstSpan(example);
-  if (span) {
-    const traceId = getTraceId(span);
-    if (traceId) return traceId;
-    // Fallback to other possible trace ID locations
-    return (span as any).trace?.id || (span as any).client_trace_id || (span as any).traceId || example.traceId || null;
-  }
-  return example.traceId || null;
-};
+import { searchSpans } from '../api';
+import { asArray } from '../common/utils/miscutils';
+import { getExampleInput, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
 
 // InputCard component
 function InputCard({ example }: { example: Example }) {
-  const hasInput = example.input !== undefined && example.input !== null;
-  const hasSpans = example.spans && example.spans.length > 0;
-  let inputThing = example.input || (example.spans?.length === 1 ? example.spans[0] : example.spans);  
+  const inputThing = getExampleInput(example);
   return (
     <Card className="mb-3">
       <CardHeader>
@@ -92,9 +72,11 @@ function MetricsCard({
 
   // Get custom example metrics (not in dataset)
   const customExampleMetrics = useMemo(() => {
-    if (!example.metrics || example.metrics.length === 0) return [];
+    if (!example.metrics) return [];
+    const metricsArray = asArray(example.metrics) as Metric[];
+    if (metricsArray.length === 0) return [];
     const datasetMetricIds = new Set(allDatasetMetrics.map(m => m.id || m.name || ''));
-    return example.metrics.filter(m => !datasetMetricIds.has(m.id || m.name || ''));
+    return metricsArray.filter(m => !datasetMetricIds.has(m.id || m.name || ''));
   }, [example.metrics, allDatasetMetrics]);
 
   const datasetMetricsText = allDatasetMetrics.map(m => m.name || m.id || 'Unknown').join(', ');
@@ -182,15 +164,101 @@ function MetricsCard({
   );
 }
 
-// TBDCard component
-function TBDCard() {
+/** Outputs: load the last 5 spans with span.example = example.id. Show a card per span, 
+ * with span time, span.attributes.output, span stats (duration, tokens, cost) 
+ * */
+function OutputsCard({ example }: { example: Example }) {
+  const { organisationId } = useParams<{ organisationId: string }>();
+  
+  const { data: spansResult, isLoading } = useQuery({
+    queryKey: ['example-outputs', example.id, organisationId],
+    queryFn: async () => {
+      if (!organisationId || !example.id) return { hits: [] };
+      return await searchSpans({
+        organisationId,
+        query: `example:${example.id}`,
+        limit: 5,
+        offset: 0,
+        fields: '*',
+      });
+    },
+    enabled: !!organisationId && !!example.id,
+  });
+
+  const spans = spansResult?.hits || [];
+  // Sort by start time (most recent first) and take last 5
+  const sortedSpans = [...spans]
+    .sort((a, b) => {
+      const timeA = getStartTime(a)?.getTime() || 0;
+      const timeB = getStartTime(b)?.getTime() || 0;
+      return timeB - timeA; // Most recent first
+    })
+    .slice(0, 5);
+
   return (
-    <Card>
+    <Card className="mb-3">
       <CardHeader>
-        <h5>TBD</h5>
+        <h5>Outputs</h5>
       </CardHeader>
       <CardBody>
-        <p className="text-muted">To be determined</p>
+        {isLoading ? (
+          <div className="text-center">
+            <div className="spinner-border spinner-border-sm" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        ) : sortedSpans.length === 0 ? (
+          <p className="text-muted">No output spans found for this example.</p>
+        ) : (
+          <div>
+            {sortedSpans.map((span, index) => {
+              const spanAny = span as any;
+              const output = spanAny.attributes?.output;
+              const startTime = getStartTime(span);
+              const durationMs = getDurationMs(span);
+              const tokenCount = getTotalTokenCount(span);
+              const cost = getCost(span);
+
+              return (
+                <Card key={index} className="mb-3">
+                  <CardBody>
+                    <div className="mb-2">
+                      <small className="text-muted">
+                        <strong>Time:</strong> {startTime ? startTime.toLocaleString() : 'N/A'}
+                      </small>
+                    </div>
+                    {output !== undefined && output !== null && (
+                      <div className="mb-2">
+                        {typeof output === 'string' ? (
+                          <TextWithStructureViewer text={output} />
+                        ) : (
+                          <JsonObjectViewer json={output} textComponent={TextWithStructureViewer} />
+                        )}
+                      </div>
+                    )}
+                    <div className="d-flex gap-3 flex-wrap">
+                      {durationMs !== null && (
+                        <Badge color="info">
+                          Duration: {durationString(durationMs)}
+                        </Badge>
+                      )}
+                      {tokenCount !== null && (
+                        <Badge color="secondary">
+                          Tokens: {prettyNumber(tokenCount)}
+                        </Badge>
+                      )}
+                      {cost !== null && (
+                        <Badge color="success">
+                          Cost: {formatCost(cost)}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
@@ -201,7 +269,9 @@ An Example + editing tools
  */
 const ExampleDetailsPage: React.FC = () => {
   const { organisationId, exampleId } = useParams<{ organisationId: string; exampleId: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [isMetricModalOpen, setIsMetricModalOpen] = useState(false);
   const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
@@ -226,21 +296,40 @@ const ExampleDetailsPage: React.FC = () => {
     },
   });
 
+  const deleteExampleMutation = useMutation({
+    mutationFn: () => deleteExample(organisationId!, exampleId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, example?.dataset] });
+      showToast('Example deleted successfully', 'success');
+      // Navigate back to dataset page
+      if (example?.dataset) {
+        navigate(`/organisation/${organisationId}/dataset/${example.dataset}`);
+      } else {
+        navigate(`/organisation/${organisationId}/dataset`);
+      }
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to delete example: ${error.message}`, 'error');
+      throw error; // Re-throw so Page component can handle it
+    },
+  });
+
   if (isLoading) {
     return (
-      <Container>
+      <Page header="Example Details">
         <div className="text-center">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
         </div>
-      </Container>
+      </Page>
     );
   }
 
   if (error || !example) {
     return (
-      <Container>
+      <Page header="Example Details">
         <div className="alert alert-danger">
           <h4>Error</h4>
           <p>Failed to load example: {error instanceof Error ? error.message : 'Unknown error'}</p>
@@ -250,7 +339,7 @@ const ExampleDetailsPage: React.FC = () => {
             </Link>
           )}
         </div>
-      </Container>
+      </Page>
     );
   }
 
@@ -258,37 +347,27 @@ const ExampleDetailsPage: React.FC = () => {
   const traceId = getExampleTraceId(example);
   const hasSpan = firstSpan !== null;
 
+  const backUrl = example.dataset 
+    ? `/organisation/${organisationId}/dataset/${example.dataset}`
+    : undefined;
+
   return (
-    <Container className="mt-4">
+    <Page
+      header="Example Details"
+      back={backUrl}
+      backLabel="Dataset"
+      item={example}
+      itemType="Example"
+      onDelete={() => deleteExampleMutation.mutateAsync()}
+    >
       <Row>
         <Col>
-          <div className="mb-3">
-            {example.dataset && (
-              <Link 
-                to={`/organisation/${organisationId}/dataset/${example.dataset}`}
-                className="btn btn-link"
-              >
-                ← Back to Dataset
-              </Link>
-            )}
-          </div>
-          <h1>Example Details</h1>
-          {example.id && (
-            <p className="text-muted">
-              <strong>Example ID:</strong> <code>{example.id}</code>
-            </p>
-          )}
-          {example.created && (
-            <p className="text-muted">
-              <strong>Created:</strong> {new Date(example.created).toLocaleString()}
-            </p>
-          )}
           <Tags
             tags={example.tags || []}
             setTags={(tags) => updateExampleMutation.mutate({ tags })}
           />
           {hasSpan && traceId && (
-            <p>
+            <p className="mt-3">
               <Link 
                 to={`/organisation/${organisationId}/traces/${traceId}`}
                 className="btn btn-link"
@@ -323,7 +402,7 @@ const ExampleDetailsPage: React.FC = () => {
           />
         </Col>
         <Col md={6}>
-          <TBDCard />
+          <OutputsCard example={example} />
         </Col>
       </Row>
 
@@ -352,7 +431,7 @@ const ExampleDetailsPage: React.FC = () => {
         initialMetric={editingMetric}
         isEditing={editingMetricIndex !== null}
       />
-    </Container>
+    </Page>
   );
 };
 

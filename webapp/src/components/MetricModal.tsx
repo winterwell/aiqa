@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Button } from 'reactstrap';
 import { Metric } from '../common/types/Dataset';
 import PropInput from './generic/PropInput';
-import {useRerender} from 'rerenderer'
+import {useRerender} from 'rerenderer';
+import { getDefaultLLMPrompt } from '../common/llmPromptTemplate';
 
 interface MetricModalProps {
   isOpen: boolean;
@@ -27,6 +28,18 @@ const MetricModal: React.FC<MetricModalProps> = ({
     if (isOpen) {
       if (initialMetric) {
         metricRef.current = {...initialMetric};
+        // Ensure type is set to a valid value
+        if (!metricRef.current.type || metricRef.current.type.trim() === '') {
+          metricRef.current.type = 'javascript';
+        }
+        // Initialize prompt for LLM metrics if not present
+        if (metricRef.current.type === 'llm' && !metricRef.current.parameters?.prompt) {
+          if (!metricRef.current.parameters) {
+            metricRef.current.parameters = {};
+          }
+          const metricName = metricRef.current.name || '';
+          metricRef.current.parameters.prompt = getDefaultLLMPrompt(metricName);
+        }
       } else {
         metricRef.current = {
           name: '',
@@ -40,12 +53,43 @@ const MetricModal: React.FC<MetricModalProps> = ({
     }
   }, [isOpen, initialMetric]);
 
+  // Handle type change and initialize prompt for LLM metrics
+  const handleTypeChange = () => {
+    if (metricRef.current.type === 'llm') {
+      if (!metricRef.current.parameters) {
+        metricRef.current.parameters = {};
+      }
+      if (!metricRef.current.parameters.prompt) {
+        const metricName = metricRef.current.name || '';
+        metricRef.current.parameters.prompt = getDefaultLLMPrompt(metricName);
+      }
+    }
+    rerender();
+  };
+
   const handleSave = () => {
-    if (!metricRef.current.name || !metricRef.current.type) {
-      alert('Name and Type are required');
+    // Read directly from the current ref value to ensure we have the latest
+    const currentMetric = metricRef.current;
+    const name = (currentMetric.name || '').trim();
+    let type = (currentMetric.type || '').trim();
+    const validTypes = ['javascript', 'llm', 'number'];
+    
+    if (!name) {
+      alert('Name is required');
       return;
     }
-    onSave(metricRef.current as Metric);
+    
+    // Ensure type is always set to a valid value (default to 'javascript' if empty/invalid)
+    if (!type || !validTypes.includes(type)) {
+      type = 'javascript';
+      currentMetric.type = type as 'javascript' | 'llm' | 'number';
+    }
+    
+    // Update the metric with trimmed values before saving
+    currentMetric.name = name;
+    currentMetric.type = type as 'javascript' | 'llm' | 'number';
+    
+    onSave(currentMetric as Metric);
   };
 
 
@@ -57,7 +101,10 @@ const MetricModal: React.FC<MetricModalProps> = ({
         {isEditing ? 'Edit Metric' : 'Add Metric'}
       </ModalHeader>
       <ModalBody>
-        <Form>
+        <Form onSubmit={(e) => {
+          e.preventDefault();
+          handleSave();
+        }}>
           <FormGroup>
             <PropInput
               label="Name *"
@@ -76,7 +123,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               prop="type"
               type="select"
               options={['javascript', 'llm', 'number']}
-              onChange={rerender}
+              onChange={handleTypeChange}
             />
           </FormGroup>
           {metric.type === 'llm' && (
@@ -86,7 +133,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
                 item={metric.parameters || {}}
                 prop="prompt"
                 type="textarea"
-                rows={5}
+                rows={12}
                 placeholder="Enter the prompt for LLM evaluation"
                 onChange={rerender}
               />
@@ -131,7 +178,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
         <Button color="secondary" onClick={toggle}>
           Cancel
         </Button>
-        <Button color="primary" onClick={handleSave}>
+        <Button color="primary" type="submit">
           {isEditing ? 'Save Changes' : 'Add Metric'}
         </Button>
       </ModalFooter>

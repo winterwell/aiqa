@@ -1,7 +1,8 @@
 
 export interface Metric {
-  /** often the same as name */
+  /** often the same as (or a prettified version of) the name */
   id: string;
+  /** The display name */
   name?: string;
   description?: string;
   unit?: string;
@@ -15,6 +16,7 @@ export interface Metric {
 }
 
 export default interface Dataset {
+  /** uuid */
   id: string;
   organisation: string;
   name: string;

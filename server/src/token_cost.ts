@@ -1,6 +1,19 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import Span from './common/types/Span.js';
+import { toNumber } from './routes/spans.js';
+import {
+	GEN_AI_USAGE_INPUT_TOKENS,
+	GEN_AI_USAGE_OUTPUT_TOKENS,
+	GEN_AI_USAGE_TOTAL_TOKENS,
+	GEN_AI_USAGE_CACHED_INPUT_TOKENS,
+	GEN_AI_PROVIDER_NAME,
+	GEN_AI_REQUEST_MODEL,
+	GEN_AI_MODEL_NAME,
+	GEN_AI_REQUEST_MODE,
+	GEN_AI_COST_USD,
+	GEN_AI_COST_CALCULATOR,
+} from './common/constants_otel.js';
 
 interface TokenCostEntry {
 	provider: string;
@@ -171,11 +184,11 @@ function calculateCost(
 export function addTokenCost(span: Span): void {
 	const attributes = span.attributes || {};
 	
-	// Get token usage
-	const inputTokens = attributes['gen_ai.usage.input_tokens'] as number | undefined;
-	const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
-	const totalTokens = attributes['gen_ai.usage.total_tokens'] as number | undefined;
-	const cachedInputTokens = attributes['gen_ai.usage.cached_input_tokens'] as number | undefined || 0;
+	// Get token usage - use toNumber without default to handle string values and distinguish undefined from 0
+	const inputTokens = toNumber(attributes[GEN_AI_USAGE_INPUT_TOKENS]);
+	const outputTokens = toNumber(attributes[GEN_AI_USAGE_OUTPUT_TOKENS]);
+	const totalTokens = toNumber(attributes[GEN_AI_USAGE_TOTAL_TOKENS]);
+	const cachedInputTokens = toNumber(attributes[GEN_AI_USAGE_CACHED_INPUT_TOKENS]) ?? 0;
 	
 	// If no token usage at all, return early
 	if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
@@ -193,19 +206,19 @@ export function addTokenCost(span: Span): void {
 	} else if (totalTokens !== undefined) {
 		// If we have both total and individual, use individual but validate
 		if (inputTokens === undefined) {
-			actualInputTokens = Math.max(0, totalTokens - (outputTokens || 0));
+			actualInputTokens = Math.max(0, totalTokens - (outputTokens ?? 0));
 		}
 		if (outputTokens === undefined) {
-			actualOutputTokens = Math.max(0, totalTokens - (inputTokens || 0));
+			actualOutputTokens = Math.max(0, totalTokens - (inputTokens ?? 0));
 		}
 	}
 	
 	// Get provider and model from span attributes
 	// attributes are from: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/
-	let provider = attributes['gen_ai.provider.name'] as string | undefined;
-	const model = attributes['gen_ai.request.model'] as string | undefined || 
-	              attributes['gen_ai.model.name'] as string | undefined;
-	const mode = attributes['gen_ai.request.mode'] as string | undefined || "standard"; // non-standard attribute. Default to standard if not set.
+	let provider = attributes[GEN_AI_PROVIDER_NAME] as string | undefined;
+	const model = attributes[GEN_AI_REQUEST_MODEL] as string | undefined || 
+	              attributes[GEN_AI_MODEL_NAME] as string | undefined;
+	const mode = attributes[GEN_AI_REQUEST_MODE] as string | undefined || "standard"; // non-standard attribute. Default to standard if not set.
 	
 	// If no provider, try to infer from model name
 	if (!provider && model) {
@@ -229,8 +242,8 @@ export function addTokenCost(span: Span): void {
 	if (!mutableSpan.attributes) {
 		mutableSpan.attributes = {};
 	}
-	mutableSpan.attributes['gen_ai.cost.usd'] = cost;
+	mutableSpan.attributes[GEN_AI_COST_USD] = cost;
 	
 	// Add metadata about what was used for costing
-	mutableSpan.attributes['gen_ai.costcalculator'] = costEntry.provider+"-"+costEntry.model+"-"+costEntry.mode;
+	mutableSpan.attributes[GEN_AI_COST_CALCULATOR] = costEntry.provider+"-"+costEntry.model+"-"+costEntry.mode;
 }

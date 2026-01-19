@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Container, Row, Col, ListGroup, ListGroupItem } from 'reactstrap';
+import { Container, Row, Col, ListGroup, ListGroupItem, Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
 import CopyButton from './CopyButton';
 import { useToast } from '../../utils/toast';
 
@@ -75,11 +75,15 @@ interface PageProps {
   back?: string | React.ReactNode; // URL string or custom ReactNode
   backLabel?: string; // Optional label for back link, e.g. "Dataset" → "← Back to Dataset"
   item?: PageItem;
+  itemType?: string; // Type of item, e.g. "Example"
+  onDelete?: () => void | Promise<void>; // Optional delete handler
   children: React.ReactNode;
 }
 
-const Page: React.FC<PageProps> = ({ header, back, backLabel, item, children }) => {
+const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, children }) => {
   const { showToast } = useToast();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const renderBackLink = () => {
     if (!back) return null;
@@ -96,16 +100,69 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, children }) 
     return <div className="mb-3">{back}</div>;
   };
 
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await onDelete();
+      setDeleteModalOpen(false);
+    } catch (error) {
+      showToast(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const showDeleteButton = itemType === 'Example' && onDelete;
+
   return (
     <Container className="page">
       <Row>
         <Col>
           {renderBackLink()}
-          <h1>{header}</h1>
+          <div className="d-flex justify-content-between align-items-start mb-2">
+            <h1 className="mb-0">{header}</h1>
+            {showDeleteButton && (
+              <Button
+                color="danger"
+                size="sm"
+                onClick={() => setDeleteModalOpen(true)}
+                className="ms-3"
+              >
+                Delete
+              </Button>
+            )}
+          </div>
           {item && <ItemInfo item={item} showToast={showToast} />}
         </Col>
       </Row>
       {children}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteButton && (
+        <Modal isOpen={deleteModalOpen} toggle={() => setDeleteModalOpen(false)}>
+          <ModalHeader toggle={() => setDeleteModalOpen(false)}>
+            Delete {itemType}
+          </ModalHeader>
+          <ModalBody>
+            <p>Are you sure you want to delete this {itemType?.toLowerCase()}?</p>
+            <p className="text-danger">This action cannot be undone.</p>
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              color="danger"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
+            <Button color="secondary" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+          </ModalFooter>
+        </Modal>
+      )}
     </Container>
   );
 };

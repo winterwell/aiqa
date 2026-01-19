@@ -33,13 +33,29 @@ export function useSpanTreeState(spanTree: SpanTree | null) {
     };
   }, [filterInput]);
 
-  // Initialize selected span to the root span when tree is loaded
+  // Track the previous root span ID to detect when tree changes
+  const prevRootSpanIdRef = useRef<string | null>(null);
+  
+  // Always expand root span when tree loads or changes
+  useEffect(() => {
+    if (spanTree) {
+      const rootSpanId = getSpanId(spanTree.span);
+      const rootChanged = prevRootSpanIdRef.current !== rootSpanId;
+      
+      if (rootChanged) {
+        setExpandedSpanIds(new Set([rootSpanId]));
+        prevRootSpanIdRef.current = rootSpanId;
+      }
+    } else {
+      prevRootSpanIdRef.current = null;
+    }
+  }, [spanTree]);
+  
+  // Initialize selected span to the root span when tree is loaded (only if nothing selected)
   useEffect(() => {
     if (spanTree && !selectedSpanId) {
       const rootSpanId = getSpanId(spanTree.span);
       setSelectedSpanId(rootSpanId);
-      // Only expand the root span initially (not all spans) for better performance
-      setExpandedSpanIds(new Set([rootSpanId]));
     }
   }, [spanTree, selectedSpanId]);
 

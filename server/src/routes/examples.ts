@@ -8,7 +8,7 @@ import { checkAccessDeveloper, parseSearchQuery, send404 } from './route_helpers
 /**
  * Clean spans for use in examples by:
  * 1. Removing resource attributes from span.attributes (they belong in resource.attributes)
- * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, spanId, parentSpanId
+ * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, id, parentSpanId
  * 
  * Note: Supports objects and arrays in attributes (e.g., attributes.input can be an object)
  */
@@ -50,18 +50,17 @@ function cleanSpanForExample(span: any): any {
 		}
 	}
 	
-	// Get spanId from various possible locations
-	const spanId = span.clientSpanId || span.spanId || span.span?.id || span.client_span_id;
+	// Get id from various possible locations (id is standard, spanId is legacy fallback)
+	const id = span.id || span.spanId || span.clientSpanId || span.span?.id || span.client_span_id;
 	
 	// Get parentSpanId from various possible locations
 	const parentSpanId = span.parentSpanId || span.span?.parent?.id;
 	
-	// Strip span to minimal fields: name, attributes (with input), spanId, parentSpanId
+	// Strip span to minimal fields: name, attributes (with input), id, parentSpanId
 	return {
-    id: span.id,
+		id: id,
 		name: span.name || '',
 		attributes: cleanedAttrs,
-		spanId: spanId,
     ...(span.clientSpanId && { clientSpanId: span.clientSpanId }),
 		...(parentSpanId && { parentSpanId }),
 	};
@@ -133,8 +132,8 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     if (Array.isArray(example.spans) && example.spans.length > 0) {
       const spanIds: string[] = [];
       for (const span of example.spans) {
-        // Get spanId from various possible locations (same logic as cleanSpanForExample)
-        const spanId = span.clientSpanId || span.spanId || span.span?.id || span.client_span_id || span.id;
+        // Get id from various possible locations (id is standard, spanId is legacy fallback)
+        const spanId = span.id || span.spanId || span.clientSpanId || span.span?.id || span.client_span_id;
         if (spanId) {
           spanIds.push(spanId);
         }

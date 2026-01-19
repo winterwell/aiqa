@@ -7,6 +7,7 @@ import { Metric } from '../common/types/Dataset';
 import type Experiment from '../common/types/Experiment';
 import { useToast } from '../utils/toast';
 import Page from '../components/generic/Page';
+import { asArray } from '../common/utils/miscutils';
 
 interface TraceWithMetric {
   traceId: string;
@@ -52,7 +53,7 @@ const MetricDetailsPage: React.FC = () => {
   // Find the metric definition
   const metric: Metric | undefined = useMemo(() => {
     if (!dataset?.metrics) return undefined;
-    return dataset.metrics.find(m => m.name === metricName);
+    return (asArray(dataset.metrics) as Metric[]).find(m => m.name === metricName);
   }, [dataset, metricName]);
 
   // Collect all traces with this metric

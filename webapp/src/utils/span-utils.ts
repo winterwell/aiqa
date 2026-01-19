@@ -18,32 +18,96 @@ export function durationString(durationMs: number | null | undefined, units: 'ms
 		units = getDurationUnits(durationMs);
 	}
 	// switch by unit
-	if (units === 'ms') return `${durationMs}ms`;
-	if (units === 's') return `${Math.round(durationMs / 1000)}s`;
-	if (units === 'm') return `${Math.round(durationMs / 60000)}m`;
+	if (units === 'ms') return `${Math.round(durationMs)}ms`;
+	if (units === 's') return `${(durationMs / 1000).toFixed(2)}s`;
+	if (units === 'm') {
+		const minutes = Math.floor(durationMs / 60000);
+		const seconds = ((durationMs % 60000) / 1000).toFixed(0);
+		return `${minutes}m ${seconds}s`;
+	}
 	if (units === 'h') return `${Math.round(durationMs / 3600000)}h`;
 	if (units === 'd') return `${Math.round(durationMs / 86400000)}d`;
 	return '';
 }
 
 /**
- * Format a number to 3 significant figures.
- * Examples: 123 -> "123", 1234 -> "1230", 0.00123 -> "0.00123", 0.000123 -> "0.000123"
+ * Format cost in USD with appropriate precision.
+ * For costs < $0.01: 4 decimal places
+ * For costs < $1: 3 decimal places
+ * For costs >= $1: 2 decimal places
  */
-export function prettyNumber(num: number | null | undefined): string {
-	if (num === null || num === undefined || isNaN(num)) return 'N/A';
-	if (num === 0) return '0';
-	return parseFloat(num.toPrecision(3)).toString();
+export function formatCost(value: number | null | undefined): string {
+	if (value === null || value === undefined || isNaN(value)) return '';
+	if (value < 0.01) {
+		return `$${value.toFixed(4)}`;
+	} else if (value < 1) {
+		return `$${value.toFixed(3)}`;
+	} else {
+		return `$${value.toFixed(2)}`;
+	}
+}
+
+/**
+ * Format a number nicely for display.
+ * For large integers (>= 1000), uses locale formatting with commas.
+ * For smaller numbers or decimals, uses 3 significant figures.
+ * Examples: 123 -> "123", 1234 -> "1,234", 0.00123 -> "0.00123", 0.000123 -> "0.000123"
+ */
+export function prettyNumber(num: number | null | undefined | string): string {
+  // Handle null/undefined
+  if (num === null || num === undefined) return 'N/A';
+  
+  // Convert to number if it's a string
+  if (typeof num === 'string') {
+    // Remove leading zeros that might cause issues
+    const trimmed = num.trim();
+    if (trimmed === '') return 'N/A';
+    const parsed = Number(trimmed);
+    if (isNaN(parsed)) return trimmed; // Return original if can't parse
+    num = parsed;
+  }
+  
+  // Ensure it's a number type
+  if (typeof num !== 'number') {
+    const parsed = Number(num);
+    if (isNaN(parsed)) return String(num);
+    num = parsed;
+  }
+  
+  // Handle NaN and zero
+  if (isNaN(num)) return 'N/A';
+  if (num === 0) return '0';
+  
+  // For large integers (>= 1000), use locale formatting
+  if (Number.isInteger(num) && Math.abs(num) >= 1000) {
+    return num.toLocaleString();
+  }
+  
+  // For smaller numbers or decimals, use 3 significant figures
+  const absNum = Math.abs(num);
+  if (absNum >= 1) {
+    // For numbers >= 1, format with commas if needed
+    const rounded = parseFloat(num.toPrecision(3));
+    if (Number.isInteger(rounded) && Math.abs(rounded) >= 1000) {
+      return rounded.toLocaleString();
+    }
+    return rounded.toString();
+  } else {
+    // For numbers < 1, use precision formatting
+    return parseFloat(num.toPrecision(3)).toString();
+  }
 }
 
 
 export const getSpanId = (span: Span) => {
     // Check all possible locations for span ID, in order of preference:
     // 1. clientSpanId (client-set, takes precedence)
-    // 2. spanId (direct OpenTelemetry property)
-    // 3. span.id (nested property)
-    // 4. client_span_id (alternative naming)
+    // 2. id (standard server field)
+    // 3. spanId (direct OpenTelemetry property)
+    // 4. span.id (nested property)
+    // 5. client_span_id (alternative naming)
     return (span as any).clientSpanId 
+        || (span as any).id 
         || (span as any).spanId 
         || (span as any).span?.id 
         || (span as any).client_span_id 
@@ -86,6 +150,26 @@ export const getTraceId = (span: Span): string => {
 };
 
 /**
+ * Safely convert a value to a number, handling both string and number types.
+ * Prevents string concatenation bugs when adding token values.
+ */
+function toNumber(value: unknown): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    const parsed = Number(trimmed);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
  * Does NOT recurse into children.
  * @param span 
  * @returns 
@@ -93,14 +177,14 @@ export const getTraceId = (span: Span): string => {
 export const getTotalTokenCount = (span: Span): number | null => {
   const attributes = (span as any).attributes || {};
   // First check standard OpenTelemetry semantic convention attributes
-  const totalTokens = attributes['gen_ai.usage.total_tokens'] as number | undefined;
-  if (totalTokens !== undefined) {
+  const totalTokens = toNumber(attributes['gen_ai.usage.total_tokens']);
+  if (totalTokens !== null) {
     return totalTokens;
   }
   // Calculate from input + output if total not available
-  const inputTokens = attributes['gen_ai.usage.input_tokens'] as number | undefined;
-  const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
-  if (inputTokens !== undefined || outputTokens !== undefined) {
+  const inputTokens = toNumber(attributes['gen_ai.usage.input_tokens']);
+  const outputTokens = toNumber(attributes['gen_ai.usage.output_tokens']);
+  if (inputTokens !== null || outputTokens !== null) {
     return (inputTokens || 0) + (outputTokens || 0);
   }
   // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
@@ -108,13 +192,13 @@ export const getTotalTokenCount = (span: Span): number | null => {
   if (output && typeof output === 'object' && output.usage) {
     const usage = output.usage;
     if (typeof usage === 'object') {
-      const nestedTotal = usage.total_tokens as number | undefined;
-      if (nestedTotal !== undefined) {
+      const nestedTotal = toNumber(usage.total_tokens);
+      if (nestedTotal !== null) {
         return nestedTotal;
       }
-      const nestedInput = usage.input_tokens as number | undefined;
-      const nestedOutput = usage.output_tokens as number | undefined;
-      if (nestedInput !== undefined || nestedOutput !== undefined) {
+      const nestedInput = toNumber(usage.input_tokens);
+      const nestedOutput = toNumber(usage.output_tokens);
+      if (nestedInput !== null || nestedOutput !== null) {
         return (nestedInput || 0) + (nestedOutput || 0);
       }
     }
@@ -125,14 +209,14 @@ export const getTotalTokenCount = (span: Span): number | null => {
 /** gen_ai.cost.usd if the tracer or server has added it, otherwise calculate from token usage */
 export const getCost = (span: Span): number | null => {
   const attributes = (span as any).attributes || {};
-  const cost = attributes['gen_ai.cost.usd'] as number | undefined;
-  if (cost !== undefined && cost !== null) {
+  const cost = toNumber(attributes['gen_ai.cost.usd']);
+  if (cost !== null) {
     return cost;
   }
   // Check standard OpenTelemetry attributes first
-  const inputTokens = attributes['gen_ai.usage.input_tokens'] as number | undefined;
-  const outputTokens = attributes['gen_ai.usage.output_tokens'] as number | undefined;
-  if (inputTokens || outputTokens) {
+  const inputTokens = toNumber(attributes['gen_ai.usage.input_tokens']);
+  const outputTokens = toNumber(attributes['gen_ai.usage.output_tokens']);
+  if (inputTokens !== null || outputTokens !== null) {
     // TODO calculate cost from token usage -- should be done server side   
   }
   // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
@@ -140,9 +224,9 @@ export const getCost = (span: Span): number | null => {
   if (output && typeof output === 'object' && output.usage) {
     const usage = output.usage;
     if (typeof usage === 'object') {
-      const nestedInput = usage.input_tokens as number | undefined;
-      const nestedOutput = usage.output_tokens as number | undefined;
-      if (nestedInput || nestedOutput) {
+      const nestedInput = toNumber(usage.input_tokens);
+      const nestedOutput = toNumber(usage.output_tokens);
+      if (nestedInput !== null || nestedOutput !== null) {
         // TODO calculate cost from token usage -- should be done server side   
       }
     }
@@ -194,32 +278,12 @@ export function organizeSpansByTraceId(spans: Span[]): Map<string, SpanTree[]> {
   return result;
 }
 
-function getAllPossibleSpanIds(span: Span): Set<string> {
-  const ids = new Set<string>();
-  const possibleIds = [
-    (span as any).clientSpanId,
-    (span as any).spanId,
-    (span as any).span?.id,
-    (span as any).client_span_id,
-  ];
-  possibleIds.forEach(id => {
-    if (id && id !== 'N/A') {
-      ids.add(String(id));
-    }
-  });
-  const spanId = getSpanId(span);
-  if (spanId && spanId !== 'N/A') {
-    ids.add(spanId);
-  }
-  return ids;
-}
-
 function organizeSpansIntoTree(spans: Span[], parent: Span): SpanTree | null {
-  const parentIds = getAllPossibleSpanIds(parent);
+  const parentId = getSpanId(parent);
   const childSpans = spans.filter(span => {
     const spanParentId = getParentSpanId(span);
     if (!spanParentId) return false;
-    return parentIds.has(spanParentId);
+    return spanParentId === parentId;
   });
 
   return {

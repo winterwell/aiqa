@@ -1,4 +1,5 @@
 import { Metric } from './types/Dataset';
+import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from './constants_otel.js';
 
 /**
  * Default system metrics that are always available for datasets.
@@ -19,14 +20,16 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
     type: 'system',
   },
   {
-    id: 'token_count',
+    /** matches the OpenTelemetry semantic convention */
+    id: GEN_AI_USAGE_TOTAL_TOKENS,
     name: 'Token Count',
     description: 'Total number of tokens used',
     unit: 'tokens',
     type: 'system',
   },
   {
-    id: 'token_cost',
+    /** matches the semi-standard-like otel attribute we use */
+    id: GEN_AI_COST_USD,
     name: 'Token Cost',
     description: 'Total cost of tokens used',
     unit: 'USD',

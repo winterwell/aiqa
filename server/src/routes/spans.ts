@@ -2,12 +2,20 @@ import { FastifyInstance } from 'fastify';
 import { bulkInsertSpans, searchSpans, updateSpan } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
-import Span from '../common/types/Span.js';
+import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
 import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
 import { getOrganisation, getOrganisationAccountByOrganisation } from '../db/db_sql.js';
 import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
+import { createHash } from 'crypto';
+import {
+	GEN_AI_USAGE_INPUT_TOKENS,
+	GEN_AI_USAGE_OUTPUT_TOKENS,
+	GEN_AI_USAGE_TOTAL_TOKENS,
+	GEN_AI_USAGE_CACHED_INPUT_TOKENS,
+	GEN_AI_COST_USD,
+} from '../common/constants_otel.js';
 
 /**
  * Convert OTLP KeyValue array to object.
@@ -58,7 +66,7 @@ function convertOtlpSpansToInternalScopeSpan(
     
     // Convert trace ID and span ID from bytes to hex
     const traceId = otlpSpan.traceId ? bytesToHex(otlpSpan.traceId) : '';
-    const spanId = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
+    const id = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
     const parentSpanId = otlpSpan.parentSpanId ? bytesToHex(otlpSpan.parentSpanId) : undefined;
     
     // Convert times - support multiple formats
@@ -98,7 +106,7 @@ function convertOtlpSpansToInternalScopeSpan(
       events,
       resource: { attributes: resourceAttrs },
       traceId,
-      spanId,
+      id,
       traceFlags: otlpSpan.flags ?? 0,
       duration,
       ended: endTime !== null,
@@ -110,6 +118,7 @@ function convertOtlpSpansToInternalScopeSpan(
       droppedEventsCount,
       droppedLinksCount,
       starred: false,
+      _seen: [],
       ...(exampleId !== undefined && { example: exampleId }),
       ...(experimentId !== undefined && { experiment: experimentId }),
     });
@@ -186,8 +195,318 @@ function bytesToHex(bytes: any): string {
 }
 
 /**
+ * Convert a span ID (UUID/hex string) to a compact numeric hash for _seen tracking.
+ * Uses a fast hash function to convert UUID -> number (collision chance is tiny).
+ */
+export function spanIdToHash(spanId: string | undefined): number | null {
+  if (!spanId) return null;
+  // Use first 8 bytes of SHA-256 hash as a 32-bit integer
+  const hash = createHash('sha256').update(spanId).digest();
+  // Convert first 4 bytes to signed 32-bit integer
+  return hash.readInt32BE(0);
+}
+
+export interface TokenStats {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  totalTokens: number;
+  cost: number;
+}
+
+/**
+ * Safely convert a value to a number, handling both string and number types.
+ * Prevents string concatenation bugs when adding token values.
+ * @param defaultValue - Value to return if input is undefined/null/invalid. Omit to return undefined for missing values.
+ */
+export function toNumber(value: unknown, defaultValue?: number): number | undefined {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  return defaultValue;
+}
+
+/**
+ * Get token usage values from a span's attributes.
+ */
+export function getTokenUsage(span: Span): TokenStats {
+  const attrs = span.attributes || {};
+  return {
+    inputTokens: toNumber(attrs[GEN_AI_USAGE_INPUT_TOKENS], 0),
+    outputTokens: toNumber(attrs[GEN_AI_USAGE_OUTPUT_TOKENS], 0),
+    cachedInputTokens: toNumber(attrs[GEN_AI_USAGE_CACHED_INPUT_TOKENS], 0),
+    totalTokens: toNumber(attrs[GEN_AI_USAGE_TOTAL_TOKENS], 0),
+    cost: toNumber(attrs[GEN_AI_COST_USD], 0),
+  };
+}
+
+/**
+ * Add token usage values to a span's attributes.
+ */
+export function addTokenUsageToSpan(span: Span, usage: TokenStats): void {
+  const mutableSpan = span as any;
+  if (!mutableSpan.attributes) {
+    mutableSpan.attributes = {};
+  }
+  const attrs = mutableSpan.attributes;
+  
+  // Aggregate token counts (only if they exist on the span or are being added)
+  const current = getTokenUsage(span);
+
+  attrs[GEN_AI_USAGE_INPUT_TOKENS] = current.inputTokens + usage.inputTokens;
+  attrs[GEN_AI_USAGE_OUTPUT_TOKENS] = current.outputTokens + usage.outputTokens;
+  attrs[GEN_AI_USAGE_CACHED_INPUT_TOKENS] = current.cachedInputTokens + usage.cachedInputTokens;
+  attrs[GEN_AI_USAGE_TOTAL_TOKENS] = current.totalTokens + usage.totalTokens;
+  attrs[GEN_AI_COST_USD] = current.cost + usage.cost;
+}
+
+/**
+ * Dependencies for propagateTokenCostsToRootSpan (for testing/mocking)
+ */
+export interface PropagateTokenCostsDependencies {
+  searchSpans: (query: SearchQuery | string, organisation: string, limit: number, offset: number, includes?: string[] | null, excludes?: string[] | null) => Promise<{ hits: Span[]; total: number }>;
+  updateSpan: (spanId: string, updates: Partial<Span>, organisation: string) => Promise<Span | null>;
+}
+
+/**
+ * Propagate token costs from child spans to their parent spans, all the way up to root spans.
+ * 
+ * This function:
+ * 1. Separates spans into span-trees (one tree per root span)
+ * 2. Finds spans referenced as parents but not present in the batch - loads them
+ * 3. Processes from leaf nodes up to root, updating parent token-cost stats
+ * 4. Uses _seen array to track processed children (for idempotent updates and late-arriving spans)
+ * 
+ * @param spans - Array of spans to process (will be modified in-place)
+ * @param deps - Optional dependencies for testing (defaults to real database functions)
+ */
+export async function propagateTokenCostsToRootSpan(
+  spans: Span[],
+  deps?: Partial<PropagateTokenCostsDependencies>
+): Promise<void> {
+  if (spans.length === 0) return;
+  
+  // Use provided dependencies or default to real ones
+  const searchSpansFn = deps?.searchSpans || searchSpans;
+  const updateSpanFn = deps?.updateSpan || updateSpan;
+  
+  // Get organisation from first span (all should have same organisation)
+  const organisation = spans[0].organisation;
+  if (!organisation) {
+    console.warn('propagateTokenCostsToRootSpan: spans missing organisation');
+    return;
+  }
+  
+  // Build a map of spanId -> span for quick lookup
+  const spanMap = new Map<string, Span>();
+  
+  for (const span of spans) {
+    const spanId = getSpanId(span);
+    if (spanId) {
+      spanMap.set(spanId, span);
+    } else {
+      console.warn('propagateTokenCostsToRootSpan: span missing id, skipping', span.name);
+    }
+  }
+  
+  // Find all parent span IDs that are referenced but not in the batch
+  const missingParentIds = new Set<string>();
+  for (const span of spans) {
+    const parentSpanId = (span as any).parentSpanId;
+    if (parentSpanId && !spanMap.has(parentSpanId)) {
+      missingParentIds.add(parentSpanId);
+    }
+  }
+  
+  // Load missing parent spans from database (recursively load grandparents too)
+  // TODO speed up by loading a batch of spans at a time with a single query (though we may still have to recurse for grandparents)
+  const loadedParents = new Map<string, Span>();
+  const toLoad = Array.from(missingParentIds);
+  
+  while (toLoad.length > 0) {
+    const parentId = toLoad.pop()!;
+    if (loadedParents.has(parentId) || spanMap.has(parentId)) {
+      continue; // Already loaded or in batch
+    }
+    
+    try {
+      const result = await searchSpansFn(
+        new SearchQuery(`id:${parentId}`),
+        organisation,
+        1,
+        0,
+        ['id', 'parentSpanId', 'traceId', 'organisation', 'attributes', '_seen'],
+        undefined
+      );
+      if (result.hits.length > 0) {
+        const parent = result.hits[0];
+        loadedParents.set(parentId, parent);
+        spanMap.set(parentId, parent);
+        
+        // If this parent has its own parent, load that too
+        const grandparentId = (parent as any).parentSpanId;
+        if (grandparentId && !spanMap.has(grandparentId)) {
+          toLoad.push(grandparentId);
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to load parent span ${parentId}:`, error);
+    }
+  }
+  
+  // Build parent-child relationships for all spans (including loaded parents)
+  const childrenMap = new Map<string, Span[]>(); // parentSpanId -> children[]
+  const rootSpans: Span[] = [];
+  const allSpans = [...spans, ...Array.from(loadedParents.values())];
+  
+  for (const span of allSpans) {
+    const spanId = getSpanId(span);
+    if (!spanId) {
+      console.warn('propagateTokenCostsToRootSpan: span missing id in allSpans, skipping', (span as any).name);
+      continue;
+    }
+    
+    const parentSpanId = (span as any).parentSpanId;
+    if (!parentSpanId) {
+      // This is a root span
+      rootSpans.push(span);
+    } else {
+      // This span has a parent - add it to the children map
+      // Note: parent might not exist if loading failed, but we still build the tree structure
+      if (!childrenMap.has(parentSpanId)) {
+        childrenMap.set(parentSpanId, []);
+      }
+      childrenMap.get(parentSpanId)!.push(span);
+    }
+  }
+  
+  // Process each span tree (one per root span)
+  const processedSpans = new Set<string>();
+  
+  // Zero token stats for initialization
+  const zeroStats: TokenStats = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0, cost: 0 };
+  
+  // Helper function to process a span and propagate to its parent
+  const processSpan = (span: Span): TokenStats => {
+    const spanId = getSpanId(span);
+    if (!spanId) {
+      return zeroStats;
+    }
+    
+    // Skip if already processed (avoid cycles)
+    if (processedSpans.has(spanId)) {
+      // This shouldn't happen in a well-formed tree, but handle gracefully
+      console.warn(`propagateTokenCostsToRootSpan: span ${spanId} processed multiple times, possible cycle or duplicate`);
+      return getTokenUsage(span);
+    }
+    processedSpans.add(spanId);
+    
+    // Get this span's own token usage
+    const ownUsage = getTokenUsage(span);
+    
+    // Aggregate from children
+    const children = childrenMap.get(spanId) || [];
+    const childStats: TokenStats = { ...zeroStats };
+    
+    const mutableSpan = span as any;
+    if (!mutableSpan._seen) {
+      mutableSpan._seen = [];
+    }
+    const seenSet = new Set(mutableSpan._seen);
+    
+    for (const child of children) {
+      const childSpanId = getSpanId(child);
+      if (!childSpanId) continue;
+      
+      const childHashValue = spanIdToHash(childSpanId);
+      if (childHashValue === null) continue;
+      
+      // Skip if this child was already processed (idempotent updates)
+      if (seenSet.has(childHashValue)) {
+        continue;
+      }
+      
+      // Process child recursively
+      const childUsage = processSpan(child);
+      
+      // Add child's usage to totals
+      childStats.inputTokens += childUsage.inputTokens;
+      childStats.outputTokens += childUsage.outputTokens;
+      childStats.cachedInputTokens += childUsage.cachedInputTokens;
+      childStats.totalTokens += childUsage.totalTokens;
+      childStats.cost += childUsage.cost;
+      
+      // Mark child as seen
+      seenSet.add(childHashValue);
+    }
+    
+    // Update _seen array
+    mutableSpan._seen = Array.from(seenSet);
+    
+    // Add child usage to this span (always add, even if zero - simplifies logic)
+    try {
+      addTokenUsageToSpan(span, childStats);
+    } catch (error) {
+      console.error(`propagateTokenCostsToRootSpan: failed to add token usage to span ${spanId}:`, error);
+      // Continue processing - don't fail entire propagation
+    }
+    
+    // Return total usage (own + children)
+    return {
+      inputTokens: ownUsage.inputTokens + childStats.inputTokens,
+      outputTokens: ownUsage.outputTokens + childStats.outputTokens,
+      cachedInputTokens: ownUsage.cachedInputTokens + childStats.cachedInputTokens,
+      totalTokens: ownUsage.totalTokens + childStats.totalTokens,
+      cost: ownUsage.cost + childStats.cost,
+    };
+  };
+  
+  // Process all root spans (this will process entire trees bottom-up)
+  // This includes both root spans from the batch and loaded root spans
+  for (const rootSpan of rootSpans) {
+    try {
+      processSpan(rootSpan);
+    } catch (error) {
+      console.error(`propagateTokenCostsToRootSpan: failed to process root span ${getSpanId(rootSpan) || 'unknown'}:`, error);
+      // Continue processing other root spans - don't fail entire propagation
+    }
+  }
+  
+  // Update loaded parent spans in the database
+  // Note: The parent spans have been modified in-place by processSpan
+  const updateFailures: string[] = [];
+  for (const [parentId, parent] of loadedParents.entries()) {
+    try {
+      const updates: Partial<Span> = {
+        attributes: parent.attributes || {},
+        _seen: (parent as any)._seen || [],
+      };
+      const updated = await updateSpanFn(parentId, updates, organisation);
+      if (!updated) {
+        updateFailures.push(parentId);
+        console.warn(`propagateTokenCostsToRootSpan: updateSpan returned null for ${parentId} (span may not exist or belong to different org)`);
+      }
+    } catch (error) {
+      updateFailures.push(parentId);
+      console.error(`propagateTokenCostsToRootSpan: failed to update parent span ${parentId}:`, error);
+    }
+  }
+  
+  if (updateFailures.length > 0) {
+    console.warn(`propagateTokenCostsToRootSpan: failed to update ${updateFailures.length} parent span(s) in database`);
+  }
+}
+
+/**
  * Process OTLP trace export request.
- * Handles rate limiting, token cost calculation, and storage.
+ * Handles rate limiting, token cost calculation, and storage in our ES database.
  * This is the shared logic used by both HTTP and gRPC endpoints.
  * 
  * @param otlpRequest - Parsed OTLP ExportTraceServiceRequest (JSON format)
@@ -231,7 +550,8 @@ export async function processOtlpTraceExport(
   
   // Add token cost
   spansWithOrg.forEach(span => addTokenCost(span));
-  
+  // propagate token costs to the root span
+  await propagateTokenCostsToRootSpan(spansWithOrg);
   // Save spans (may throw ConnectionError for Elasticsearch)
   await bulkInsertSpans(spansWithOrg);
   await recordSpanPosting(organisation, spansWithOrg.length);

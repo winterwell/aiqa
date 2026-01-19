@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Row, Col, Input, Button, FormGroup, Label } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createExampleFromSpans, listDatasets } from '../api';
+import { createExampleFromSpans, listDatasets, createDataset } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getStartTime, getEndTime, getDurationMs, getDurationUnits, getTraceId, getTotalTokenCount, getCost, prettyNumber } from '../utils/span-utils';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
@@ -45,28 +45,6 @@ function collectSpansFromTree(spanTree: SpanTree): Span[] {
 
 function getParentSpanId(span: Span): string | null {
 	return (span as any).parentSpanId || (span as any).span?.parent?.id || null;
-}
-
-function getAllPossibleSpanIds(span: Span): Set<string> {
-	const ids = new Set<string>();
-	// Check all possible ID fields that might be used as parent references
-	const possibleIds = [
-		(span as any).clientSpanId,
-		(span as any).spanId,
-		(span as any).span?.id,
-		(span as any).client_span_id,
-	];
-	possibleIds.forEach(id => {
-		if (id && id !== 'N/A') {
-			ids.add(String(id));
-		}
-	});
-	// Also add the result from getSpanId (which uses the same logic)
-	const spanId = getSpanId(span);
-	if (spanId && spanId !== 'N/A') {
-		ids.add(spanId);
-	}
-	return ids;
 }
 
 function organiseSpansIntoTree(spans: Span[], parent: Span | null, traceIds?: string[]): SpanTree | null {
@@ -139,12 +117,12 @@ function organiseSpansIntoTree(spans: Span[], parent: Span | null, traceIds?: st
 		return tree;
 	}
 	
-	const parentIds = getAllPossibleSpanIds(parent);
+	const parentId = getSpanId(parent);
 	const childSpans = spans.filter(span => {
 		const spanParentId = getParentSpanId(span);
 		if (!spanParentId) return false;
-		// Check if this span's parent ID matches any of the parent's possible IDs
-		return parentIds.has(spanParentId);
+		// Check if this span's parent ID matches the parent's ID
+		return spanParentId === parentId;
 	});
 	
 	const tree: SpanTree = {
@@ -429,25 +407,55 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 	const queryClient = useQueryClient();
 	const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
 
+	// Shared function to add span to a dataset (DRY)
+	const addSpanToDataset = useCallback(async (datasetId: string) => {
+		if (!organisationId) {
+			throw new Error('Organisation ID is required');
+		}
+		return createExampleFromSpans({
+			organisationId,
+			datasetId,
+			spans: [span],
+		});
+	}, [organisationId, span]);
+
 	const addToDatasetMutation = useMutation({
-		mutationFn: async (datasetId: string) => {
-			if (!organisationId) {
-				throw new Error('Organisation ID is required');
-			}
-			return createExampleFromSpans({
-				organisationId,
-				datasetId,
-				spans: [span],
-			});
-		},
+		mutationFn: addSpanToDataset,
 		onSuccess: () => {
 			showToast('Span added to dataset successfully!', 'success');
 			queryClient.invalidateQueries({ queryKey: ['examples'] });
 			queryClient.invalidateQueries({ queryKey: ['table-data'] });
+			queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
 			setSelectedDatasetId('');
 		},
 		onError: (error: Error) => {
 			showToast(`Failed to add span to dataset: ${error.message}`, 'error');
+		},
+	});
+
+	// Mutation to create a new dataset and add the span to it
+	const createDatasetAndAddMutation = useMutation({
+		mutationFn: async () => {
+			if (!organisationId) {
+				throw new Error('Organisation ID is required');
+			}
+			// Create the dataset first
+			const newDataset = await createDataset({
+				organisation: organisationId,
+				name: 'Dataset 1',
+			});
+			// Then add the span to the newly created dataset
+			await addSpanToDataset(newDataset.id);
+			return newDataset;
+		},
+		onSuccess: () => {
+			showToast('Dataset created and span added successfully!', 'success');
+			queryClient.invalidateQueries({ queryKey: ['examples'] });
+			queryClient.invalidateQueries({ queryKey: ['table-data'] });
+			queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+		},
+		onError: (error: Error) => {
+			showToast(`Failed to create dataset and add span: ${error.message}`, 'error');
 		},
 	});
 
@@ -464,15 +472,25 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 			<div style={{ marginBottom: '15px' }}>
 				<div><strong>Span ID:</strong> {spanId}</div>
 				<div><strong>Name:</strong> {getSpanName(span) || 'Unnamed Span'}</div>
+				{span.example && <div><strong>Example:</strong> {span.example}</div>}
+				{span.experiment && <div><strong>Experiment:</strong> {span.experiment}</div>}
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
 				<div><strong>Duration:</strong> {durationMs ? `${durationMs}ms` : 'N/A'}</div>
 				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
 				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
 			</div>
 			
-			{organisationId && Array.isArray(datasets) && datasets.length > 0 && (
+			{organisationId && Array.isArray(datasets) && (
 				<div style={{ marginTop: '15px', marginBottom: '15px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px' }}>
-					{datasets.length === 1 ? (
+					{datasets.length === 0 ? (
+						<Button
+							color="primary"
+							onClick={() => createDatasetAndAddMutation.mutate()}
+							disabled={createDatasetAndAddMutation.isPending || addToDatasetMutation.isPending}
+						>
+							{createDatasetAndAddMutation.isPending || addToDatasetMutation.isPending ? 'Creating...' : 'Add to a New Dataset'}
+						</Button>
+					) : datasets.length === 1 ? (
 						<Button
 							color="primary"
 							onClick={() => {
@@ -480,7 +498,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 									addToDatasetMutation.mutate(datasets[0].id);
 								}
 							}}
-							disabled={addToDatasetMutation.isPending}
+							disabled={addToDatasetMutation.isPending || createDatasetAndAddMutation.isPending}
 						>
 							{addToDatasetMutation.isPending ? 'Adding...' : `Add to Dataset: ${datasets[0].name || datasets[0].id}`}
 						</Button>
@@ -505,7 +523,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 								<Button
 									color="primary"
 									onClick={handleAddToDataset}
-									disabled={!selectedDatasetId || addToDatasetMutation.isPending}
+									disabled={!selectedDatasetId || addToDatasetMutation.isPending || createDatasetAndAddMutation.isPending}
 								>
 									{addToDatasetMutation.isPending ? 'Adding...' : 'Add to Dataset'}
 								</Button>

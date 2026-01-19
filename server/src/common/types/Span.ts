@@ -5,6 +5,8 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
  * Represents a completed span that can be read and exported.
  */
 export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'> {
+	/** Span ID (OpenTelemetry span ID as hex string) */
+	id: string;
 	/** Trace ID */
 	traceId: string;
   organisation: string;
@@ -26,6 +28,8 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   startTime: number;
   /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
   endTime: number;
+  /** internal tracker for child spans that have been processed into this span's token count / cost stats */
+  _seen: number[];
 }
 
 export function getSpanInput(span:Span) {
@@ -37,9 +41,9 @@ export function getSpanOutput(span:Span) {
 
 
 export const getSpanId = (span: Span) => {
-    // Check direct properties first (as stored in ES), then OpenTelemetry spanContext() method
+    // Check id first (standard), then spanId (legacy fallback), then OpenTelemetry spanContext() method
     if (!span) return undefined;
-    return (span as any)?.spanId || (span as any)?.id || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.spanId : undefined);
+    return (span as any)?.id || (span as any)?.spanId || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.spanId : undefined);
   };
 
   export  const getTraceId = (span: Span) => {

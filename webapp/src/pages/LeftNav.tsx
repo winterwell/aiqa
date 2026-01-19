@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
-import { Nav, NavItem, NavLink } from 'reactstrap';
+import { Nav, NavItem, NavLink, Collapse } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { useStepCompletion, STEP_FLOW } from '../utils/stepProgress';
 import { listDatasets } from '../api';
@@ -12,6 +12,9 @@ const LeftNav: React.FC = () => {
 	const navigate = useNavigate();
 	const completion = useStepCompletion(organisationId);
 	const [animatingDataset, setAnimatingDataset] = useState(false);
+	// Auto-open api-key submenu if we're on api-key or llm-key pages
+	const isOnApiKeyPage = location.pathname.includes('/api-key') || location.pathname.includes('/llm-key');
+	const [apiKeySubMenuOpen, setApiKeySubMenuOpen] = useState(isOnApiKeyPage);
 
 	// Query datasets to check if there's only one
 	const { data: datasets } = useQuery({
@@ -50,6 +53,21 @@ const LeftNav: React.FC = () => {
 				return segments.length === 1 && segments[0] !== '';
 			}
 			return false;
+		}
+		
+		// Special handling for experiment-results: exclude experiment-code paths
+		if (itemId === 'experiment-results') {
+			// Don't match if current path contains experiment-code
+			if (currentPath.includes('/experiment-code')) {
+				return false;
+			}
+		}
+		
+		// Special handling for api-key: check if we're on api-key or llm-key pages
+		if (itemId === 'api-key') {
+			const apiKeyPath = `/organisation/${organisationId}/api-key`;
+			const llmKeyPath = `/organisation/${organisationId}/llm-key`;
+			return currentPath === apiKeyPath || currentPath === llmKeyPath;
 		}
 		
 		// For other nav items: match base path or one level deeper (sub-pages)
@@ -100,9 +118,11 @@ const LeftNav: React.FC = () => {
 				const disabled = isDisabled(item.path);
 				const isSmall = isDone && (item.id === 'code-setup' || item.id === 'experiment-code');
 				const isDatasets = item.id === 'datasets';
+				const isApiKey = item.id === 'api-key';
 				const hasSingleDataset = isDatasets && datasets && Array.isArray(datasets) && datasets.length === 1;
 				// Check if currently on a dataset details page (not the list page)
 				const isOnDatasetDetailsPage = isDatasets && location.pathname.match(/\/organisation\/[^/]+\/dataset\/[^/]+$/);
+				
 				
 				const handleClick = (e: React.MouseEvent) => {
 					// Only auto-navigate if there's a single dataset AND we're not already on a details page
@@ -115,25 +135,65 @@ const LeftNav: React.FC = () => {
 							setAnimatingDataset(false);
 						}, 300);
 					}
+					// Toggle api-key submenu
+					if (isApiKey) {
+						e.preventDefault();
+						setApiKeySubMenuOpen(!apiKeySubMenuOpen);
+					}
 				};
 
 				return (
-					<NavItem key={item.id}>
-						<NavLink
-							tag={Link}
-							to={item.path}
-							onClick={handleClick}
-							active={isCurrent}
-							className={`nav-link-item mb-2 ${isDone ? 'progress-step-complete' : ''} ${disabled ? 'disabled' : ''} ${animatingDataset && isDatasets ? 'dataset-nav-animate' : ''}`}
-							disabled={disabled}
-							style={{
-								fontSize: isSmall ? '0.8rem' : '1rem',
-							}}
-						>
-							<Number n={index+1} done={isDone} isCurrent={isCurrent} />
-							{item.label}
-						</NavLink>
-					</NavItem>
+					<React.Fragment key={item.id}>
+						<NavItem>
+							<NavLink
+								tag={isApiKey ? 'a' : Link}
+								to={isApiKey ? undefined : item.path}
+								href={isApiKey ? '#' : undefined}
+								onClick={handleClick}
+								active={isCurrent}
+								className={`nav-link-item mb-2 ${isDone ? 'progress-step-complete' : ''} ${disabled ? 'disabled' : ''} ${animatingDataset && isDatasets ? 'dataset-nav-animate' : ''}`}
+								disabled={disabled}
+								style={{
+									fontSize: isSmall ? '0.8rem' : '1rem',
+									cursor: isApiKey ? 'pointer' : undefined,
+								}}
+							>
+								<Number n={index+1} done={isDone} isCurrent={isCurrent} />
+								{item.label}
+								{isApiKey && (
+									<span className="ms-2" style={{ fontSize: '0.8em' }}>
+										{apiKeySubMenuOpen ? '▼' : '▶'}
+									</span>
+								)}
+							</NavLink>
+						</NavItem>
+						{isApiKey && (
+							<Collapse isOpen={apiKeySubMenuOpen}>
+								<NavItem>
+									<NavLink
+										tag={Link}
+										to={`/organisation/${organisationId}/api-key`}
+										active={location.pathname === `/organisation/${organisationId}/api-key`}
+										className="nav-link-item mb-2 ms-4"
+										style={{ fontSize: '0.9rem' }}
+									>
+										AIQA Keys
+									</NavLink>
+								</NavItem>
+								<NavItem>
+									<NavLink
+										tag={Link}
+										to={`/organisation/${organisationId}/llm-key`}
+										active={location.pathname === `/organisation/${organisationId}/llm-key`}
+										className="nav-link-item mb-2 ms-4"
+										style={{ fontSize: '0.9rem' }}
+									>
+										LLM Keys
+									</NavLink>
+								</NavItem>
+							</Collapse>
+						)}
+					</React.Fragment>
 				);
 			})}
 		</Nav>

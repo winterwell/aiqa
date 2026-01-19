@@ -97,9 +97,29 @@ function buildEsQuery_oneBit(bit: any): any {
       // Convert string numbers to actual numbers for numeric fields
       if (typeof value === 'string' && /^-?\d+$/.test(value)) {
         value = parseInt(value, 10);
+        return { term: { [key]: value } };
       } else if (typeof value === 'string' && /^-?\d*\.\d+$/.test(value)) {
         value = parseFloat(value);
+        return { term: { [key]: value } };
       }
+      
+      // For string values, try multiple query types to handle different field mappings
+      // This handles both explicitly mapped keyword fields and dynamically mapped text fields
+      if (typeof value === 'string') {
+        // Try term queries on both the field and field.keyword for exact matches
+        // Also try match query as fallback for text fields
+        return {
+          bool: {
+            should: [
+              { term: { [key]: value } },
+              { term: { [`${key}.keyword`]: value } },
+              { match: { [key]: value } }
+            ],
+            minimum_should_match: 1
+          }
+        };
+      }
+      
       return { term: { [key]: value } };
     }
   }
@@ -137,7 +157,25 @@ function buildFilterClauses(filters?: Record<string, string>): any[] {
   if (!filters) return [];
   return Object.entries(filters)
     .filter(([_, value]) => value !== undefined && value !== null)
-    .map(([key, value]) => ({ term: { [key]: value } }));
+    .map(([key, value]) => {
+      // For string values, try multiple query types to handle different field mappings
+      // This handles both explicitly mapped keyword fields and dynamically mapped text fields
+      if (typeof value === 'string') {
+        // Try term queries on both the field and field.keyword for exact matches
+        // Also try match query as fallback for text fields
+        return {
+          bool: {
+            should: [
+              { term: { [key]: value } },
+              { term: { [`${key}.keyword`]: value } },
+              { match: { [key]: value } }
+            ],
+            minimum_should_match: 1
+          }
+        };
+      }
+      return { term: { [key]: value } };
+    });
 }
 
 /**
@@ -184,7 +222,19 @@ export async function searchEntities<T>(
   }
 
   // Add filters
-  mustClauses.push(...buildFilterClauses(filters));
+  const filterClauses = buildFilterClauses(filters);
+  mustClauses.push(...filterClauses);
+  
+  // Debug logging for example field queries
+  if (searchQuery && typeof searchQuery === 'object' && searchQuery.query?.includes('example:')) {
+    console.log('Example query debug:', {
+      searchQuery: searchQuery.query,
+      parsedTree: searchQuery.tree,
+      baseQuery: JSON.stringify(baseQuery, null, 2),
+      filterClauses: JSON.stringify(filterClauses, null, 2),
+      finalQuery: JSON.stringify({ bool: { must: mustClauses } }, null, 2)
+    });
+  }
 
   // If no must clauses, use match_all
   if (mustClauses.length === 0) {

@@ -7,10 +7,12 @@ import {
   deleteExperiment,
   getDataset,
 } from '../db/db_sql.js';
-import { searchExamples } from '../db/db_es.js';
+import { searchExamples, searchSpans } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { scoreMetric } from '../scoring.js';
+import { getTokenUsage } from './spans.js';
+import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
 
 interface MetricStats {
 	mean: number;
@@ -336,7 +338,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   fastify.post('/experiment/:id/example/:exampleid/scoreAndStore', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { id: experimentId, exampleid: exampleId } = request.params as { id: string; exampleid: string };
-    const body = request.body as { output: any; traceId?: string; scores?: Record<string, number> };
+    const body = request.body as { output: any; traceId?: string; scores?: Record<string, number>; duration?: number };
     const organisation = request.organisation!;
 
     // Validate required fields
@@ -390,34 +392,103 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     // Collect all metrics: from dataset and example
     const allMetrics: Array<{ metric: any; source: 'dataset' | 'example' }> = [];
     if (dataset.metrics) {
-      for (const metric of dataset.metrics) {
-        allMetrics.push({ metric, source: 'dataset' });
+      if (Array.isArray(dataset.metrics)) {
+        for (const metric of dataset.metrics) {
+          allMetrics.push({ metric, source: 'dataset' });
+        }
+      } else {
+        const metricsValue = dataset.metrics as any;
+        request.log.warn({
+          datasetId: dataset.id,
+          datasetName: dataset.name,
+          metricsType: typeof metricsValue,
+          metricsValue: metricsValue,
+          metricsConstructor: metricsValue?.constructor?.name,
+        }, 'dataset.metrics is not an array');
       }
     }
     if (example.metrics) {
-      for (const metric of example.metrics) {
-        allMetrics.push({ metric, source: 'example' });
+      if (Array.isArray(example.metrics)) {
+        for (const metric of example.metrics) {
+          allMetrics.push({ metric, source: 'example' });
+        }
+      } else {
+        const metricsValue = example.metrics as any;
+        request.log.warn({
+          exampleId: example.id,
+          metricsType: typeof metricsValue,
+          metricsValue: metricsValue,
+          metricsConstructor: metricsValue?.constructor?.name,
+        }, 'example.metrics is not an array');
       }
     }
 
-    // Compute scores for each metric
-    const computedScores: Record<string, number> = {};
+    // Start with scores from request body (includes duration and any pre-computed scores)
+    const computedScores: Record<string, number> = { ...(body.scores || {}) };
     const computedErrors: Record<string, string> = {};
+    
+    // Extract token count and cost from spans if traceId is provided
+    // Retry logic handles race condition: spans may still be indexing in ES after client flush
+    if (body.traceId) {
+      try {
+        // Retry with exponential backoff: spans may not be indexed immediately after flush
+        let spanResult = null;
+        const maxRetries = 3;
+        const initialDelayMs = 100;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+          // Find root span for this trace (parentSpanId:unset means it's a root span)
+          const traceQuery = new SearchQuery(`traceId:${body.traceId} parentSpanId:unset`);
+          spanResult = await searchSpans(traceQuery, organisation, 1, 0);
+          
+          if (spanResult.hits.length > 0) {
+            break; // Found the span, exit retry loop
+          }
+          
+          // If not found and not last attempt, wait before retrying
+          if (attempt < maxRetries - 1) {
+            const delayMs = initialDelayMs * Math.pow(2, attempt);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+        
+        if (spanResult && spanResult.hits.length > 0) {
+          const rootSpan = spanResult.hits[0];
+          const tokenUsage = getTokenUsage(rootSpan);
+          
+          // Add token count and cost as system metrics (using IDs from defaultSystemMetrics.ts)
+          if (tokenUsage.totalTokens > 0) {
+            computedScores[GEN_AI_USAGE_TOTAL_TOKENS] = tokenUsage.totalTokens;
+          }
+          if (tokenUsage.cost > 0) {
+            computedScores[GEN_AI_COST_USD] = tokenUsage.cost;
+          }
+        } else {
+          // Spans not found after retries - log but don't fail (token info is optional)
+          request.log.debug({ traceId: body.traceId }, 'Root span not found after retries - token info will be missing');
+        }
+      } catch (error) {
+        // Log error but don't fail the request - token info is optional
+        request.log.warn({ traceId: body.traceId, error }, 'Failed to extract token info from spans');
+      }
+    }
+    
+    // Compute scores for each metric
     for (const { metric } of allMetrics) {
       const metricName = metric.name;
       
-      // If score is provided in request body, use it
-      if (body.scores && metricName in body.scores) {
-        computedScores[metricName] = body.scores[metricName];
-      } else {
-        // Otherwise, compute the score
-        try {
-          computedScores[metricName] = await scoreMetric(organisation, metric, body.output, example);
-        } catch (error) {
-          // Record error for this metric but continue processing other metrics
-          const message = error instanceof Error ? error.message : String(error);
-          computedErrors[metricName] = message;
-        }
+      // If score is already provided in request body, skip computation
+      if (metricName in computedScores) {
+        continue;
+      }
+      
+      // Otherwise, compute the score
+      try {
+        computedScores[metricName] = await scoreMetric(organisation, metric, body.output, example);
+      } catch (error) {
+        // Record error for this metric but continue processing other metrics
+        const message = error instanceof Error ? error.message : String(error);
+        computedErrors[metricName] = message;
       }
     }
 

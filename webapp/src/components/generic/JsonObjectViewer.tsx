@@ -36,6 +36,13 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	if (json.choices && json.choices.length === 1 && json.choices[0].message) {
 		delete otherKVs.choices;
 	}
+	// clear out blanks
+	Object.keys(otherKVs).forEach(key => {
+		const v = otherKVs[key];
+		if (v === null || v === undefined || v === '' || v === 'null' || (Array.isArray(v) && v.length === 0)) {
+			delete otherKVs[key];
+		}
+	});
 	//
 	return <div className="my-2" style={{ marginLeft: '20px', border: '2px solid #ccc', borderRadius: '5px', padding: '10px', maxWidth: '100%', minWidth: 0, overflowX: 'auto' }}>
 		<div className="d-flex align-items-center mb-1 w-100">			

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { listApiKeys, listDatasets, listExperiments, searchSpans } from '../api';
+import { asArray } from '../common/utils/miscutils';
 
 export type StepId = 
   | 'organisation'
@@ -24,7 +25,7 @@ export const STEP_FLOW: StepInfo[] = [
   { id: 'code-setup', label: 'Code Setup', path: (orgId) => `/organisation/${orgId}/code-setup`, nextPath: (orgId) => `/organisation/${orgId}/traces` },
   { id: 'traces', label: 'Traces', path: (orgId) => `/organisation/${orgId}/traces`, nextPath: (orgId) => `/organisation/${orgId}/dataset` },
   { id: 'datasets', label: 'Datasets', path: (orgId) => `/organisation/${orgId}/dataset`, nextPath: (orgId) => `/organisation/${orgId}/metrics` },
-  { id: 'metrics', label: 'Metrics', path: (orgId) => `/organisation/${orgId}/metrics`, nextPath: (orgId) => `/organisation/${orgId}/experiment-code` },
+  // TODO QA for your QA metrics { id: 'metrics', label: 'Metrics', path: (orgId) => `/organisation/${orgId}/metrics`, nextPath: (orgId) => `/organisation/${orgId}/experiment-code` },
   { id: 'experiment-code', label: 'Experiment Code', path: (orgId) => `/organisation/${orgId}/experiment-code`, nextPath: (orgId) => `/organisation/${orgId}/experiment` },
   { id: 'experiment-results', label: 'Experiment Results', path: (orgId) => `/organisation/${orgId}/experiment` },
 ];
@@ -70,7 +71,7 @@ export function useStepCompletion(organisationId: string | undefined) {
   });
 
   // Check if datasets have metrics
-  const datasetsWithMetrics = datasets?.some((d: any) => d.metrics && d.metrics.length > 0);
+  const datasetsWithMetrics = datasets?.some((d: any) => asArray(d.metrics).length > 0);
 
   // Check experiments
   const { data: experiments } = useQuery({

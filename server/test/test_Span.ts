@@ -38,8 +38,8 @@ tap.before(async () => {
     logger: false,
   });
 
-  // Import route handlers
-  const { authenticateApiKey } = await import('../dist/src/server_auth.js');
+          // Import route handlers
+          const { authenticateApiKey } = await import('../dist/server_auth.js');
   const { bulkInsertSpans, searchSpans } = await import('../dist/db/db_es.js');
   const SearchQuery = (await import('../dist/common/SearchQuery.js')).default;
 

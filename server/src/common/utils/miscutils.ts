@@ -8,3 +8,16 @@ export function truncate(s: string, maxLength: number): string {
   }
   return s.substring(0, maxLength) + "...";
 }
+
+export function asArray(value: any): any[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if ( ! value) {
+    return [];
+  }
+  if (typeof value === 'object' && Object.keys(value).length === 0) {
+    return [];
+  }
+  return [value];
+}
