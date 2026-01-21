@@ -11,12 +11,13 @@ import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/spa
 import { useToast } from '../utils/toast';
 
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
-import MetricModal from '../components/MetricModal';
+import MetricModal, { addOrEditMetric } from '../components/MetricModal';
 import AddExampleModal from '../components/AddExampleModal';
 import PropInput from '../components/generic/PropInput';
 import Tags from '../components/generic/Tags';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
+import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
@@ -27,12 +28,12 @@ const DatasetDetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAddExampleModalOpen, setIsAddExampleModalOpen] = useState(false);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [exampleToDelete, setExampleToDelete] = useState<Example | null>(null);
+  const [isMetricModalOpen, setIsMetricModalOpen] = useState(false);
+  const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
+  const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
 
   const { data: dataset, isLoading, error } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -191,7 +192,15 @@ const DatasetDetailsPage: React.FC = () => {
       },
     ],
     [organisationId, queryClient, showToast, deleteExampleMutation.isPending]
-  );
+  ); // end columns
+
+  const handleSaveMetric = (metric: Partial<Metric>) => {
+    dataset.metrics = addOrEditMetric(metric, asArray(dataset?.metrics) as Metric[]);
+    updateDatasetMutation.mutate({ metrics: dataset.metrics });
+    setIsMetricModalOpen(false);
+    setEditingMetricIndex(null);
+    setEditingMetric(undefined);
+  };
 
   if (isLoading) {
     return (
@@ -266,9 +275,9 @@ const DatasetDetailsPage: React.FC = () => {
             <CardHeader className="d-flex justify-content-between align-items-center">
               <h5>Metrics</h5>
               <Button color="primary" size="sm" onClick={() => {
-                setEditingIndex(null);
+                setEditingMetricIndex(null);
                 setEditingMetric(undefined);
-                setIsAddModalOpen(true);
+                setIsMetricModalOpen(true);
               }}>
                 + Add Metric
               </Button>
@@ -308,15 +317,9 @@ const DatasetDetailsPage: React.FC = () => {
                               color="primary"
                               size="sm"
                               onClick={() => {
-                                setEditingIndex(index);
-                                setEditingMetric({
-                                  name: metric.name,
-                                  description: metric.description || '',
-                                  unit: metric.unit || '',
-                                  type: metric.type,
-                                  parameters: metric.parameters || {},
-                                });
-                                setIsAddModalOpen(true);
+                                setEditingMetricIndex(index);
+                                setEditingMetric(metric);
+                                setIsMetricModalOpen(true);
                               }}
                             >
                               Edit
@@ -325,7 +328,8 @@ const DatasetDetailsPage: React.FC = () => {
                               color="danger"
                               size="sm"
                               onClick={() => {
-                                const updatedMetrics = (asArray(dataset.metrics) as Metric[]).filter((_, i) => i !== index);
+                                const currentMetrics = asArray(dataset.metrics) as Metric[];
+                                const updatedMetrics = currentMetrics.filter((_, i) => i !== index);
                                 updateDatasetMutation.mutate({ metrics: updatedMetrics });
                               }}
                             >
@@ -368,29 +372,16 @@ const DatasetDetailsPage: React.FC = () => {
       </Row>
 
       <MetricModal
-        isOpen={isAddModalOpen}
+        isOpen={isMetricModalOpen}
         toggle={() => {
-          setIsAddModalOpen(false);
-          setEditingIndex(null);
+          setIsMetricModalOpen(false);
+          setEditingMetricIndex(null);
           setEditingMetric(undefined);
         }}
-        onSave={(metric) => {
-          let updatedMetrics: Metric[];
-          if (editingIndex !== null) {
-            // Edit existing metric
-            updatedMetrics = [...(dataset?.metrics || [])];
-            updatedMetrics[editingIndex] = metric;
-          } else {
-            // Add new metric
-            updatedMetrics = [...(dataset?.metrics || []), metric];
-          }
-          updateDatasetMutation.mutate({ metrics: updatedMetrics });
-          setIsAddModalOpen(false);
-          setEditingIndex(null);
-          setEditingMetric(undefined);
-        }}
+        onSave={handleSaveMetric}
         initialMetric={editingMetric}
-        isEditing={editingIndex !== null}
+        isEditing={editingMetricIndex !== null}
+        organisationId={organisationId}
       />
 
       <Row className="mt-3">

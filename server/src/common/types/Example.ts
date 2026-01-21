@@ -1,5 +1,5 @@
 import Span from "./Span";
-import { Metric } from "./Dataset";
+import { Metric } from "./Metric.js";
 
 /**
  * An Example aka an Eval

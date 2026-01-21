@@ -114,12 +114,18 @@ async function initializeAiqaOrg(): Promise<void> {
   
   // Find or create admin user
   if (adminEmail !== ANYONE_EMAIL) {
-    let adminUser = (await listUsers(new SearchQuery(`email:${adminEmail}`)))[0];
+    const adminSub = `aiqa-admin-${adminEmail}`;
+    // Check by sub first (primary identifier)
+    let adminUser = (await listUsers(new SearchQuery(`sub:${adminSub}`)))[0];
+    // Fallback to email if not found by sub
+    if (!adminUser) {
+      adminUser = (await listUsers(new SearchQuery(`email:${adminEmail}`)))[0];
+    }
     if (!adminUser) {
       adminUser = await createUser({
         email: adminEmail,
         name: adminEmail.split('@')[0],
-        sub: `aiqa-admin-${adminEmail}`, // Placeholder sub for admin user
+        sub: adminSub, // Placeholder sub for admin user
       });
       fastify.log.info(`Created admin user: ${adminUser.id}`);
     }

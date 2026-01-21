@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import { Metric } from '../common/types/Dataset';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import Tags from '../components/generic/Tags';
-import MetricModal from '../components/MetricModal';
+import MetricModal, { addOrEditMetric, deleteMetric } from '../components/MetricModal';
 import Page from '../components/generic/Page';
 import { getStartTime, getDurationMs, getTotalTokenCount, getCost, durationString, prettyNumber, formatCost } from '../utils/span-utils';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
@@ -315,6 +315,15 @@ const ExampleDetailsPage: React.FC = () => {
     },
   });
 
+  const handleSaveMetric = (metric: Partial<Metric>) => {
+    const metricsArray = asArray(example?.metrics) as Metric[];
+    const updatedMetrics = addOrEditMetric(metric, metricsArray);
+    updateExampleMutation.mutate({ metrics: updatedMetrics });
+    setIsMetricModalOpen(false);
+    setEditingMetricIndex(null);
+    setEditingMetric(undefined);
+  };
+
   if (isLoading) {
     return (
       <Page header="Example Details">
@@ -396,8 +405,12 @@ const ExampleDetailsPage: React.FC = () => {
               setIsMetricModalOpen(true);
             }}
             onDeleteMetric={(index) => {
-              const updatedMetrics = example.metrics!.filter((_, i) => i !== index);
-              updateExampleMutation.mutate({ metrics: updatedMetrics });
+              const metricsArray = asArray(example.metrics) as Metric[];
+              if (index >= 0 && index < metricsArray.length) {
+                const metricToDelete = metricsArray[index];
+                const updatedMetrics = deleteMetric(metricToDelete, metricsArray);
+                updateExampleMutation.mutate({ metrics: updatedMetrics });
+              }
             }}
           />
         </Col>
@@ -413,23 +426,10 @@ const ExampleDetailsPage: React.FC = () => {
           setEditingMetricIndex(null);
           setEditingMetric(undefined);
         }}
-        onSave={(metric) => {
-          let updatedMetrics: Metric[];
-          if (editingMetricIndex !== null && example) {
-            // Edit existing metric
-            updatedMetrics = [...(example.metrics || [])];
-            updatedMetrics[editingMetricIndex] = metric;
-          } else {
-            // Add new metric
-            updatedMetrics = [...(example?.metrics || []), metric];
-          }
-          updateExampleMutation.mutate({ metrics: updatedMetrics });
-          setIsMetricModalOpen(false);
-          setEditingMetricIndex(null);
-          setEditingMetric(undefined);
-        }}
+        onSave={handleSaveMetric}
         initialMetric={editingMetric}
         isEditing={editingMetricIndex !== null}
+        organisationId={organisationId}
       />
     </Page>
   );

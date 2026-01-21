@@ -1,4 +1,4 @@
-import { Metric } from './common/types/Dataset.js';
+import { Metric } from './common/types/Metric.js';
 import Model from './common/types/Model.js';
 import { getModel } from './db/db_sql.js';
 import { VM } from 'vm2';
@@ -98,21 +98,49 @@ function scoreMetricJavascript(metric: Metric, output: any, example: any): Promi
 async function scoreMetricLLM(organisationId: string, metric: Metric, output: any, example: any): Promise<number> {
 	// Get the model from metric parameters
 	const modelId = metric.parameters?.model || metric.parameters?.modelId;
-	if (!modelId) {
-		throw new Error('LLM metric requires model or modelId in metric.parameters');
-	}
+	let model: Model | null = null;
 	
-	const model = await getModel(modelId);
-	if (!model) {
-		throw new Error(`Model not found: ${modelId}`);
-	}
-	
-	if (model.organisation !== organisationId) {
-		throw new Error('Model does not belong to the organisation');
+	if (modelId) {
+		model = await getModel(modelId);
+		if (!model) {
+			throw new Error(`Model not found: ${modelId}`);
+		}
+		
+		if (model.organisation !== organisationId) {
+			throw new Error('Model does not belong to the organisation');
+		}
+	} else {
+		// No model specified - try to use environment variables
+		const openaiKey = process.env.OPENAI_API_KEY;
+		const anthropicKey = process.env.ANTHROPIC_API_KEY;
+		
+		if (openaiKey) {
+			model = {
+				id: 'env-openai',
+				organisation: organisationId,
+				provider: 'openai',
+				name: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+				api_key: openaiKey,
+				created: new Date(),
+				updated: new Date(),
+			} as Model;
+		} else if (anthropicKey) {
+			model = {
+				id: 'env-anthropic',
+				organisation: organisationId,
+				provider: 'anthropic',
+				name: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
+				api_key: anthropicKey,
+				created: new Date(),
+				updated: new Date(),
+			} as Model;
+		} else {
+			throw new Error('LLM metric has no model specified and no OPENAI_API_KEY or ANTHROPIC_API_KEY found in environment variables');
+		}
 	}
 	
 	// Build the prompt
-	let prompt = metric.parameters?.prompt;
+	let prompt = metric.parameters?.prompt || metric.prompt;
 	if (!prompt) {
 		// do we have good/bad targets?		
 		if (example.outputs?.good || example.outputs?.bad) {
@@ -127,11 +155,13 @@ Good output: ${JSON.stringify(example.outputs.good)}
 Bad output: ${JSON.stringify(example.outputs.bad)}
 Actual output: ${JSON.stringify(output)}
 Respond with a number between 0 and 100.`;
+		} else {
+			throw new Error('LLM metric requires a prompt in metric.prompt or metric.parameters.prompt, or example.outputs.good/bad for auto-generated prompt');
 		}
 	}
 
 	// Call the LLM
-	const llmResult = await callLLM(model,prompt);
+	const llmResult = await callLLM(model, prompt);
 
 	// Try to extract the score from the LLM's result text
 	let score = Number(llmResult.content);

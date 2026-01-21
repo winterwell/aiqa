@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Row, Col, Card, CardBody, CardHeader, Alert } from 'reactstrap';
+import { Card, CardBody, CardHeader, Alert } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { getDataset } from '../api';
 import type Dataset from '../common/types/Dataset';
@@ -8,6 +8,7 @@ import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
 import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues } from '../utils/metric-utils';
+import DashboardStrip from './DashboardStrip';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -168,94 +169,43 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		);
 	}
 
-	// Calculate responsive column widths based on number of metrics (including Overall Score)
-	// Responsive: up to 6 cards per row, but grow to fill if fewer cards
-	const totalMetrics = metricsWithData.length + (overallScoreStats ? 1 : 0);
-	
-	// Calculate optimal column widths for different breakpoints
-	// Bootstrap breakpoints: xs (default), sm (≥576px), md (≥768px), lg (≥992px), xl (≥1200px), xxl (≥1400px)
-	const getResponsiveCols = () => {
-		// On very small screens (xs): always 1 card per row for readability
-		const xs = 12;
-		
-		// On small screens (sm): up to 2 cards per row, but grow to fill
-		const sm = totalMetrics === 1 ? 12 : 6;
-		
-		// On medium screens (md): up to 3 cards per row, but grow to fill
-		const md = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : 4;
-		
-		// On large screens (lg): up to 4 cards per row, but grow to fill
-		const lg = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : totalMetrics === 3 ? 4 : 3;
-		
-		// On extra large screens (xl): up to 6 cards per row, but grow to fill
-		const xl = totalMetrics === 1 ? 12 : totalMetrics === 2 ? 6 : totalMetrics === 3 ? 4 : totalMetrics === 4 ? 3 : 2;
-		
-		// On extra extra large screens (xxl): same as xl
-		const xxl = xl;
-		
-		return { xs, sm, md, lg, xl, xxl };
-	};
-	
-	const responsiveCols = getResponsiveCols();
-
 	return (
-		<Row className="mt-3">
+		<DashboardStrip>
 			{overallScoreStats && (
-				<Col 
-					xs={responsiveCols.xs}
-					sm={responsiveCols.sm}
-					md={responsiveCols.md}
-					lg={responsiveCols.lg}
-					xl={responsiveCols.xl}
-					xxl={responsiveCols.xxl}
-					key="Overall Score" 
-					className="mb-4"
-				>
-					<Card>
-						<CardHeader>
-							<h5>Overall Score</h5>
-							<p className="text-muted small mb-0">Geometric mean of all metrics</p>
-						</CardHeader>
-						<CardBody>
-							<div className="mt-3">
-								<p className="mb-1">
-									<strong>Statistics:</strong>
-								</p>
-								<ul className="list-unstyled mb-0">
-									{overallScoreStats.count !== null && <li>Count: {overallScoreStats.count}</li>}
-									{overallScoreStats.min !== null && <li>Min: {overallScoreStats.min.toFixed(2)}</li>}
-									{overallScoreStats.max !== null && <li>Max: {overallScoreStats.max.toFixed(2)}</li>}
-									<li>Mean: {overallScoreStats.mean.toFixed(2)}</li>
-								</ul>
-							</div>
-						</CardBody>
-					</Card>
-				</Col>
+				<Card key="Overall Score">
+					<CardHeader>
+						<h5>Overall Score</h5>
+						<p className="text-muted small mb-0">Geometric mean of all metrics</p>
+					</CardHeader>
+					<CardBody>
+						<div className="mt-3">
+							<p className="mb-1">
+								<strong>Statistics:</strong>
+							</p>
+							<ul className="list-unstyled mb-0">
+								{overallScoreStats.count !== null && <li>Count: {overallScoreStats.count}</li>}
+								{overallScoreStats.min !== null && <li>Min: {overallScoreStats.min.toFixed(2)}</li>}
+								{overallScoreStats.max !== null && <li>Max: {overallScoreStats.max.toFixed(2)}</li>}
+								<li>Mean: {overallScoreStats.mean.toFixed(2)}</li>
+							</ul>
+						</div>
+					</CardBody>
+				</Card>
 			)}
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
-				<Col 
-					xs={responsiveCols.xs}
-					sm={responsiveCols.sm}
-					md={responsiveCols.md}
-					lg={responsiveCols.lg}
-					xl={responsiveCols.xl}
-					xxl={responsiveCols.xxl}
-					key={metric.name} 
-					className="mb-4"
-				>
-					<MetricDataCard
-						metric={metric}
-						histogram={histogram}
-						min={min}
-						max={max}
-						mean={mean}
-						count={count}
-						unmeasuredCount={unmeasuredCount}
-						totalResults={experiment.results?.length || 0}
-					/>
-				</Col>
+				<MetricDataCard
+					key={metric.name}
+					metric={metric}
+					histogram={histogram}
+					min={min}
+					max={max}
+					mean={mean}
+					count={count}
+					unmeasuredCount={unmeasuredCount}
+					totalResults={experiment.results?.length || 0}
+				/>
 			))}
-		</Row>
+		</DashboardStrip>
 	);
 }
 

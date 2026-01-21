@@ -1,4 +1,4 @@
-import { Metric } from './types/Dataset';
+import { Metric } from './types/Metric.js';
 import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from './constants_otel.js';
 
 /**

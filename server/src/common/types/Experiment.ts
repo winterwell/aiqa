@@ -1,15 +1,28 @@
 
 
-
-interface Result {
+/** The Result from one example, with the scores for each metric */
+export interface Result {
 	exampleId: string;
 	scores: {
 		[metricName: string]: number;
-	}
+	},
+  messages?: {
+    [metricName: string]: string;
+  }
 	errors?: {
 		[metricName: string]: string;
 	}
 }
+
+/**
+ * The Result from one example and one metric
+ */
+export interface MetricResult {
+  score: number;
+  message?: string;
+  error?: string;
+}
+
 
 /** An Experiment is a run of a Dataset of examples over your code, scoring the outputs.
  * Individual results may be traced as per normal tracing.

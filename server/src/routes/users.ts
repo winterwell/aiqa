@@ -30,6 +30,53 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       newUser.name = newUser.email.split('@')[0];
     }
     
+    // Check if user already exists by sub (primary identifier)
+    if (newUser.sub) {
+      const existingUsersBySub = await listUsers(new SearchQuery(`sub:${newUser.sub}`));
+      if (existingUsersBySub.length > 0) {
+        // User already exists, return the existing user (prefer one with most organisations)
+        if (existingUsersBySub.length > 1) {
+          // Multiple users with same sub - prefer one in organisations
+          const { getOrganisationsForUser } = await import('../db/db_sql.js');
+          const usersWithOrgs = await Promise.all(
+            existingUsersBySub.map(async (u) => {
+              const orgs = await getOrganisationsForUser(u.id);
+              return { user: u, orgCount: orgs.length };
+            })
+          );
+          usersWithOrgs.sort((a, b) => {
+            if (a.orgCount !== b.orgCount) return b.orgCount - a.orgCount;
+            return new Date(a.user.created).getTime() - new Date(b.user.created).getTime();
+          });
+          console.log(`User with sub ${newUser.sub} already exists (multiple found), returning user ${usersWithOrgs[0].user.id}`);
+          return usersWithOrgs[0].user;
+        }
+        console.log(`User with sub ${newUser.sub} already exists, returning existing user ${existingUsersBySub[0].id}`);
+        return existingUsersBySub[0];
+      }
+    }
+    
+    // Also check by email as fallback
+    if (newUser.email) {
+      const existingUsersByEmail = await listUsers(new SearchQuery(`email:${newUser.email}`));
+      if (existingUsersByEmail.length > 0) {
+        // If email matches and sub matches or is missing, return existing user
+        const matchingUser = existingUsersByEmail.find(u => !u.sub || u.sub === newUser.sub);
+        if (matchingUser) {
+          // Update sub if it was missing
+          if (!matchingUser.sub && newUser.sub) {
+            const updated = await updateUser(matchingUser.id, { sub: newUser.sub });
+            if (updated) {
+              console.log(`Updated user ${matchingUser.id} with sub ${newUser.sub}`);
+              return updated;
+            }
+          }
+          console.log(`User with email ${newUser.email} already exists, returning existing user ${matchingUser.id}`);
+          return matchingUser;
+        }
+      }
+    }
+    
     console.log("creating user: "+newUser.email+" "+newUser.sub+" from JWT token "+JSON.stringify(jwtToken));
     const user = await createUser(newUser);
     return user;

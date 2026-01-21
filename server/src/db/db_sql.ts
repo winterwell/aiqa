@@ -434,6 +434,31 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Add unique constraint on users.sub to prevent duplicate users with same sub
+	// Use a unique index with WHERE clause to allow NULL values but enforce uniqueness for non-NULL subs
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM pg_indexes 
+			WHERE tablename = 'users' AND indexname = 'idx_users_sub_unique'
+		  ) THEN
+			-- Check for existing duplicates first
+			IF EXISTS (
+			  SELECT sub, COUNT(*) as cnt 
+			  FROM users 
+			  WHERE sub IS NOT NULL 
+			  GROUP BY sub 
+			  HAVING COUNT(*) > 1
+			) THEN
+			  RAISE WARNING 'Duplicate users with same sub exist. Unique index not created. Please clean up duplicates first.';
+			ELSE
+			  CREATE UNIQUE INDEX idx_users_sub_unique ON users(sub) WHERE sub IS NOT NULL;
+			END IF;
+		  END IF;
+		END $$;
+	  `);
+
 	// Migration: Drop subscription/limits columns from organisations table (moved to organisation_accounts)
 	await doQuery(`
 		DO $$ 

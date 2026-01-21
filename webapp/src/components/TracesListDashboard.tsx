@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, CardBody, CardHeader, Row, Col } from 'reactstrap';
+import { Card, CardBody, CardHeader } from 'reactstrap';
 import { Span } from '../common/types';
 import MetricCard from './dashboard/MetricCard';
 import ViewModeToggle, { ViewMode } from './dashboard/ViewModeToggle';
@@ -12,6 +12,7 @@ import CostTimeseriesChart from './dashboard/CostTimeseriesChart';
 import { useTraceMetrics, useHistogramData, useTokensHistogramData, useCostHistogramData, useTimeseriesData, useTokensTimeseriesData, useCostTimeseriesData } from './dashboard/useTraceMetrics';
 import { durationString, isRootSpan, getDurationMs, prettyNumber } from '../utils/span-utils';
 import { CHART_HEIGHT, CHART_WIDTH, FEEDBACK_ICONS } from './dashboard/chart-constants';
+import DashboardStrip from './DashboardStrip';
 
 interface TracesListDashboardProps {
   spans: Span[];
@@ -30,62 +31,54 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
 
   return (
     <div className="mb-4">
-      <Row>
-        <Col md={3}>
-          <MetricCard 
-            label="Duration" 
-            value={
-              (() => {
-                const rootSpans = spans.filter(s => isRootSpan(s));
-                const durations = rootSpans.map(s => getDurationMs(s)).filter((d): d is number => d !== null);
-                const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
-                return (
-                  <div>
-                    <div>Avg: {durationString(metrics.avgDuration) || 'N/A'}</div>
-                    <div className="mt-1">Max: {durationString(maxDuration) || 'N/A'}</div>
-                  </div>
-                );
-              })()
-            } 
-          />
-        </Col>
-        <Col md={3}>
-          <MetricCard 
-            label="Tokens" 
-            value={
-              <div>
-                <div>Avg: {prettyNumber(metrics.tokens.avg)}</div>
-                <div className="mt-1">Max: {prettyNumber(metrics.tokens.max)}</div>
-                <div className="mt-1">Total: {prettyNumber(metrics.tokens.total)}</div>
-              </div>
-            } 
-          />
-        </Col>
-        <Col md={3}>
-          <MetricCard 
-            label="Cost" 
-            value={
-              <div>
-                <div>Avg: ${prettyNumber(metrics.cost.avg)}</div>
-                <div className="mt-1">Max: ${prettyNumber(metrics.cost.max)}</div>
-                <div className="mt-1">Total: ${prettyNumber(metrics.cost.total)}</div>
-              </div>
-            } 
-          />
-        </Col>
-        <Col md={3}>
-          <MetricCard 
-            label="Feedback" 
-            value={
-              <div>
-                <div className="text-success">{FEEDBACK_ICONS.positive} {prettyNumber(metrics.positiveFeedback)}</div>
-                <div className="text-danger mt-1">{FEEDBACK_ICONS.negative} {prettyNumber(metrics.negativeFeedback)}</div>
-                <div className="mt-1">Total: {prettyNumber(metrics.positiveFeedback + metrics.negativeFeedback)}</div>
-              </div>
-            } 
-          />
-        </Col>
-      </Row>
+      <DashboardStrip>
+        <MetricCard 
+          label="Duration" 
+          value={
+            (() => {
+              const rootSpans = spans.filter(s => isRootSpan(s));
+              const durations = rootSpans.map(s => getDurationMs(s)).filter((d): d is number => d !== null);
+              const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
+              return (
+                <div>
+                  <div>Avg: {durationString(metrics.avgDuration) || 'N/A'}</div>
+                  <div className="mt-1">Max: {durationString(maxDuration) || 'N/A'}</div>
+                </div>
+              );
+            })()
+          } 
+        />
+        <MetricCard 
+          label="Tokens" 
+          value={
+            <div>
+              <div>Avg: {prettyNumber(metrics.tokens.avg)}</div>
+              <div className="mt-1">Max: {prettyNumber(metrics.tokens.max)}</div>
+              <div className="mt-1">Total: {prettyNumber(metrics.tokens.total)}</div>
+            </div>
+          } 
+        />
+        <MetricCard 
+          label="Cost"
+          value={
+            <div>
+              <div>Avg: ${prettyNumber(metrics.cost.avg)}</div>
+              <div className="mt-1">Max: ${prettyNumber(metrics.cost.max)}</div>
+              <div className="mt-1">Total: ${prettyNumber(metrics.cost.total)}</div>
+            </div>
+          } 
+        />
+        <MetricCard 
+          label="Feedback" 
+          value={
+            <div>
+              <div className="text-success">{FEEDBACK_ICONS.positive} {prettyNumber(metrics.positiveFeedback)}</div>
+              <div className="text-danger mt-1">{FEEDBACK_ICONS.negative} {prettyNumber(metrics.negativeFeedback)}</div>
+              <div className="mt-1">Total: {prettyNumber(metrics.positiveFeedback + metrics.negativeFeedback)}</div>
+            </div>
+          } 
+        />
+      </DashboardStrip>
 
       <Card className="mt-3">
         <CardHeader className="d-flex justify-content-between align-items-center">
@@ -93,32 +86,32 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
           <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </CardHeader>
         <CardBody>
-          <Row>
-            <Col md={4}>
+          <DashboardStrip className="">
+            <div>
               <h6 className="text-center mb-3">Duration</h6>
               {viewMode === 'histogram' ? (
                 <HistogramChart data={durationHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
                 <TimeseriesChart data={durationTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
-            </Col>
-            <Col md={4}>
+            </div>
+            <div>
               <h6 className="text-center mb-3">Tokens</h6>
               {viewMode === 'histogram' ? (
                 <TokensHistogramChart data={tokensHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
                 <TokensTimeseriesChart data={tokensTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
-            </Col>
-            <Col md={4}>
+            </div>
+            <div>
               <h6 className="text-center mb-3">Cost</h6>
               {viewMode === 'histogram' ? (
                 <CostHistogramChart data={costHistogramData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               ) : (
                 <CostTimeseriesChart data={costTimeseriesData} width={CHART_WIDTH} height={CHART_HEIGHT} />
               )}
-            </Col>
-          </Row>
+            </div>
+          </DashboardStrip>
         </CardBody>
       </Card>
     </div>

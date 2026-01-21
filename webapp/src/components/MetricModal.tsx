@@ -1,16 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Button } from 'reactstrap';
+import React, { useState, useEffect } from 'react';
+import { Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Button, Label, Input } from 'reactstrap';
+import { useQuery } from '@tanstack/react-query';
 import { Metric } from '../common/types/Dataset';
 import PropInput from './generic/PropInput';
 import {useRerender} from 'rerenderer';
 import { getDefaultLLMPrompt } from '../common/llmPromptTemplate';
+import { listModels } from '../api';
+import Model from '../common/types/Model';
 
 interface MetricModalProps {
   isOpen: boolean;
   toggle: () => void;
-  onSave: (metric: Metric) => void;
+  onSave: (metric: Partial<Metric>) => void;
   initialMetric?: Partial<Metric>;
   isEditing: boolean;
+  organisationId?: string;
 }
 
 const MetricModal: React.FC<MetricModalProps> = ({
@@ -19,106 +23,85 @@ const MetricModal: React.FC<MetricModalProps> = ({
   onSave,
   initialMetric,
   isEditing,
+  organisationId,
 }) => {
-	
-  const metricRef = useRef<Partial<Metric>>({});
+  const [metric, setMetric] = useState<Partial<Metric>>(initialMetric || {});
   const {rerender} = useRerender();
 
+  // Fetch models for this organisation
+  const { data: models, isLoading: modelsLoading } = useQuery({
+    queryKey: ['models', organisationId],
+    queryFn: () => listModels(organisationId!),
+    enabled: !!organisationId && isOpen,
+  });
+
+  // Reset metric state when modal opens or initialMetric changes
   useEffect(() => {
     if (isOpen) {
-      if (initialMetric) {
-        metricRef.current = {...initialMetric};
-        // Ensure type is set to a valid value
-        if (!metricRef.current.type || metricRef.current.type.trim() === '') {
-          metricRef.current.type = 'javascript';
-        }
-        // Initialize prompt for LLM metrics if not present
-        if (metricRef.current.type === 'llm' && !metricRef.current.parameters?.prompt) {
-          if (!metricRef.current.parameters) {
-            metricRef.current.parameters = {};
-          }
-          const metricName = metricRef.current.name || '';
-          metricRef.current.parameters.prompt = getDefaultLLMPrompt(metricName);
-        }
-      } else {
-        metricRef.current = {
-          name: '',
-          description: '',
-          unit: '',
-          type: 'javascript',
-          parameters: {},
-        };
-      }
-      rerender();
+      setMetric(initialMetric || {});
     }
   }, [isOpen, initialMetric]);
 
-  // Handle type change and initialize prompt for LLM metrics
-  const handleTypeChange = () => {
-    if (metricRef.current.type === 'llm') {
-      if (!metricRef.current.parameters) {
-        metricRef.current.parameters = {};
-      }
-      if (!metricRef.current.parameters.prompt) {
-        const metricName = metricRef.current.name || '';
-        metricRef.current.parameters.prompt = getDefaultLLMPrompt(metricName);
-      }
+  const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const type = e.target.value as 'javascript' | 'llm' | 'number';
+    metric.type = type;
+    if (type === 'llm' && !('prompt' in metric && metric.prompt)) {
+      (metric as any).prompt = getDefaultLLMPrompt(metric.name || metric.id || 'metric');
+      metric.unit = 'fraction';
     }
     rerender();
   };
 
-  const handleSave = () => {
-    // Read directly from the current ref value to ensure we have the latest
-    const currentMetric = metricRef.current;
-    const name = (currentMetric.name || '').trim();
-    let type = (currentMetric.type || '').trim();
-    const validTypes = ['javascript', 'llm', 'number'];
-    
-    if (!name) {
-      alert('Name is required');
-      return;
+  const handleModelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const modelId = e.target.value;
+    if (!metric.parameters) {
+      metric.parameters = {};
     }
-    
-    // Ensure type is always set to a valid value (default to 'javascript' if empty/invalid)
-    if (!type || !validTypes.includes(type)) {
-      type = 'javascript';
-      currentMetric.type = type as 'javascript' | 'llm' | 'number';
+    if (modelId === '') {
+      // Blank option - remove model parameter
+      delete metric.parameters.model;
+      delete metric.parameters.modelId;
+    } else {
+      metric.parameters.model = modelId;
     }
-    
-    // Update the metric with trimmed values before saving
-    currentMetric.name = name;
-    currentMetric.type = type as 'javascript' | 'llm' | 'number';
-    
-    onSave(currentMetric as Metric);
+    rerender();
   };
 
-
-  const metric = metricRef.current;
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!metric.type || !metric.id) {
+      return; // Basic validation - type and id are required
+    }
+    onSave(metric);
+  };
 
   return (
     <Modal isOpen={isOpen} toggle={toggle}>
       <ModalHeader toggle={toggle}>
         {isEditing ? 'Edit Metric' : 'Add Metric'}
       </ModalHeader>
-      <ModalBody>
-        <Form onSubmit={(e) => {
-          e.preventDefault();
-          handleSave();
-        }}>
+      <Form onSubmit={handleSubmit}>
+        <ModalBody>
           <FormGroup>
             <PropInput
-              label="Name *"
               item={metric}
               prop="name"
               type="text"
-              placeholder="e.g., latency"
+              placeholder="e.g., Latency"
               onChange={rerender}
+            />
+            <PropInput 
+              item={metric} 
+              prop="id" 
+              type="text" 
+              placeholder="e.g., latency (this can be short and human-readable)" 
+              onChange={rerender} 
             />
           </FormGroup>
           <FormGroup>
             <PropInput
               label="Type"
-			  required
+              required
               item={metric}
               prop="type"
               type="select"
@@ -127,23 +110,48 @@ const MetricModal: React.FC<MetricModalProps> = ({
             />
           </FormGroup>
           {metric.type === 'llm' && (
-            <FormGroup>
-              <PropInput
-                label="Prompt *"
-                item={metric.parameters || {}}
-                prop="prompt"
-                type="textarea"
-                rows={12}
-                placeholder="Enter the prompt for LLM evaluation"
-                onChange={rerender}
-              />
-            </FormGroup>
+            <>
+              <FormGroup>
+                <Label>
+                  Model {metric.parameters?.model && <span>*</span>}
+                </Label>
+                <Input
+                  type="select"
+                  value={metric.parameters?.model || metric.parameters?.modelId || ''}
+                  onChange={handleModelChange}
+                >
+                  <option value="">Blank (local api-key or code)</option>
+                  {modelsLoading ? (
+                    <option disabled>Loading models...</option>
+                  ) : (
+                    models?.map((model: Model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} {model.version ? `(${model.version})` : ''} - {model.provider}
+                      </option>
+                    ))
+                  )}
+                </Input>
+              </FormGroup>
+              <FormGroup>
+                <PropInput
+                  label="Prompt"
+                  required
+                  item={metric}
+                  prop="prompt"
+                  type="textarea"
+                  rows={12}
+                  placeholder="Enter the prompt for LLM evaluation"
+                  onChange={rerender}
+                />
+              </FormGroup>
+            </>
           )}
           {metric.type === 'javascript' && (
             <FormGroup>
               <PropInput
-                label="Code *"
-                item={metric.parameters || {}}
+                label="Code"
+                required
+                item={metric}
                 prop="code"
                 type="textarea"
                 rows={5}
@@ -158,7 +166,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               item={metric}
               prop="unit"
               type="text"
-              placeholder="e.g., ms, USD, tokens"
+              placeholder="e.g., ms, USD, tokens, fraction"
               onChange={rerender}
             />
           </FormGroup>
@@ -172,19 +180,36 @@ const MetricModal: React.FC<MetricModalProps> = ({
               onChange={rerender}
             />
           </FormGroup>
-        </Form>
-      </ModalBody>
-      <ModalFooter>
-        <Button color="secondary" onClick={toggle}>
-          Cancel
-        </Button>
-        <Button color="primary" type="submit">
-          {isEditing ? 'Save Changes' : 'Add Metric'}
-        </Button>
-      </ModalFooter>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" onClick={toggle} type="button">
+            Cancel
+          </Button>
+          <Button color="primary" type="submit">
+            {isEditing ? 'Save Changes' : 'Add Metric'}
+          </Button>
+        </ModalFooter>
+      </Form>
     </Modal>
   );
 };
 
 export default MetricModal;
 
+/** Create a new listMetrics by adding or editing a metric */
+export function addOrEditMetric(metric, listMetrics): Metric[] {
+  // check if metric is already in listMetrics
+  let newListMetrics = [...listMetrics];
+  const index = listMetrics.findIndex(m => m.id === metric.id);
+  if (index !== -1) {
+    newListMetrics[index] = metric;
+  } else {
+    newListMetrics.push(metric);
+  }
+  return newListMetrics;
+}
+
+/** Create a new listMetrics by deleting a metric */
+export function deleteMetric(metric: Metric, listMetrics: Metric[]): Metric[] {
+  return listMetrics.filter((m) => m.id !== metric.id);
+}

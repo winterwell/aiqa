@@ -7,7 +7,7 @@ import {
   deleteDataset,
 } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
-import { checkAccessDeveloper, getOrganisationId, parseSearchQuery, send404 } from './route_helpers.js';
+import { checkAccessDeveloper, getOrganisationId, parseSearchQuery, send400, send404, validateUuid } from './route_helpers.js';
 
 /**
  * Register dataset endpoints with Fastify
@@ -26,6 +26,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
   fastify.get('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloper(request, reply)) return;
     const { id } = request.params as { id: string };
+    if (!validateUuid(id, reply)) {
+      send400(reply, 'Invalid UUID format');
+      return;
+    }
     const dataset = await getDataset(id);
     if (!dataset) {
       send404(reply, 'Dataset');
@@ -48,6 +52,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
   fastify.put('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloper(request, reply)) return;
     const { id } = request.params as { id: string };
+    if (!validateUuid(id, reply)) {
+      send400(reply, 'Invalid UUID format');
+      return;
+    }
     const dataset = await updateDataset(id, request.body as any);
     if (!dataset) {
       send404(reply, 'Dataset');
@@ -60,6 +68,10 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
   fastify.delete('/dataset/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloper(request, reply)) return;
     const { id } = request.params as { id: string };
+    if (!validateUuid(id, reply)) {
+      send400(reply, 'Invalid UUID format');
+      return;
+    }
     const deleted = await deleteDataset(id);
     if (!deleted) {
       send404(reply, 'Dataset');

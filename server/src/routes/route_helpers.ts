@@ -37,10 +37,29 @@ export function parseSearchQuery(request: AuthenticatedRequest): SearchQuery | n
 }
 
 /**
+ * Handle 400 for bad request
+ */
+export function send400(reply: FastifyReply, errorMessage: string): boolean {
+  reply.code(400).send({ error: errorMessage });
+  return false;
+}
+/**
  * Handle 404 for resource not found
  */
 export function send404(reply: FastifyReply, resourceName: string): boolean {
   reply.code(404).send({ error: `${resourceName} not found` });
   return false;
+}
+
+/**
+ * Validate UUID format (RFC 4122)
+ */
+export function validateUuid(id: string, reply: FastifyReply): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    reply.code(400).send({ error: 'Invalid UUID format' });
+    return false;
+  }
+  return true;
 }
 

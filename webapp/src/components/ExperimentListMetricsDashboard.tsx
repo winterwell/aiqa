@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Row, Col, Card, CardBody, CardHeader, Alert } from 'reactstrap';
+import { Card, CardBody, CardHeader, Alert } from 'reactstrap';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useQueries } from '@tanstack/react-query';
 import { getDataset } from '../api';
@@ -8,6 +8,7 @@ import type { Metric } from '../common/types/Dataset';
 import type Experiment from '../common/types/Experiment';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';
+import DashboardStrip from './DashboardStrip';
 
 type ScatterDataPoint = {
 	x: number;
@@ -232,30 +233,21 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 		);
 	}
 
-	// Calculate column width based on number of metrics
-	const getColumnWidth = () => {
-		if (metrics.length <= 1) return 12;
-		if (metrics.length === 2) return 6;
-		return 4; // 3 or more metrics
-	};
-	const colWidth = getColumnWidth();
-
 	// Color palette for scatter points
 	const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff'];
 
 	return (
-		<Row className="mt-3">
+		<DashboardStrip>
 			{metricData.map(({ metric, data, ignoredCount }, index) => (
-				<Col md={colWidth} key={metric.name} className="mb-4">
-					<MetricDataCard
-						metric={metric}
-						data={data}
-						ignoredCount={ignoredCount}
-						color={colors[index % colors.length]}
-					/>
-				</Col>
+				<MetricDataCard
+					key={metric.name}
+					metric={metric}
+					data={data}
+					ignoredCount={ignoredCount}
+					color={colors[index % colors.length]}
+				/>
 			))}
-		</Row>
+		</DashboardStrip>
 	);
 }
 
