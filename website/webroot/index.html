@@ -22,7 +22,8 @@
 	<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
 	<div class="container">
 		<a class="navbar-brand fw-bold d-flex align-items-center" href="/">
-			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="32" class="me-2" style="display: block;">
+			<img src="img/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
+			<img src="img/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
 			AIQA
 		</a>
 		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
@@ -41,12 +42,15 @@
 					<a class="nav-link" href="/docs.html">Docs</a>
 				</li>
 			</ul>
-			<div class="d-flex gap-2">
+			<div class="d-flex flex-column flex-lg-row gap-2">
 				<a class="btn btn-light" href="https://app-aiqa.winterwell.com" rel="noopener">
 					<i class="bi bi-box-arrow-in-right me-1"></i>Login
 				</a>
 				<a class="btn btn-outline-light" href="https://app-aiqa.winterwell.com" rel="noopener">
 					<i class="bi bi-person-plus me-1"></i>Sign Up
+				</a>
+				<a class="btn btn-outline-light" href="https://github.com/winterwell/aiqa" target="_blank" rel="noopener">
+					<i class="bi bi-github me-1"></i>GitHub
 				</a>
 			</div>
 		</div>
@@ -54,46 +58,46 @@
 </nav>
 
 	<main>
-		<div class="hero-section bg-primary text-white py-5 mb-5">
-	<div class="container">
-		<div class="row align-items-center">
-			<div class="col-lg-6">
-				<h1 class="display-4 fw-bold mb-4">Test Your AI. Trust Your Results.</h1>
-				<p class="lead mb-4">
-					AIQA makes AI quality assurance simple. Get the reliability you need without the complexity you don't.
-				</p>
-				<div class="d-flex gap-3 flex-wrap">
-					<a href="https://app-aiqa.winterwell.com" class="btn btn-light btn-lg" rel="noopener">
-						<i class="bi bi-person-plus me-2"></i>Sign Up
-					</a>
-				</div>
-			</div>
-			<div class="col-lg-6 text-center mt-4 mt-lg-0">
-				<div class="hero-icon">
-					<i class="bi bi-shield-check" style="font-size: 12rem; opacity: 0.3;"></i>
+		<div class="hero-section bg-primary text-white py-4 py-md-5 mb-4 mb-md-5">
+			<div class="container">
+				<div class="row align-items-center">
+					<div class="col-lg-6">
+						<h1 class="display-4 fw-bold mb-3 mb-md-4">Test Your AI. Trust Your Results.</h1>
+						<p class="lead mb-3 mb-md-4">
+							AIQA makes AI quality assurance simple. Get the reliability you need without the complexity you don't.
+						</p>
+						<div class="d-flex flex-column flex-sm-row gap-3">
+							<a href="https://app-aiqa.winterwell.com" class="btn btn-light btn-lg" rel="noopener">
+								<i class="bi bi-person-plus me-2"></i>Sign Up
+							</a>
+						</div>
+					</div>
+					<div class="col-lg-6 text-center mt-4 mt-lg-0">
+						<div class="hero-icon d-none d-lg-block">
+							<i class="bi bi-shield-check" style="font-size: 12rem; opacity: 0.3;"></i>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
-	</div>
-</div>
 
 <div class="container">
 	<!-- Key Value Props -->
-	<div class="row mb-5">
-		<div class="col-12 text-center mb-5">
+	<div class="row mb-3 mb-md-5">
+		<div class="col-12 text-center mb-3 mb-md-5">
 			<h2 class="display-5 fw-bold">Why AIQA?</h2>
 			<p class="lead text-muted">Because AI systems need more testing, not less. And testing should be easy.</p>
 		</div>
 	</div>
 
-	<div class="row g-4 mb-5">
+	<div class="row g-3 g-md-4 mb-3 mb-md-5">
 		<div class="col-md-4">
 			<div class="card h-100 border-0 shadow-sm">
-				<div class="card-body p-4">
-					<div class="feature-icon mb-3">
+				<div class="card-body p-3 p-md-4">
+					<div class="feature-icon mb-2 mb-md-3">
 						<i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
 					</div>
-					<h3 class="h4 fw-bold mb-3">Quality &amp; Reliability</h3>
+					<h3 class="h4 fw-bold mb-2 mb-md-3">Quality &amp; Reliability</h3>
 					<p class="text-muted">
 						AI systems are unpredictable. They need more testing than traditional software, not less. 
 						AIQA helps you catch issues before they become problems. Because there's a reason pilots have licenses - 
@@ -104,11 +108,11 @@
 		</div>
 		<div class="col-md-4">
 			<div class="card h-100 border-0 shadow-sm">
-				<div class="card-body p-4">
-					<div class="feature-icon mb-3">
+				<div class="card-body p-3 p-md-4">
+					<div class="feature-icon mb-2 mb-md-3">
 						<i class="bi bi-lightning-charge-fill text-warning" style="font-size: 3rem;"></i>
 					</div>
-					<h3 class="h4 fw-bold mb-3">Ease of Use</h3>
+					<h3 class="h4 fw-bold mb-2 mb-md-3">Ease of Use</h3>
 					<p class="text-muted">
 						No need to become a testing expert. AIQA integrates seamlessly with your existing workflow. 
 						Just add a decorator and you're tracing. Simple as that. No PhD in making things look bad required.
@@ -118,11 +122,11 @@
 		</div>
 		<div class="col-md-4">
 			<div class="card h-100 border-0 shadow-sm">
-				<div class="card-body p-4">
-					<div class="feature-icon mb-3">
+				<div class="card-body p-3 p-md-4">
+					<div class="feature-icon mb-2 mb-md-3">
 						<i class="bi bi-speedometer2 text-info" style="font-size: 3rem;"></i>
 					</div>
-					<h3 class="h4 fw-bold mb-3">Built for AI</h3>
+					<h3 class="h4 fw-bold mb-2 mb-md-3">Built for AI</h3>
 					<p class="text-muted">
 						Traditional testing assumes deterministic outputs. AI doesn't work that way. 
 						AIQA understands probabilistic systems, handles subjective outputs, and helps you 
@@ -134,10 +138,10 @@
 	</div>
 
 	<!-- The Problem -->
-	<div class="row mb-5">
+	<div class="row mb-4 mb-md-5">
 		<div class="col-lg-8 mx-auto">
 			<div class="card border-warning shadow">
-				<div class="card-body p-4">
+				<div class="card-body p-3 p-md-4">
 					<h2 class="h3 fw-bold mb-3">
 						<i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>
 						The AI Testing Problem
@@ -157,13 +161,13 @@
 	</div>
 
 	<!-- How It Works -->
-	<div class="row mb-5">
-		<div class="col-12 text-center mb-4">
+	<div class="row mb-3 mb-md-5">
+		<div class="col-12 text-center mb-3 mb-md-4">
 			<h2 class="display-5 fw-bold">How It Works</h2>
 		</div>
 	</div>
 <!-- TODO 1: Free Account (sign up here), 2. Install (inc Decorate) 3. Trace 4. Analyze & Improve -->
-	<div class="row g-4 mb-5">
+	<div class="row g-3 g-md-4 mb-4 mb-md-5">
 		<div class="col-md-6 col-lg-3">
 			<div class="text-center">
 				<div class="step-number bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style="width: 60px; height: 60px; font-size: 1.5rem; font-weight: bold;">1</div>
@@ -197,17 +201,17 @@
 	</div>
 
 	<!-- Code Example -->
-	<div class="row mb-5">
+	<div class="row mb-4 mb-md-5">
 		<div class="col-12">
 			<div class="card bg-dark text-light">
-				<div class="card-header bg-secondary">
-					<h5 class="mb-0">
+				<div class="card-header bg-secondary p-3 p-md-3">
+					<h5 class="mb-0 text-break fs-6 fs-md-5">
 						<i class="bi bi-code-square me-2"></i>Simple Example - Works in Your Language - 5 Minutes to Get Started (try it!)
 					</h5>
 				</div>
 				<div class="card-body p-0">
 					<!-- Tabs -->
-					<ul class="nav nav-tabs border-bottom border-secondary" id="codeExampleTabs" role="tablist">
+					<ul class="nav nav-tabs border-bottom border-secondary flex-nowrap overflow-x-auto" id="codeExampleTabs" role="tablist" style="scrollbar-width: none; -ms-overflow-style: none;">
 						<li class="nav-item" role="presentation">
 							<button class="nav-link active text-light" id="python-tab" data-bs-toggle="tab" data-bs-target="#python" type="button" role="tab" aria-controls="python" aria-selected="true">
 								<i class="bi bi-filetype-py me-1"></i>Python
@@ -235,7 +239,7 @@
 						</li>
 					</ul>
 					<!-- Tab Content -->
-					<div class="tab-content p-4" id="codeExampleTabsContent">
+					<div class="tab-content p-3 p-md-4" id="codeExampleTabsContent">
 						<!-- Python -->
 						<div class="tab-pane fade show active" id="python" role="tabpanel" aria-labelledby="python-tab">
 							<pre class="mb-0"><code class="text-light">from aiqa import WithTracing, flush_tracing
@@ -322,13 +326,13 @@ curl -X POST https://your-aiqa-server.com/v1/traces \\
 	</div>
 
 	<!-- Features -->
-	<div class="row mb-5">
-		<div class="col-12 text-center mb-4">
+	<div class="row mb-3 mb-md-5">
+		<div class="col-12 text-center mb-3 mb-md-4">
 			<h2 class="display-5 fw-bold">Features</h2>
 		</div>
 	</div>
 
-	<div class="row g-4">
+	<div class="row g-3 g-md-4">
 		<div class="col-md-6">
 			<div class="d-flex">
 				<div class="flex-shrink-0">
@@ -388,18 +392,20 @@ curl -X POST https://your-aiqa-server.com/v1/traces \\
 	</div>
 
 	<!-- CTA -->
-	<div class="row mt-5 mb-5">
+	<div class="row mt-4 mt-md-5 mb-4 mb-md-5">
 		<div class="col-12">
 			<div class="card bg-primary text-white text-center">
-				<div class="card-body p-5">
+				<div class="card-body p-4 p-md-5">
 					<h2 class="display-6 fw-bold mb-3">Ready to Get Started?</h2>
-					<p class="lead mb-4">Stop poking and hoping. Start testing with confidence.</p>
-					<a href="/docs.html" class="btn btn-light btn-lg me-2">
-						<i class="bi bi-book me-2"></i>Read the Docs
-					</a>
-					<a href="https://github.com/winterwell/aiqa" class="btn btn-outline-light btn-lg" target="_blank" rel="noopener">
-						<i class="bi bi-github me-2"></i>View on GitHub
-					</a>
+					<p class="lead mb-3 mb-md-4">Stop poking and hoping. Start testing with confidence.</p>
+					<div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
+						<a href="/docs.html" class="btn btn-light btn-lg">
+							<i class="bi bi-book me-2"></i>Read the Docs
+						</a>
+						<a href="https://github.com/winterwell/aiqa" class="btn btn-outline-light btn-lg" target="_blank" rel="noopener">
+							<i class="bi bi-github me-2"></i>View on GitHub
+						</a>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -412,7 +418,7 @@ curl -X POST https://your-aiqa-server.com/v1/traces \\
 		<div class="row">
 			<div class="col-md-6">
 				<div class="d-flex align-items-center mb-3">
-					<img src="/img/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
+					<img src="img/aiqa-badge.svg" alt="AIQA Badge" height="128" class="me-2">
 					<h5 class="mb-0">AIQA</h5>
 				</div>
 				<p class="text-muted">AI Quality Assurance made simple. Test your AI systems with confidence.</p>
