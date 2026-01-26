@@ -152,10 +152,15 @@ async function handleExport(
  * Note: This implementation requires OTLP proto files in the proto/ directory.
  * To include them, clone https://github.com/open-telemetry/opentelemetry-proto
  * and place the opentelemetry/proto directory in aiqa/server/proto/
+ * 
+ * @returns Object with server and port (port is the actual bound port, which may differ from input if port was 0)
  */
-export async function startGrpcServer(port: number = 4317): Promise<grpc.Server> {
+export async function startGrpcServer(port: number = 4317): Promise<{ server: grpc.Server; port: number }> {
   if (grpcServer) {
-    return grpcServer;
+    // Return existing server and get port from bindings
+    const bindings = (grpcServer as any).bindings || [];
+    const existingPort = bindings.length > 0 ? parseInt(bindings[0].split(':')[1] || '4317') : port;
+    return { server: grpcServer, port: existingPort };
   }
 
   try {
@@ -176,7 +181,7 @@ export async function startGrpcServer(port: number = 4317): Promise<grpc.Server>
       Export: handleExport,
     });
     
-    // Start server
+    // Start server - bind to 0.0.0.0 to allow external connections (not just localhost)
     return new Promise((resolve, reject) => {
       server.bindAsync(
         `0.0.0.0:${port}`,
@@ -189,7 +194,7 @@ export async function startGrpcServer(port: number = 4317): Promise<grpc.Server>
           server.start();
           console.log(`gRPC server listening on port ${actualPort}`);
           grpcServer = server;
-          resolve(server);
+          resolve({ server, port: actualPort });
         }
       );
     });

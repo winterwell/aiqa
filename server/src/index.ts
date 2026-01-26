@@ -181,9 +181,9 @@ const start = async () => {
       threshold: 1024, // Only compress responses larger than 1KB
     });
     
-    // Register CORS plugin - allow all origins
+    // Register CORS plugin - allow all origins (enables external HTTP clients)
     await fastify.register(cors, {
-      origin: true,
+      origin: true, // Allow requests from any origin
     });
     
     // Register experiment routes
@@ -211,14 +211,15 @@ const start = async () => {
     await registerModelRoutes(fastify);
     
     const port = parseInt(process.env.PORT || '4318');
+    // Bind to 0.0.0.0 to allow external connections (not just localhost)
     await fastify.listen({ port, host: '0.0.0.0' });
-    fastify.log.info(`HTTP server listening on port ${port}`);
+    fastify.log.info(`HTTP server listening on port ${port} (accessible from external hosts)`);
     
     // Start gRPC server for OTLP/gRPC (Protobuf) support
     const grpcPort = parseInt(process.env.GRPC_PORT || '4317');
     try {
       await startGrpcServer(grpcPort);
-      fastify.log.info(`gRPC server listening on port ${grpcPort}`);
+      fastify.log.info(`gRPC server listening on port ${grpcPort} (accessible from external hosts)`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       fastify.log.warn(`Failed to start gRPC server: ${message}`);
