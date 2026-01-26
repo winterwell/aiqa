@@ -3,7 +3,7 @@ import { Card, CardBody, CardHeader, Alert } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { getDataset } from '../api';
 import type Dataset from '../common/types/Dataset';
-import type { Metric } from '../common/types/Dataset';
+import type { Metric } from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
 import { asArray } from '../common/utils/miscutils';

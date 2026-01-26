@@ -1,5 +1,6 @@
 import { FastifyReply } from 'fastify';
-import { AuthenticatedRequest, checkAccess } from '../server_auth.js';
+import { AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
+import { getOrganisation } from '../db/db_sql.js';
 import SearchQuery from '../common/SearchQuery.js';
 
 /**
@@ -14,6 +15,53 @@ export function checkAccessDeveloper(request: AuthenticatedRequest, reply: Fasti
  */
 export function checkAccessDeveloperOrAdmin(request: AuthenticatedRequest, reply: FastifyReply): boolean {
   return checkAccess(request, reply, ['developer', 'admin']);
+}
+
+/**
+ * Check if user has access to organisation (super admin or member).
+ * Returns { isSuper, isMember, org } if access granted, null if denied (and reply sent).
+ */
+export async function checkOrganisationAccess(
+	request: AuthenticatedRequest,
+	reply: FastifyReply,
+	organisationId: string
+): Promise<{ isSuper: boolean; isMember: boolean; org: any } | null> {
+	if (!request.userId) {
+		reply.code(401).send({ error: 'User ID not found in authenticated request' });
+		return null;
+	}
+
+	const isSuper = await isSuperAdmin(request.userId);
+	const org = await getOrganisation(organisationId);
+	if (!org) {
+		reply.code(404).send({ error: 'Organisation not found' });
+		return null;
+	}
+
+	const isMember = org.members.includes(request.userId);
+	if (!isSuper && !isMember) {
+		reply.code(403).send({ error: 'Access denied. Must be super admin or organisation member' });
+		return null;
+	}
+
+	return { isSuper, isMember, org };
+}
+
+/**
+ * Get price per month for a plan type.
+ */
+export function getPlanPrice(planType: 'free' | 'pro' | 'enterprise', noPaymentNeeded: boolean, customPrice?: number): number {
+	if (planType === 'enterprise' && customPrice !== undefined) {
+		return customPrice;
+	}
+	if (noPaymentNeeded || planType === 'free') {
+		return 0;
+	}
+	const priceMap: Record<string, number> = {
+		free: 0,
+		pro: parseFloat(process.env.STRIPE_PRICE_PRO || '29'),
+	};
+	return priceMap[planType] || 0;
 }
 
 /**

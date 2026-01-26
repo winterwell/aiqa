@@ -15,6 +15,10 @@ export default interface OrganisationAccount {
   organisation: string; // Organisation ID (foreign key)
   
   subscription: Subscription;
+  /** Stripe customer ID */
+  stripe_customer_id?: string;
+  /** Stripe subscription ID */
+  stripe_subscription_id?: string;
   /** default: 1000 */
   rate_limit_per_hour?: number;
   /** default: 20 */

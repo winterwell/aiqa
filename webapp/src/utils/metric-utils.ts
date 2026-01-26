@@ -1,4 +1,4 @@
-import type { Metric } from '../common/types/Dataset';
+import type { Metric } from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 
 /**

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, Alert, Button, Input, Label, FormGroup } from 'reactstrap';
+import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button, Input, Label, FormGroup } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listModels, deleteModel, createModel } from '../api';
 import { useToast } from '../utils/toast';
@@ -143,7 +143,8 @@ const LLMKeysPage: React.FC = () => {
       <Row>
         <Col>
           <h1>LLM Keys</h1>
-          <p className="text-muted">Manage LLM API keys for your organisation</p>
+          <p className="text-muted">Keys to enable AI server-side features, like server-side LLM-as-Judge. 
+            These are not essential for core tracing or if you run your own LLM-as-Judge on your own machine.</p>
         </Col>
       </Row>
 
@@ -183,7 +184,7 @@ const LLMKeysPage: React.FC = () => {
                           {model.description && (
                             <div className="text-muted small mt-2">{model.description}</div>
                           )}
-                          <div className="text-muted small mt-2">ID: {model.id}</div>
+                          <div className="text-muted small mt-2">Our ID: {model.id}</div>
                           <div className="text-muted small mt-2">Created: {new Date(model.created).toLocaleString()}</div>
                         </div>
                         <Button

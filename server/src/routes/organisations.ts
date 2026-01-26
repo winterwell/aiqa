@@ -16,6 +16,16 @@ import {
 } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
+import {
+	getOrCreateStripeCustomer,
+	createCheckoutSession,
+	createOrUpdateSubscription,
+	getCustomerPortalUrl,
+	getSubscription,
+} from '../services/stripe.js';
+import { getUser } from '../db/db_sql.js';
+import Stripe from 'stripe';
+import { checkOrganisationAccess, getPlanPrice } from './route_helpers.js';
 
 /**
  * Check if the user is a member of the organisation and has admin role.
@@ -261,7 +271,7 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
   });
 
   // Update OrganisationAccount
-  // Security: Super admin only
+  // Security: Super admin or organisation members can update subscription
   fastify.put('/organisation-account/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     if (!request.userId) {
@@ -269,19 +279,337 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       return;
     }
     
-    const isSuper = await isSuperAdmin(request.userId);
-    if (!isSuper) {
-      reply.code(403).send({ error: 'Access denied. Super admin only' });
-      return;
-    }
-    
     const { id } = request.params as { id: string };
-    const account = await updateOrganisationAccount(id, request.body as any);
+    const body = request.body as any;
+    
+    const account = await getOrganisationAccount(id);
     if (!account) {
       reply.code(404).send({ error: 'OrganisationAccount not found' });
       return;
     }
-    return account;
+    
+    // Check if user is super admin or member of organisation
+    const isSuper = await isSuperAdmin(request.userId);
+    const org = await getOrganisation(account.organisation);
+    if (!org) {
+      reply.code(404).send({ error: 'Organisation not found' });
+      return;
+    }
+    const isMember = org.members.includes(request.userId);
+    
+    // Allow super admin to update anything, or members to update subscription only
+    if (!isSuper && !isMember) {
+      reply.code(403).send({ error: 'Access denied. Must be super admin or organisation member' });
+      return;
+    }
+    
+    // If updating subscription and not super admin, only allow subscription updates
+    if (body.subscription && !isSuper) {
+      // Members can only update subscription, not other fields
+      const updates: any = { subscription: body.subscription };
+      const updated = await updateOrganisationAccount(id, updates);
+      if (!updated) {
+        reply.code(404).send({ error: 'OrganisationAccount not found' });
+        return;
+      }
+      return updated;
+    }
+    
+    // Super admin can update anything
+    const updated = await updateOrganisationAccount(id, body);
+    if (!updated) {
+      reply.code(404).send({ error: 'OrganisationAccount not found' });
+      return;
+    }
+    return updated;
+  });
+
+  // ===== STRIPE SUBSCRIPTION ENDPOINTS =====
+
+  // Create Stripe checkout session
+  // Security: Organisation members only
+  fastify.post('/organisation/:organisationId/subscription/checkout', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    
+    const { organisationId } = request.params as { organisationId: string };
+    const body = request.body as { planType: 'free' | 'pro' | 'enterprise' };
+    
+    const access = await checkOrganisationAccess(request, reply, organisationId);
+    if (!access) return;
+    const { isSuper } = access;
+    
+    // Enterprise plans are manually priced and must be set by super-admin
+    if (body.planType === 'enterprise') {
+      if (!isSuper) {
+        reply.code(403).send({ error: 'Enterprise plans must be set by super-admin. Please contact support.' });
+        return;
+      }
+      reply.code(400).send({ error: 'Enterprise plans should be set via the update endpoint with a custom price' });
+      return;
+    }
+    
+    // Get price ID for plan
+    const priceIdMap: Record<string, string> = {
+      free: process.env.STRIPE_PRICE_ID_FREE || '',
+      pro: process.env.STRIPE_PRICE_ID_PRO || '',
+    };
+    
+    const priceId = priceIdMap[body.planType];
+    if (!priceId && body.planType !== 'free') {
+      reply.code(400).send({ error: `Price ID not configured for plan: ${body.planType}` });
+      return;
+    }
+    
+    if (body.planType === 'free') {
+      // For free plan, update subscription directly without checkout
+      const account = await getOrganisationAccountByOrganisation(organisationId);
+      if (!account) {
+        reply.code(404).send({ error: 'OrganisationAccount not found' });
+        return;
+      }
+      
+      const user = await getUser(request.userId!);
+      const { customerId, subscriptionId } = await createOrUpdateSubscription(
+        organisationId,
+        'free',
+        account,
+        user?.email,
+        false
+      );
+      
+      await updateOrganisationAccount(account.id, {
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId || undefined,
+        subscription: {
+          ...account.subscription,
+          type: 'free',
+          price_per_month: 0,
+        },
+      });
+      
+      return { success: true, planType: 'free' };
+    }
+    
+    const user = await getUser(request.userId!);
+    const { url } = await createCheckoutSession(organisationId, priceId, user?.email);
+    return { checkoutUrl: url };
+  });
+
+  // Update subscription (for super admin or after Stripe payment)
+  // Security: Super admin or organisation members
+  fastify.post('/organisation/:organisationId/subscription/update', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    
+    const { organisationId } = request.params as { organisationId: string };
+    const body = request.body as {
+      planType: 'free' | 'pro' | 'enterprise';
+      noPaymentNeeded?: boolean;
+      pricePerMonth?: number; // For enterprise, allow custom price
+    };
+    
+    const access = await checkOrganisationAccess(request, reply, organisationId);
+    if (!access) return;
+    const { isSuper } = access;
+    
+    // Enterprise plans require super-admin
+    if (body.planType === 'enterprise' && !isSuper) {
+      reply.code(403).send({ error: 'Enterprise plans can only be set by super-admin' });
+      return;
+    }
+    
+    // Only super admin can use noPaymentNeeded
+    const noPaymentNeeded = isSuper && body.noPaymentNeeded === true;
+    
+    const account = await getOrganisationAccountByOrganisation(organisationId);
+    if (!account) {
+      reply.code(404).send({ error: 'OrganisationAccount not found' });
+      return;
+    }
+    
+    const user = await getUser(request.userId!);
+    const userEmail = user?.email;
+    
+    // For enterprise, we don't create a Stripe subscription (manually managed)
+    // For other plans, create/update Stripe subscription
+    let customerId = account.stripe_customer_id;
+    let subscriptionId = account.stripe_subscription_id;
+    
+    if (body.planType !== 'enterprise') {
+      const result = await createOrUpdateSubscription(
+        organisationId,
+        body.planType,
+        account,
+        userEmail,
+        noPaymentNeeded
+      );
+      customerId = result.customerId;
+      subscriptionId = result.subscriptionId;
+    } else {
+      // For enterprise, get or create customer but don't create subscription
+      // Enterprise subscriptions are managed outside Stripe (manual billing)
+      if (!customerId && userEmail) {
+        try {
+          customerId = await getOrCreateStripeCustomer(organisationId, userEmail);
+        } catch (error) {
+          // If Stripe is not configured, that's okay for enterprise (manual billing)
+          fastify.log.warn('Stripe not configured, skipping customer creation for enterprise plan');
+        }
+      }
+      subscriptionId = undefined;
+    }
+    
+    // Calculate price based on plan
+    const pricePerMonth = getPlanPrice(body.planType, noPaymentNeeded, body.pricePerMonth) || 
+      (body.planType === 'enterprise' ? (account.subscription?.price_per_month || 0) : 0);
+    
+    const updated = await updateOrganisationAccount(account.id, {
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId || undefined,
+      subscription: {
+        ...account.subscription,
+        type: body.planType,
+        price_per_month: pricePerMonth,
+        start_date: new Date(),
+      },
+    });
+    
+    if (!updated) {
+      reply.code(404).send({ error: 'Failed to update OrganisationAccount' });
+      return;
+    }
+    
+    return updated;
+  });
+
+  // Get customer portal URL for managing billing
+  // Security: Organisation members only
+  fastify.get('/organisation/:organisationId/subscription/portal', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    
+    const { organisationId } = request.params as { organisationId: string };
+    
+    const access = await checkOrganisationAccess(request, reply, organisationId);
+    if (!access) return;
+    
+    const account = await getOrganisationAccountByOrganisation(organisationId);
+    if (!account || !account.stripe_customer_id) {
+      reply.code(404).send({ error: 'Stripe customer not found. Please create a subscription first.' });
+      return;
+    }
+    
+    const baseUrl = process.env.WEBAPP_URL || 'http://localhost:4000';
+    const returnUrl = `${baseUrl}/organisation/${organisationId}/account`;
+    const portalUrl = await getCustomerPortalUrl(account.stripe_customer_id, returnUrl);
+    
+    return { url: portalUrl };
+  });
+
+  // Stripe webhook handler (no authentication - uses Stripe signature verification)
+  // Note: For production, consider using @fastify/raw-body plugin for proper raw body handling
+  // For now, we use a workaround: read raw body in preHandler before Fastify parses it
+  fastify.post('/stripe/webhook', {
+    preHandler: async (request: any, reply) => {
+      // Read raw body before Fastify parses it
+      return new Promise<void>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        request.raw.on('data', (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        request.raw.on('end', () => {
+          request.rawBody = Buffer.concat(chunks);
+          resolve();
+        });
+        request.raw.on('error', (err: Error) => {
+          reject(err);
+        });
+      });
+    },
+  } as any, async (request: any, reply) => {
+    const webhookStripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    
+    if (!webhookStripeSecretKey || !webhookSecret) {
+      reply.code(500).send({ error: 'Stripe not configured' });
+      return;
+    }
+    
+    const webhookStripe = new Stripe(webhookStripeSecretKey, { apiVersion: '2025-02-24.acacia' });
+    const webhookSig = (request.headers['stripe-signature'] as string) || '';
+    const webhookRawBody = request.rawBody;
+    
+    if (!webhookRawBody) {
+      reply.code(400).send({ error: 'Missing request body' });
+      return;
+    }
+    
+    const webhookBodyString = Buffer.isBuffer(webhookRawBody) ? webhookRawBody.toString('utf8') : webhookRawBody;
+    
+    let event: Stripe.Event;
+    
+    try {
+      event = webhookStripe.webhooks.constructEvent(webhookBodyString, webhookSig, webhookSecret);
+    } catch (err) {
+      const error = err as Error;
+      fastify.log.error(`Webhook signature verification failed: ${error.message}`);
+      reply.code(400).send({ error: `Webhook Error: ${error.message}` });
+      return;
+    }
+    
+    // Handle the event
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const organisationId = session.metadata?.organisation_id;
+        
+        if (organisationId && session.subscription) {
+          const account = await getOrganisationAccountByOrganisation(organisationId);
+          if (account) {
+            const subscription = await getSubscription(session.subscription as string);
+            if (subscription) {
+              const planType = subscription.metadata?.plan_type || 'pro';
+              await updateOrganisationAccount(account.id, {
+                stripe_customer_id: session.customer as string,
+                stripe_subscription_id: session.subscription as string,
+                subscription: {
+                  ...account.subscription,
+                  type: planType as 'free' | 'pro' | 'enterprise',
+                  status: 'active',
+                  start_date: new Date(subscription.current_period_start * 1000),
+                  end_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  renewal_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                },
+              });
+            }
+          }
+        }
+        break;
+      }
+      
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const organisationId = subscription.metadata?.organisation_id;
+        
+        if (organisationId) {
+          const account = await getOrganisationAccountByOrganisation(organisationId);
+          if (account && account.stripe_subscription_id === subscription.id) {
+            const planType = subscription.metadata?.plan_type || account.subscription.type;
+            await updateOrganisationAccount(account.id, {
+              subscription: {
+                ...account.subscription,
+                type: planType as 'free' | 'pro' | 'enterprise',
+                status: subscription.status === 'active' ? 'active' : 'closed',
+                end_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                renewal_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+              },
+            });
+          }
+        }
+        break;
+      }
+    }
+    
+    reply.send({ received: true });
   });
 }
 

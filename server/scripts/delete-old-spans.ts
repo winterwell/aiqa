@@ -13,17 +13,18 @@
  * The script:
  *   1. Connects to PostgreSQL and Elasticsearch
  *   2. Gets all organisations
- *   3. For each organisation, deletes spans older than retention_period_days (default: 20)
- *   4. Uses endTime (or startTime if endTime is missing) to determine span age
+ *   3. For each organisation, gets its OrganisationAccount (with subscription info)
+ *   4. Uses retention_period_days from account, falling back to subscription defaults
+ *   5. Deletes spans older than the retention period
+ *   6. Uses endTime (or startTime if endTime is missing) to determine span age
  */
 
 import dotenv from 'dotenv';
-import { initPool, listOrganisations, closePool } from '../src/db/db_sql.js';
+import { initPool, listOrganisations, getOrganisationAccountByOrganisation, closePool } from '../src/db/db_sql.js';
 import { initClient, deleteOldSpans, closeClient } from '../src/db/db_es.js';
+import { getOrganisationThreshold } from '../src/common/subscription_defaults.js';
 
 dotenv.config();
-
-const DEFAULT_RETENTION_DAYS = 20;
 
 async function main() {
   const pgConnectionString = process.env.DATABASE_URL;
@@ -42,8 +43,23 @@ async function main() {
     const startTime = Date.now();
 
     for (const org of organisations) {
-      const retentionDays = org.retention_period_days ?? DEFAULT_RETENTION_DAYS;
-      console.log(`Processing organisation ${org.id} (${org.name || 'unnamed'}) - retention: ${retentionDays} days`);
+      // Get OrganisationAccount which contains subscription and retention_period_days
+      const account = await getOrganisationAccountByOrganisation(org.id);
+      
+      if (!account) {
+        console.log(`Skipping organisation ${org.id} (${org.name || 'unnamed'}) - no account found`);
+        continue;
+      }
+
+      // Get retention period, falling back to subscription defaults
+      const retentionDays = getOrganisationThreshold(account, 'retention_period_days');
+      
+      if (retentionDays === null) {
+        console.log(`Skipping organisation ${org.id} (${org.name || 'unnamed'}) - no retention period available`);
+        continue;
+      }
+
+      console.log(`Processing organisation ${org.id} (${org.name || 'unnamed'}) - retention: ${retentionDays} days (subscription: ${account.subscription.type})`);
 
       try {
         const deleted = await deleteOldSpans(org.id, retentionDays);

@@ -1,0 +1,13 @@
+{
+  "name": "aiqa-website",
+  "version": "1.0.0",
+  "description": "AIQA website built with Eleventy",
+  "scripts": {
+    "build": "eleventy",
+    "dev": "eleventy --serve",
+    "watch": "eleventy --watch"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^2.0.1"
+  }
+}

@@ -2,6 +2,10 @@ type MemberSettings = {
   role: "admin" | "standard";
 }
 
+
+/**
+ * See OrganisationAccount for subscription and retention period details.
+ */
 export default interface Organisation {
   id: string;
   name: string;

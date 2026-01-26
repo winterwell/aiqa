@@ -89,6 +89,8 @@ export async function updateOrganisationAccount(id: string, updates: Partial<{
 		price_per_month?: number;
 		currency?: 'USD' | 'EUR' | 'GBP';
 	};
+	stripe_customer_id?: string;
+	stripe_subscription_id?: string;
 	rate_limit_per_hour?: number;
 	retention_period_days?: number;
 	max_members?: number;
@@ -100,6 +102,30 @@ export async function updateOrganisationAccount(id: string, updates: Partial<{
 		method: 'PUT',
 		body: JSON.stringify(updates),
 	});
+}
+
+// Subscription endpoints
+export async function createCheckoutSession(organisationId: string, planType: 'free' | 'pro' | 'enterprise') {
+	return fetchWithAuth(`/organisation/${organisationId}/subscription/checkout`, {
+		method: 'POST',
+		body: JSON.stringify({ planType }),
+	});
+}
+
+export async function updateSubscription(
+	organisationId: string,
+	planType: 'free' | 'pro' | 'enterprise',
+	noPaymentNeeded?: boolean,
+	pricePerMonth?: number
+) {
+	return fetchWithAuth(`/organisation/${organisationId}/subscription/update`, {
+		method: 'POST',
+		body: JSON.stringify({ planType, noPaymentNeeded, pricePerMonth }),
+	});
+}
+
+export async function getCustomerPortalUrl(organisationId: string) {
+	return fetchWithAuth(`/organisation/${organisationId}/subscription/portal`);
 }
 
 // Dataset endpoints

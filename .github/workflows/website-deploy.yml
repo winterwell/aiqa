@@ -47,23 +47,30 @@ jobs:
           echo "Website directory found, contents:"
           ls -la website/
 
-      # - name: Download Jerbil
-      #   working-directory: ./website
-      #   run: wget -q https://www.winterwell.com/software/jerbil-all.jar
-
-      # - name: Build website with Jerbil
-      #   working-directory: ./website
-      #   run: java -jar jerbil-all.jar
+      - name: Install website dependencies
+        working-directory: ./website
+        run: |
+          if [ -f "package.json" ]; then
+            npm install
+          else
+            echo "Error: package.json not found in website directory"
+            exit 1
+          fi
 
       - name: Compile LESS to CSS
+        working-directory: ./website
         run: |
-          ls -la
-          if [ -d "website" ]; then
-            cd website
-            mkdir -p webroot/style
-            lessc style/main.less webroot/style/main.css
-          else
-            echo "Error: website directory not found"
+          mkdir -p webroot/style
+          lessc style/main.less webroot/style/main.css
+
+      - name: Build website with Eleventy
+        working-directory: ./website
+        run: |
+          npm run build
+          echo "Build complete, verifying output:"
+          ls -la webroot/ | head -20
+          if [ ! -f "webroot/index.html" ]; then
+            echo "Error: index.html not found after build"
             exit 1
           fi
 
@@ -86,7 +93,8 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ env.DEPLOY_PORT }}
           script: |
-            # Verify staging deployment has index.html
+            # Verify staging deployment has index.html (11ty output)
+            # With strip_components: 1, webroot directory is copied to staging
             if [ ! -f "/opt/aiqa/website-staging/webroot/index.html" ]; then
               echo "Error: index.html not found in staging deployment"
               exit 1
@@ -102,12 +110,13 @@ jobs:
             sudo mv /opt/aiqa/website-staging/webroot /opt/aiqa/website/webroot
             # Clean up empty staging directory
             sudo rmdir /opt/aiqa/website-staging 2>/dev/null || true
-            sudo chown -R www-data:www-data /opt/aiqa/website
+            sudo chown -R www-data:www-data /opt/aiqa/website/webroot
             
             # Verify production deployment
             if [ ! -f "/opt/aiqa/website/webroot/index.html" ]; then
               echo "Error: index.html not found after swap, restoring backup"
               if [ -d "/opt/aiqa/website/webroot.backup."* ]; then
+                sudo rm -rf /opt/aiqa/website/webroot
                 sudo mv /opt/aiqa/website/webroot.backup.* /opt/aiqa/website/webroot
               fi
               exit 1

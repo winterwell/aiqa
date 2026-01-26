@@ -66,6 +66,15 @@ const CodeSetupPage: React.FC = () => {
                     API
                   </NavLink>
                 </NavItem>
+				<NavItem>
+                  <NavLink
+                    className={activeTab === 'opentelemetry' ? 'active' : ''}
+                    onClick={() => setActiveTab('opentelemetry')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    OpenTelemetry
+                  </NavLink>
+                </NavItem>
               </Nav>
             </CardHeader>
             <CardBody>
@@ -82,6 +91,9 @@ const CodeSetupPage: React.FC = () => {
 				<TabPane tabId="api">
 				<APICodeSetupPane apiKey={apiKey} />
 				</TabPane>
+				<TabPane tabId="opentelemetry">
+				<OpenTelemetryCodeSetupPane apiKey={apiKey} />
+				</TabPane>
               </TabContent>
             </CardBody>
           </Card>
@@ -94,7 +106,6 @@ const CodeSetupPage: React.FC = () => {
 function PythonCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
   return (
     <div>
-      <h5>Python Integration Instructions</h5>
       <h5>Install the Python client</h5>
       <pre>
 pip install aiqa-client
@@ -104,10 +115,7 @@ pip install aiqa-client
       <p>
         Use the <code>@WithTracing</code> or <code>@WithTracingAsync</code> decorators from the client. For example:
       </p>
-      <pre><code>{`from aiqa import get_client, WithTracing
-
-# Initialize the client
-client = get_client()
+      <pre><code>{`from aiqa import WithTracing
 
 @WithTracing
 def my_function(x):
@@ -116,6 +124,8 @@ def my_function(x):
 result = my_function(5)
       `}</code></pre>
 
+<h5>That's it!</h5>
+<p>For setting extra attributes and other features - please see <code>tracing.py</code> in the client-python library.</p>
     </div>
   );
 }
@@ -215,6 +225,50 @@ function APICodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
       <p>
         The <code>X-API-Key</code> header must be set to your API key.<br/>
         You can find your API key and organisation ID in your <code>.env</code> file.
+      </p>
+    </div>
+  );
+}
+
+function OpenTelemetryCodeSetupPane({}: { }) {
+  const endpointUrl = `${API_BASE_URL}/v1/traces`;
+  
+  return (
+    <div>
+      <h5>OpenTelemetry Setup</h5>
+      <p>
+        Configure your OpenTelemetry SDK to export traces to AIQA using the OTLP (OpenTelemetry Protocol) exporter.
+      </p>
+      
+      <h5>Endpoint Configuratio with your AIQA API Key</h5>
+      <p>Set the following environment variables to configure the OTLP endpoint:</p>
+      <pre><code>{`OTEL_EXPORTER_OTLP_ENDPOINT=${endpointUrl}`}</code></pre>
+      <p>Set the API key in the OTLP headers environment variable:</p>
+      <pre><code>{`OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey YOUR_API_KEY`}</code></pre>
+      
+      <h5>Example Attributes</h5>
+      <p>
+        Here are some example attributes you can set on your spans following the GenAI semantic conventions:
+      </p>
+      <pre><code>{`// GenAI request attributes
+gen_ai.request.model = "gpt-4"
+gen_ai.request.prompt = "What is the capital of France?"
+gen_ai.request.max_tokens = 100
+gen_ai.request.temperature = 0.7
+
+// GenAI response attributes
+gen_ai.response.model = "gpt-4"
+gen_ai.response.finish_reason = "stop"
+gen_ai.response.id = "chatcmpl-123"
+gen_ai.usage.input_tokens = 10
+gen_ai.usage.output_tokens = 20`}</code></pre>
+      
+      <h5>More Information</h5>
+      <p>
+        For a complete list of GenAI semantic convention attributes, see:{' '}
+        <a href="https://opentelemetry.io/docs/specs/semconv/genai/" target="_blank" rel="noopener noreferrer">
+          OpenTelemetry GenAI Semantic Conventions
+        </a>
       </p>
     </div>
   );

@@ -6,7 +6,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { getDataset, listExperiments, searchExamples, updateDataset, createExampleFromInput, updateExample, deleteExample } from '../api';
 import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
-import { Metric } from '../common/types/Dataset';
+import { Metric } from '../common/types/Metric';
 import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 

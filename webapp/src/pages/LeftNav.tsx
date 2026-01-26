@@ -96,22 +96,6 @@ const LeftNav: React.FC = () => {
 
 	return (
 		<Nav vertical className="p-3 border-end left-nav" style={{ flex: '1 1 auto', overflow: 'auto' }}>
-			{/* Progress bar */}
-			<div className="progress-section mb-3 w-100">
-				<div className="d-flex justify-content-between align-items-center mb-2">
-					<small className="text-muted progress-label">Progress</small>
-					<small className="text-muted progress-label">{completedSteps}/{totalSteps}</small>
-				</div>
-				<div className="progress-bar-container">
-					<div
-						className="progress-bar-animated"
-						style={{
-							width: `${progressPercent}%`,
-						}}
-					/>
-				</div>
-			</div>
-
 			{navItems.map((item, index) => {
 				const isDone = completion[item.id];
 				const isCurrent = isActive(item.path, item.id);
@@ -196,6 +180,22 @@ const LeftNav: React.FC = () => {
 					</React.Fragment>
 				);
 			})}
+
+			{/* Progress bar */}
+			<div className="progress-section mt-3 w-100">
+				<div className="d-flex justify-content-between align-items-center mb-2">
+					<small className="text-muted progress-label">Progress</small>
+					<small className="text-muted progress-label">{completedSteps}/{totalSteps}</small>
+				</div>
+				<div className="progress-bar-container">
+					<div
+						className="progress-bar-animated"
+						style={{
+							width: `${progressPercent}%`,
+						}}
+					/>
+				</div>
+			</div>
 		</Nav>
 	);
 };

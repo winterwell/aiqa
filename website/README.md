@@ -1,21 +1,41 @@
 # AIQA Website
 
-The AIQA website, built with Jerbil (markdown to HTML).
+The AIQA website, built with Eleventy (11ty).
 
 ## Structure
 
-- `pages/` - Markdown source files
-- `templates/` - HTML templates (navbar, footer, main template)
+- `src/` - Source files (HTML templates)
+  - `_layouts/` - Layout templates (base.html)
+  - `_includes/` - Reusable includes (navbar.html, footer.html)
 - `style/` - LESS stylesheets (compiled to CSS)
-- `config/` - Jerbil configuration
 - `webroot/` - Generated HTML output (do not edit directly)
 
 ## Development
 
-The site uses Jerbil to convert markdown files in `pages/` to HTML in `webroot/`.
+The site uses Eleventy to convert HTML templates in `src/` to HTML in `webroot/`.
+
+### Setup
+
+```bash
+npm install
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+### Development Server
+
+```bash
+npm run dev
+```
+
+This will start a local server (usually at http://localhost:8080) and watch for changes.
 
 ## Pages
 
-- `index.md` - Homepage
-- `about.md` - About AIQA
-- `docs.md` - Documentation and quick start guides
+- `index.html` - Homepage
+- `about.html` - About AIQA
+- `docs.html` - Documentation and quick start guides

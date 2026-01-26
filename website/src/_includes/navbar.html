@@ -1,0 +1,37 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+	<div class="container">
+		<a class="navbar-brand fw-bold d-flex align-items-center" href="/">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
+			AIQA
+		</a>
+		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+			aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+			<span class="navbar-toggler-icon"></span>
+		</button>
+		<div class="collapse navbar-collapse" id="navbarNav">
+			<ul class="navbar-nav me-auto">
+				<li class="nav-item">
+					<a class="nav-link {% if page.url == '/' %}active{% endif %}" href="/">Home</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link {% if page.url == '/about.html' %}active{% endif %}" href="/about.html">About</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link {% if page.url == '/docs.html' %}active{% endif %}" href="/docs.html">Docs</a>
+				</li>
+			</ul>
+			<div class="d-flex flex-column flex-lg-row gap-2">
+				<a class="btn btn-light" href="https://app-aiqa.winterwell.com" rel="noopener">
+					<i class="bi bi-box-arrow-in-right me-1"></i>Login
+				</a>
+				<a class="btn btn-outline-light" href="https://app-aiqa.winterwell.com" rel="noopener">
+					<i class="bi bi-person-plus me-1"></i>Sign Up
+				</a>
+				<a class="btn btn-outline-light" href="https://github.com/winterwell/aiqa" target="_blank" rel="noopener">
+					<i class="bi bi-github me-1"></i>GitHub
+				</a>
+			</div>
+		</div>
+	</div>
+</nav>

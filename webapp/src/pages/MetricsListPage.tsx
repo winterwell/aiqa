@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, Table, Badge } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { listDatasets } from '../api';
-import Dataset, { Metric } from '../common/types/Dataset';
+import Dataset from '../common/types/Dataset';
+import { Metric } from '../common/types/Metric';
 import Spinner from '../components/generic/Spinner';
 import { asArray } from '../common/utils/miscutils';
 

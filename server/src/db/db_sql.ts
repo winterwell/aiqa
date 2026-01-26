@@ -478,6 +478,20 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Add Stripe fields to organisation_accounts table if they don't exist (migration)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'organisation_accounts' AND column_name = 'stripe_customer_id'
+		  ) THEN
+			ALTER TABLE organisation_accounts ADD COLUMN stripe_customer_id VARCHAR(255);
+			ALTER TABLE organisation_accounts ADD COLUMN stripe_subscription_id VARCHAR(255);
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**

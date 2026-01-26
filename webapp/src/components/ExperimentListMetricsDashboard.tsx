@@ -4,7 +4,7 @@ import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Responsive
 import { useQueries } from '@tanstack/react-query';
 import { getDataset } from '../api';
 import type Dataset from '../common/types/Dataset';
-import type { Metric } from '../common/types/Dataset';
+import type { Metric } from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';

@@ -125,8 +125,8 @@ const ApiKeyPage: React.FC = () => {
       <Container>
         <Row>
           <Col>
-            <h1>API Keys</h1>
-            <p className="text-muted">Manage API keys for organisation: {organisationId}</p>
+            <h1>AIQA API Keys</h1>
+            <p className="text-muted">Keys to send traces to AIQA and run experiments. Manage API keys for organisation: {organisationId}</p>
           </Col>
         </Row>
         <Row className="mt-4">

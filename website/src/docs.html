@@ -1,0 +1,182 @@
+---
+layout: base.html
+title: Documentation - AIQA
+---
+
+<div class="container py-5">
+	<div class="row">
+		<div class="col-lg-10 mx-auto">
+			<h1 class="display-4 fw-bold mb-4">Documentation</h1>
+			
+			<p class="lead mb-5">
+				Get started with AIQA in minutes. Choose your language and follow the quick start guide.
+			</p>
+
+			<div class="row g-4 mb-5">
+				<div class="col-md-4">
+					<div class="card h-100 border-primary">
+						<div class="card-body">
+							<h3 class="h4 fw-bold mb-3">
+								<i class="bi bi-filetype-py text-primary me-2"></i>Python
+							</h3>
+							<p class="text-muted mb-3">Python client with decorator-based tracing.</p>
+							<a href="#python" class="btn btn-primary">Get Started</a>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="card h-100 border-success">
+						<div class="card-body">
+							<h3 class="h4 fw-bold mb-3">
+								<i class="bi bi-filetype-js text-success me-2"></i>JavaScript/TypeScript
+							</h3>
+							<p class="text-muted mb-3">TypeScript client for Node.js applications.</p>
+							<a href="#javascript" class="btn btn-success">Get Started</a>
+						</div>
+					</div>
+				</div>
+				<div class="col-md-4">
+					<div class="card h-100 border-info">
+						<div class="card-body">
+							<h3 class="h4 fw-bold mb-3">
+								<i class="bi bi-filetype-go text-info me-2"></i>Go
+							</h3>
+							<p class="text-muted mb-3">Go client for tracing Go applications.</p>
+							<a href="#go" class="btn btn-info">Get Started</a>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<hr/>
+			<h2 id="python" class="h2 fw-bold mt-5 mb-4">Python Quick Start</h2>
+			
+			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>pip install aiqa-client</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Setup</h3>
+			<p>Set environment variables:</p>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>export AIQA_SERVER_URL="http://localhost:3000"
+export AIQA_API_KEY="your-api-key"</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>from dotenv import load_dotenv
+from aiqa import get_aiqa_client, WithTracing
+
+# Load environment variables
+load_dotenv()
+
+# Initialize client (must be called first)
+get_aiqa_client()
+
+# Just add a decorator
+@WithTracing
+def my_ai_function(prompt: str):
+    # Your AI code here
+    return ai_model.generate(prompt)
+
+# That's it! Now you're tracing.</code></pre>
+				</div>
+			</div>
+
+			<hr/>
+			<h2 id="javascript" class="h2 fw-bold mt-5 mb-4">JavaScript/TypeScript Quick Start</h2>
+			
+			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>npm install @aiqa/client</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Setup</h3>
+			<p>Set environment variables:</p>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>export AIQA_SERVER_URL="http://localhost:3000"
+export AIQA_API_KEY="your-api-key"</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>import { getAiqaClient, withTracing } from '@aiqa/client';
+
+// Initialize client
+getAiqaClient();
+
+// Use the decorator
+@withTracing()
+async function myAiFunction(prompt: string) {
+  // Your AI code here
+  return await aiModel.generate(prompt);
+}</code></pre>
+				</div>
+			</div>
+
+			<hr/>
+			<h2 id="go" class="h2 fw-bold mt-5 mb-4">Go Quick Start</h2>
+			
+			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>go get github.com/winterwell/aiqa-client-go</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>import "github.com/winterwell/aiqa-client-go"
+
+func MyAIFunction(prompt string) string {
+    // Your AI code here
+    return aiModel.Generate(prompt)
+}</code></pre>
+				</div>
+			</div>
+
+			<hr/>
+			<h2 class="h2 fw-bold mt-5 mb-4">Key Concepts</h2>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Tracing</h3>
+			<p>
+				AIQA uses OpenTelemetry tracing to capture function calls, inputs, outputs, and performance metrics. 
+				Each traced function creates a span that includes all relevant information.
+			</p>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Experiments</h3>
+			<p>
+				Run systematic experiments to test your AI across different scenarios. Compare results, 
+				track improvements, and identify regressions.
+			</p>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Conversations</h3>
+			<p>
+				Group related traces together using conversation IDs. This is especially useful for 
+				multi-step AI interactions or user sessions.
+			</p>
+
+			<div class="alert alert-info mt-5" role="alert">
+				<h4 class="alert-heading">
+					<i class="bi bi-info-circle me-2"></i>Need Help?
+				</h4>
+				<p class="mb-0">
+					Check out our <a href="https://github.com/winterwell/aiqa" class="alert-link">GitHub repository</a> 
+					for more examples and detailed documentation.
+				</p>
+			</div>
+		</div>
+	</div>
+</div>
