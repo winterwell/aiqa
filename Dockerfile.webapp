@@ -1,0 +1,53 @@
+# Dockerfile for AIQA React webapp
+
+FROM node:20-slim AS base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm globally
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# Copy webapp files
+COPY webapp/package.json webapp/package-lock.json ./webapp/
+COPY webapp/tsconfig.json ./webapp/
+COPY webapp/tsconfig.node.json ./webapp/
+COPY webapp/vite.config.ts ./webapp/
+COPY webapp/index.html ./webapp/
+COPY webapp/.eslintrc.json ./webapp/
+COPY webapp/src ./webapp/src
+COPY webapp/public ./webapp/public
+
+# Copy server common code for symlink
+COPY server/src/common ./server/src/common
+
+# Install dependencies and build
+WORKDIR /app/webapp
+RUN pnpm install
+
+# Create symlink for shared common code
+RUN ln -s /app/server/src/common /app/webapp/src/common || true
+
+RUN pnpm run build
+
+# Runtime stage - serve built files
+FROM node:20-slim
+
+RUN npm install -g pnpm vite
+
+WORKDIR /app
+
+# Copy built webapp
+COPY --from=base /app/webapp/dist ./dist
+COPY --from=base /app/webapp/package.json ./
+COPY --from=base /app/webapp/index.html ./
+
+EXPOSE 4000
+
+CMD ["vite", "preview", "--port", "4000", "--host", "0.0.0.0"]

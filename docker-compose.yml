@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aiqa-postgres
+    environment:
+      POSTGRES_USER: aiqa
+      POSTGRES_PASSWORD: aiqa
+      POSTGRES_DB: aiqa
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiqa"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aiqa-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: aiqa-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: aiqa-server
+    environment:
+      DATABASE_URL: postgresql://aiqa:aiqa@postgres:5432/aiqa
+      REDIS_URL: redis://redis:6379
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      PORT: 4318
+      ENVIRONMENT: production
+    ports:
+      - "4318:4318"
+      - "4317:4317"  # gRPC port
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./server:/app/server
+      - server_node_modules:/app/server/node_modules
+
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+    container_name: aiqa-webapp
+    environment:
+      VITE_AIQA_SERVER_URL: http://localhost:4318
+    ports:
+      - "4000:4000"
+    depends_on:
+      - server
+    volumes:
+      - ./webapp:/app/webapp
+      - webapp_node_modules:/app/webapp/node_modules
+
+volumes:
+  postgres_data:
+  es_data:
+  server_node_modules:
+  webapp_node_modules:
