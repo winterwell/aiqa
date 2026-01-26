@@ -92,7 +92,7 @@ const CodeSetupPage: React.FC = () => {
 				<APICodeSetupPane apiKey={apiKey} />
 				</TabPane>
 				<TabPane tabId="opentelemetry">
-				<OpenTelemetryCodeSetupPane apiKey={apiKey} />
+				<OpenTelemetryCodeSetupPane />
 				</TabPane>
               </TabContent>
             </CardBody>
