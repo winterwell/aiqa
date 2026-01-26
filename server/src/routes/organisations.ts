@@ -14,7 +14,7 @@ import {
   createOrganisationAccount,
   updateOrganisationAccount
 } from '../db/db_sql.js';
-import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
+import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin, authenticateWithJwtFromHeader } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import {
 	getOrCreateStripeCustomer,
@@ -210,10 +210,21 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       return;
     }
     
-    const account = await getOrganisationAccountByOrganisation(organisationId);
+    let account = await getOrganisationAccountByOrganisation(organisationId);
     if (!account) {
-      reply.code(404).send({ error: 'OrganisationAccount not found' });
-      return;
+      // Create account if it doesn't exist (with default free subscription)
+      account = await createOrganisationAccount({
+        organisation: organisationId,
+        subscription: {
+          type: 'free',
+          status: 'active',
+          start_date: new Date(),
+          end_date: null,
+          renewal_date: null,
+          price_per_month: 0,
+          currency: 'USD',
+        },
+      });
     }
     return account;
   });
@@ -390,8 +401,30 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       return { success: true, planType: 'free' };
     }
     
+    // Check if Stripe is configured before creating checkout session
+    if (!process.env.STRIPE_SECRET_KEY) {
+      reply.code(503).send({ error: 'Payment processing is not configured. Please contact support.' });
+      return;
+    }
+    
+    // Get user email - try from database first, then from JWT token
     const user = await getUser(request.userId!);
-    const { url } = await createCheckoutSession(organisationId, priceId, user?.email);
+    let userEmail = user?.email;
+    
+    // If user doesn't have email in database, try to get it from JWT token
+    if (!userEmail && request.authenticatedWith === 'jwt') {
+      const jwtResult = await authenticateWithJwtFromHeader(request);
+      if (jwtResult?.email) {
+        userEmail = jwtResult.email;
+      }
+    }
+    
+    if (!userEmail) {
+      reply.code(400).send({ error: 'User email is required to create a checkout session. Please ensure your account has an email address.' });
+      return;
+    }
+    
+    const { url } = await createCheckoutSession(organisationId, priceId, userEmail);
     return { checkoutUrl: url };
   });
 

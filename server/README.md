@@ -17,6 +17,9 @@ npm run build (compiles the code)
 npm run test (runs the tests)
 npm run start (starts the server)
 
+Server debugging: read logs with:
+sudo journalctl -u aiqa-server -f
+
 Installation:
 After cloning or pulling changes:
 1. Initialize git submodules: `git submodule update --init --recursive`

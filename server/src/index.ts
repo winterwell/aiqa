@@ -1,9 +1,13 @@
+// Load .env file FIRST, before any imports that might use environment variables
+// When running from dist/index.js, __dirname will be the dist directory
+import dotenv from 'dotenv';
+import { join } from 'path';
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import compress from '@fastify/compress';
-import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
-import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -30,8 +34,6 @@ import { registerApiKeyRoutes } from './routes/api-keys.js';
 import { registerModelRoutes } from './routes/models.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
 import versionData from './version.json';
-
-dotenv.config();
 
 const fastify = Fastify({
   logger: {

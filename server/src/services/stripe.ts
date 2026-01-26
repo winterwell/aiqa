@@ -119,6 +119,11 @@ export async function createOrUpdateSubscription(
 	userEmail?: string,
 	noPaymentNeeded: boolean = false
 ): Promise<{ customerId: string; subscriptionId: string }> {
+	// Free plans don't require Stripe
+	if (planType === 'free') {
+		return { customerId: account.stripe_customer_id || '', subscriptionId: '' };
+	}
+
 	if (!stripe) {
 		throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY.');
 	}
@@ -131,11 +136,6 @@ export async function createOrUpdateSubscription(
 
 	const customerId = account.stripe_customer_id || await getOrCreateStripeCustomer(organisationId, userEmail);
 	let subscriptionId = account.stripe_subscription_id;
-
-	// Free plans don't create Stripe subscriptions
-	if (planType === 'free') {
-		return { customerId, subscriptionId: '' };
-	}
 
 	// Pro plan requires Stripe subscription
 	const priceId = STRIPE_PRICE_IDS[planType];

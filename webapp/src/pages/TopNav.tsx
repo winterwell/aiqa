@@ -40,7 +40,7 @@ const TopNav: React.FC = () => {
 		</NavLink>
         <Nav className="ms-auto" navbar>
 			<NavItem>
-				<NavLink href="/organisation">
+				<NavLink href={`/organisation/${organisationId}`}>
 					{organisation?.name}
 				</NavLink>
 			</NavItem>

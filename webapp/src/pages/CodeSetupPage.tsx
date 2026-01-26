@@ -235,15 +235,13 @@ function OpenTelemetryCodeSetupPane({}: { }) {
   
   return (
     <div>
-      <h5>OpenTelemetry Setup</h5>
       <p>
         Configure your OpenTelemetry SDK to export traces to AIQA using the OTLP (OpenTelemetry Protocol) exporter.
       </p>
       
-      <h5>Endpoint Configuratio with your AIQA API Key</h5>
-      <p>Set the following environment variables to configure the OTLP endpoint:</p>
+      <h5>Endpoint Configuration with your AIQA API Key</h5>
+      <p>Set the following environment variables to configure the OTLP endpoint and headers:</p>
       <pre><code>{`OTEL_EXPORTER_OTLP_ENDPOINT=${endpointUrl}`}</code></pre>
-      <p>Set the API key in the OTLP headers environment variable:</p>
       <pre><code>{`OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey YOUR_API_KEY`}</code></pre>
       
       <h5>Example Attributes</h5>

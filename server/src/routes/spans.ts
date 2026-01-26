@@ -623,21 +623,23 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
   });
   
   // ===== OTLP ENDPOINT =====
-  // OTLP HTTP endpoint at /v1/traces following OpenTelemetry Protocol specification
+  /** OTLP HTTP endpoint at /v1/traces following OpenTelemetry Protocol specification
   // Accepts ExportTraceServiceRequest in JSON or Protobuf encoding
   // Content-Type: application/json (default) or application/x-protobuf
   // Returns ExportTraceServiceResponse
+  */
   fastify.post('/v1/traces', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['trace', 'developer', 'admin'])) return;
     const organisation = request.organisation!;
-    
+   
     try {
       let otlpRequest: any;
       
       // Check Content-Type to determine encoding
       const contentType = request.headers['content-type'] || '';
       const isProtobuf = contentType.includes('application/x-protobuf') || contentType.includes('application/protobuf');
-      
+      console.log(`spans.ts POST: Organisation: ${organisation} Content-Type: ${contentType}`);
+
       if (isProtobuf) {
         // Parse Protobuf binary data
         const rawBody = request.body as Buffer;
@@ -668,6 +670,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       reply.code(200).send({});
       
     } catch (error: any) {
+      console.error('spans.ts POST: Error in OTLP HTTP endpoint:', error);
       if (isConnectionError(error)) {
         reply.code(503).send({
           code: 14, // UNAVAILABLE

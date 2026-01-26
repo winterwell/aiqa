@@ -125,7 +125,7 @@ const ExperimentCodePage: React.FC = () => {
                     <li>
                       <strong>Install the Python client library:</strong>
                       <br />
-                      <code>pip install aiqa-client-python</code>
+                      <code>pip install aiqa-client</code>
                     </li>
                     <li>
 						<HowToSetYourEnv />

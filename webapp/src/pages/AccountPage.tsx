@@ -23,6 +23,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getOrganisation, getOrganisationAccount, updateSubscription, createCheckoutSession, listOrganisations, getOrCreateUser } from '../api';
+import subscriptionsConfig from '../subscriptions.json';
 
 type SubscriptionPackage = 'free' | 'pro' | 'enterprise';
 
@@ -66,6 +67,20 @@ const AccountPage: React.FC = () => {
 	const isSuperAdmin = allOrganisations?.some(org => org.name === 'AIQA') || false;
 
 	const subscriptionPackage: SubscriptionPackage = (account?.subscription?.type as SubscriptionPackage) || 'free';
+
+	// Get subscription plan defaults
+	const getSubscriptionDefault = (key: 'rate_limit_per_hour' | 'retention_period_days'): number | undefined => {
+		const planConfig = subscriptionsConfig[subscriptionPackage];
+		if (planConfig && key in planConfig) {
+			const value = planConfig[key as keyof typeof planConfig];
+			return typeof value === 'number' ? value : undefined;
+		}
+		// Enterprise fallback defaults (not in webapp subscriptions.json)
+		if (subscriptionPackage === 'enterprise') {
+			return key === 'rate_limit_per_hour' ? 10000 : 365;
+		}
+		return undefined;
+	};
 
 	const getSubscriptionBadgeColor = (pkg: SubscriptionPackage | null) => {
 		if (!pkg) {
@@ -239,15 +254,51 @@ const AccountPage: React.FC = () => {
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Rate Limit:</strong>{' '}
-									{account.rate_limit_per_hour
-										? `${account.rate_limit_per_hour} per hour`
-										: 'Not set'}
+									{(() => {
+										const currentValue = account.rate_limit_per_hour;
+										const defaultValue = getSubscriptionDefault('rate_limit_per_hour');
+										const displayValue = currentValue ?? defaultValue;
+										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
+										
+										if (displayValue === undefined) {
+											return 'Not set';
+										}
+										
+										return (
+											<>
+												{displayValue} per hour
+												{isCustom && defaultValue !== undefined && (
+													<span className="text-muted ms-2">
+														(custom: default is {defaultValue})
+													</span>
+												)}
+											</>
+										);
+									})()}
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Retention Period:</strong>{' '}
-									{account.retention_period_days
-										? `${account.retention_period_days} days`
-										: 'Not set'}
+									{(() => {
+										const currentValue = account.retention_period_days;
+										const defaultValue = getSubscriptionDefault('retention_period_days');
+										const displayValue = currentValue ?? defaultValue;
+										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
+										
+										if (displayValue === undefined) {
+											return 'Not set';
+										}
+										
+										return (
+											<>
+												{displayValue} days
+												{isCustom && defaultValue !== undefined && (
+													<span className="text-muted ms-2">
+														(custom: default is {defaultValue})
+													</span>
+												)}
+											</>
+										);
+									})()}
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Members:</strong> {organisation.members?.length || 0}

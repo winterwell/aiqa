@@ -8,6 +8,29 @@ import {
 } from '../db/db_sql.js';
 import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
+import type User from '../common/types/User.js';
+
+/**
+ * Update user email from JWT token if available and different.
+ * Returns updated user or original user if no update needed.
+ */
+async function updateUserEmailFromJwt(user: User, jwtEmail?: string): Promise<User> {
+	if (!jwtEmail) {
+		console.log(`No email in JWT token for user ${user.id}`);
+		return user;
+	}
+	if (user.email === jwtEmail) {
+		return user;
+	}
+	console.log(`Updating user ${user.id} email from "${user.email || 'null'}" to "${jwtEmail}"`);
+	const updated = await updateUser(user.id, { email: jwtEmail });
+	if (updated) {
+		console.log(`Successfully updated user ${user.id} with email from JWT: ${jwtEmail}`);
+		return updated;
+	}
+	console.log(`Failed to update user ${user.id} email - updateUser returned null`);
+	return user;
+}
 
 /**
  * Register user endpoints with Fastify
@@ -27,7 +50,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
     newUser.sub = jwtToken.userId;
     
     if (!newUser.name) {
-      newUser.name = newUser.email.split('@')[0];
+      newUser.name = newUser.email ? newUser.email.split('@')[0] : 'User';
     }
     
     // Check if user already exists by sub (primary identifier)
@@ -35,6 +58,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       const existingUsersBySub = await listUsers(new SearchQuery(`sub:${newUser.sub}`));
       if (existingUsersBySub.length > 0) {
         // User already exists, return the existing user (prefer one with most organisations)
+        let existingUser;
         if (existingUsersBySub.length > 1) {
           // Multiple users with same sub - prefer one in organisations
           const { getOrganisationsForUser } = await import('../db/db_sql.js');
@@ -48,11 +72,14 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
             if (a.orgCount !== b.orgCount) return b.orgCount - a.orgCount;
             return new Date(a.user.created).getTime() - new Date(b.user.created).getTime();
           });
-          console.log(`User with sub ${newUser.sub} already exists (multiple found), returning user ${usersWithOrgs[0].user.id}`);
-          return usersWithOrgs[0].user;
+          existingUser = usersWithOrgs[0].user;
+          console.log(`User with sub ${newUser.sub} already exists (multiple found), returning user ${existingUser.id}`);
+        } else {
+          existingUser = existingUsersBySub[0];
+          console.log(`User with sub ${newUser.sub} already exists, returning existing user ${existingUser.id}`);
         }
-        console.log(`User with sub ${newUser.sub} already exists, returning existing user ${existingUsersBySub[0].id}`);
-        return existingUsersBySub[0];
+        
+        return await updateUserEmailFromJwt(existingUser, newUser.email);
       }
     }
     
@@ -67,12 +94,12 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
           if (!matchingUser.sub && newUser.sub) {
             const updated = await updateUser(matchingUser.id, { sub: newUser.sub });
             if (updated) {
-              console.log(`Updated user ${matchingUser.id} with sub ${newUser.sub}`);
-              return updated;
+              console.log(`Updated user ${matchingUser.id} with sub from JWT: ${newUser.sub}`);
+              return await updateUserEmailFromJwt(updated, newUser.email);
             }
           }
           console.log(`User with email ${newUser.email} already exists, returning existing user ${matchingUser.id}`);
-          return matchingUser;
+          return await updateUserEmailFromJwt(matchingUser, newUser.email);
         }
       }
     }
@@ -97,12 +124,15 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
           reply.code(401).send({ error: 'JWT token missing user ID' });
           return;
         }
+        console.log(`GET /user/jwt - JWT token has email: ${jwtToken.email}, userId: ${sub}`);
         const users = await listUsers(new SearchQuery(`sub:${sub}`));
         if (users.length === 0) {
           reply.code(404).send({ error: 'User not found with sub: '+sub });
           return;
         }
-        return users[0];
+        const user = users[0];
+        console.log(`GET /user/jwt - Found user ${user.id}, current email: ${user.email || 'null'}`);
+        return await updateUserEmailFromJwt(user, jwtToken.email);
       }
       const user = await getUser(id);
       if (!user) {
@@ -136,6 +166,10 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
     }  
     let { id } = request.params as { id: string };
     if (id === "jwt") {
+      if (!jwtToken.userId) {
+        reply.code(401).send({ error: 'JWT token missing user ID' });
+        return;
+      }
       id = jwtToken.userId;
     }
     // Authorization check: user can only update themselves
@@ -157,7 +191,12 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
     }
     
     console.log("updating user: "+id+" from JWT token "+JSON.stringify(jwtToken));
-    const user = await updateUser(id, request.body as any);
+    const updates = request.body as any;
+    // Also update email from JWT if available and not explicitly provided
+    if (jwtToken.email && updates.email === undefined) {
+      updates.email = jwtToken.email;
+    }
+    const user = await updateUser(id, updates);
     if (!user) {
       reply.code(404).send({ error: 'User not found' });
       return;

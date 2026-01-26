@@ -124,7 +124,12 @@ const OrganisationPage: React.FC = () => {
               <h1>{organisation.name}</h1>
               <p className="text-muted">Organisation ID: {organisation.id}</p>
             </div>
-            {dbUser?.id && <CreateOrganisationButton dbUserId={dbUser.id} />}
+            <div className="d-flex gap-2 align-items-center">
+              <Button color="secondary" tag={Link} to={`/organisation/${organisationId}/account`}>
+                Account
+              </Button>
+              {dbUser?.id && <CreateOrganisationButton dbUserId={dbUser.id} />}
+            </div>
           </div>
         </Col>
       </Row>
