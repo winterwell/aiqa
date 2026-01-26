@@ -26,9 +26,9 @@ const MetricsListPage: React.FC = () => {
 
   // Basic metrics that are always available
   const basicMetrics: MetricWithSource[] = useMemo(() => [
-    { metric: { name: 'duration', description: 'Duration of the trace', unit: 'ms', type: 'number' } },
-    { metric: { name: 'token_count', description: 'Total number of tokens used', unit: 'tokens', type: 'number' } },
-    { metric: { name: 'token_cost', description: 'Estimated cost of tokens', unit: 'USD', type: 'number' } },
+    { metric: { id: 'duration', name: 'duration', description: 'Duration of the trace', unit: 'ms', type: 'number' } },
+    { metric: { id: 'token_count', name: 'token_count', description: 'Total number of tokens used', unit: 'tokens', type: 'number' } },
+    { metric: { id: 'token_cost', name: 'token_cost', description: 'Estimated cost of tokens', unit: 'USD', type: 'number' } },
   ], []);
 
   // Custom metrics from datasets
