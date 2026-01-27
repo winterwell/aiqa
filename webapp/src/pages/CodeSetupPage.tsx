@@ -201,7 +201,7 @@ function APICodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
 <code>{`curl -X POST \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
-  http://localhost:4001/span \\
+  http://localhost:4318/span \\
   -d '{
     "organisation": "YOUR_ORGANISATION_ID",
     "traceId": "example-trace-id",

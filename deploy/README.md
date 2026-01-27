@@ -44,7 +44,7 @@ This directory contains all files needed for 24x7 deployment of the AIQA server 
 
 ## Architecture
 
-- **Server**: Runs as systemd service on port 4001, auto-restarts on failure
+- **Server**: Runs as systemd service on port 4318, auto-restarts on failure
 - **Webapp**: Served by nginx on ports 80/443 (HTTP/HTTPS), static files from `/opt/aiqa/webapp/dist`
 - **CI/CD**: GitHub Actions builds and deploys automatically on code changes
 

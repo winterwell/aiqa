@@ -102,7 +102,7 @@ jobs:
       - name: Install dependencies and configure server
         uses: appleboy/ssh-action@v1.0.3
         env:
-          SERVER_PORT: ${{ vars.SERVER_PORT || '4001' }}
+          SERVER_PORT: ${{ vars.SERVER_PORT || '4318' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PGHOST: ${{ secrets.PGHOST }}
           PGDATABASE: ${{ secrets.PGDATABASE }}
@@ -151,7 +151,7 @@ jobs:
             # Create .env file
             {
               echo "ENVIRONMENT=production"
-              echo "PORT=${SERVER_PORT:-4001}"
+              echo "PORT=${SERVER_PORT:-4318}"
               [ -n "${DATABASE_URL}" ] && echo "DATABASE_URL=${DATABASE_URL}"
               echo "PGHOST=${PGHOST}"
               echo "PGDATABASE=${PGDATABASE}"

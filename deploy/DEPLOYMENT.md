@@ -77,7 +77,7 @@ Before the webapp and server domains will be accessible, you need to create DNS 
   - This covers all `*.winterwell.com` subdomains (app-aiqa, server-aiqa, etc.). Specific records take precedence over wildcards.
 - Note: If you want a dedicated server domain (`server-aiqa.winterwell.com`), install the nginx configuration from `deploy/server-aiqa.nginx.conf` (see step 2 above). Otherwise, the server API is accessible via:
   - The main domain (`aiqa.winterwell.com`) which proxies to the server as a fallback when static files aren't found
-  - Direct access via `http://localhost:4001` on the server itself
+  - Direct access via `http://localhost:4318` on the server itself
 
 **Verify DNS resolution:**
 ```bash
@@ -115,7 +115,7 @@ In your GitHub repository, go to Settings → Secrets and variables → Actions:
 - `DEPLOY_PORT`: SSH port (optional, defaults to 22)
 
 *Server environment variables:*
-- `SERVER_PORT`: Server port (optional, defaults to 4001)
+- `SERVER_PORT`: Server port (optional, defaults to 4318)
 - `PGSSLMODE`: PostgreSQL SSL mode (optional, defaults to `require`)
 - `PGCHANNELBINDING`: PostgreSQL channel binding (optional, defaults to `require`)
 - `ELASTICSEARCH_URL`: Elasticsearch URL (optional, defaults to `http://localhost:9200`)
@@ -128,7 +128,7 @@ In your GitHub repository, go to Settings → Secrets and variables → Actions:
 - `AZURE_OPENAI_ENDPOINT`: Azure OpenAI endpoint (optional, for Azure OpenAI scoring)
 
 *Webapp build variables:*
-- `VITE_AIQA_SERVER_URL`: Server API URL (e.g., `http://your-server:4001` or `https://api.yourdomain.com`)
+- `VITE_AIQA_SERVER_URL`: Server API URL (e.g., `http://your-server:4318` or `https://api.yourdomain.com`)
 - `VITE_AUTH0_DOMAIN`: Your Auth0 domain
 - `VITE_AUTH0_AUDIENCE`: Your Auth0 audience
 
@@ -289,9 +289,9 @@ fi
 
 ### Port conflicts
 
-- Server defaults to port 4001 (set via `PORT` in `.env`)
+- Server defaults to port 4318 (set via `PORT` in `.env`)
 - Webapp is served by nginx on ports 80 (HTTP) and 443 (HTTPS) - see `app-aiqa.nginx.conf`
-- Check if ports are in use: `sudo netstat -tulpn | grep :4001` (server) or `sudo netstat -tulpn | grep :80` (nginx)
+- Check if ports are in use: `sudo netstat -tulpn | grep :4318` (server) or `sudo netstat -tulpn | grep :80` (nginx)
 
 ### Permission issues
 
@@ -369,7 +369,7 @@ The server deployment workflow automatically creates `/opt/aiqa/server/.env` fro
 The webapp build requires environment variables to be set in GitHub Variables and Secrets:
 
 **GitHub Variables:**
-- `VITE_AIQA_SERVER_URL`: The URL where the server API is accessible (e.g., `http://your-server-ip:4001` or `https://api.yourdomain.com`)
+- `VITE_AIQA_SERVER_URL`: The URL where the server API is accessible (e.g., `http://your-server-ip:4318` or `https://api.yourdomain.com`)
 - `VITE_AUTH0_DOMAIN`: Your Auth0 domain
 - `VITE_AUTH0_AUDIENCE`: Your Auth0 audience
 
@@ -381,7 +381,7 @@ These are baked into the build at compile time, so you need to rebuild and redep
 ### Network Configuration
 
 By default:
-- Server runs on port 4001 (configurable via `PORT` in `.env`)
+- Server runs on port 4318 (configurable via `PORT` in `.env`)
 - Webapp is served by nginx on ports 80 (HTTP) and 443 (HTTPS)
 
 **Note:** Port 4000 is only used in development mode (`pnpm dev`). In production, nginx serves the webapp on standard HTTP/HTTPS ports.
@@ -390,12 +390,12 @@ By default:
 
 The server API can be accessed via three methods:
 
-1. **Direct localhost access**: `http://localhost:4001` (on the server itself)
+1. **Direct localhost access**: `http://localhost:4318` (on the server itself)
 2. **Via website proxy**: `https://aiqa.winterwell.com` (proxies to server when static files aren't found)
 3. **Via dedicated server domain**: `https://server-aiqa.winterwell.com` (requires DNS A record and nginx config from `deploy/server-aiqa.nginx.conf`)
 
 **For webapp configuration:**
-- If the webapp and server are on the same server, use `VITE_AIQA_SERVER_URL=http://localhost:4001` for direct access
+- If the webapp and server are on the same server, use `VITE_AIQA_SERVER_URL=http://localhost:4318` for direct access
 - If using the website proxy, use `VITE_AIQA_SERVER_URL=https://aiqa.winterwell.com`
 - If using the dedicated server domain, use `VITE_AIQA_SERVER_URL=https://server-aiqa.winterwell.com`
 

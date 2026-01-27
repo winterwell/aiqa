@@ -23,7 +23,7 @@ https://aiqa.winterwell.com - production website AND proxy to the server
 ### Local Servers
 
 http://localhost:4000 - local webapp
-http://localhost:4001 - local server
+http://localhost:4318 - local server
 
 
 ## Deployment

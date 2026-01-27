@@ -49,7 +49,7 @@ Use this checklist to verify your deployment setup is complete.
 - [ ] Verify server deployment workflow completes successfully
 - [ ] Check server is running: `sudo systemctl status aiqa-server`
 - [ ] Check server logs: `sudo journalctl -u aiqa-server -n 50`
-- [ ] Test server API: `curl http://localhost:4001/version`
+- [ ] Test server API: `curl http://localhost:4318/version`
 
 - [ ] Push a change to `webapp/` directory to trigger webapp deployment
 - [ ] Verify webapp deployment workflow completes successfully
