@@ -19,10 +19,27 @@ COPY server/package.json server/package-lock.json ./server/
 COPY server/tsconfig.json ./server/
 COPY server/src ./server/src
 COPY server/scripts ./server/scripts
-COPY server/opentelemetry-proto ./server/opentelemetry-proto
 COPY server/src/version.json ./server/src/
 COPY server/subscriptions.json ./server/
 COPY server/token_costs.csv ./server/
+
+# Copy opentelemetry-proto directory (may be empty if git submodule not initialized)
+COPY server/opentelemetry-proto ./server/opentelemetry-proto
+
+# Handle opentelemetry-proto (git submodule)
+# If the directory exists but is empty/missing proto files, clone it directly
+RUN if [ ! -f server/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto ]; then \
+      echo "opentelemetry-proto not found or incomplete, cloning from GitHub..." && \
+      rm -rf server/opentelemetry-proto && \
+      git clone --depth 1 https://github.com/open-telemetry/opentelemetry-proto.git server/opentelemetry-proto; \
+    fi
+
+# Verify opentelemetry-proto files exist (fail build early if missing)
+RUN if [ ! -f server/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/trace_service.proto ]; then \
+      echo "ERROR: Failed to obtain opentelemetry-proto files!" && \
+      exit 1; \
+    fi && \
+    echo "opentelemetry-proto files verified successfully"
 
 # Install dependencies and build
 WORKDIR /app/server

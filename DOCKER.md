@@ -107,6 +107,24 @@ VITE_AUTH0_AUDIENCE=your-auth0-audience
 
 The server configuration is handled automatically via Docker Compose environment variables. You only need to set server-specific variables if you want to override defaults (e.g., custom database URL).
 
+### Changing the Server Port
+
+To change the server port from the default `4318` to a different port (e.g., `4418`):
+
+1. **Create or edit `.env` file** in the `aiqa/` directory (same level as `docker-compose.yml`):
+   ```env
+   SERVER_PORT=4418
+   VITE_AIQA_SERVER_URL=http://localhost:4418
+   ```
+
+2. **Rebuild and restart**:
+   ```bash
+   docker-compose down
+   docker-compose up -d --build
+   ```
+
+**Note:** You must set both `SERVER_PORT` (for the server container) and `VITE_AIQA_SERVER_URL` (for the webapp build) to the same port. The webapp needs to know which port to call the API on.
+
 ## Development Mode
 
 For development with hot-reload, you can mount your source code:
@@ -254,6 +272,11 @@ docker exec aiqa-postgres pg_dump -U aiqa aiqa > backup.sql
    docker-compose logs server
    docker-compose logs webapp
    ```
+
+2. **gRPC server fails to start** (opentelemetry-proto files missing):
+   - The Dockerfile automatically clones `opentelemetry-proto` if it's missing
+   - If you see errors about missing proto files, rebuild: `docker-compose build --no-cache server`
+   - The HTTP API will still work even if gRPC fails (OTLP/HTTP is still available)
 
 2. **Verify ports are not in use**:
    ```bash
