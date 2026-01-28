@@ -14,9 +14,3 @@ deploy/sead.org.uk.nginx
 server/.npmrc webapp/.npmrc
 **/.npmrc
 **/__pycache__
-# SSL certificates (generated locally)
-ssl/*.key
-ssl/*.crt
-ssl/*.pem
-ssl/.cert-name
-ssl/letsencrypt/
