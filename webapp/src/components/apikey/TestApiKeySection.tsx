@@ -11,7 +11,7 @@ interface ApiKeyHowToUseSectionProps {
 
 export const ApiKeyHowToUseSection: React.FC<ApiKeyHowToUseSectionProps> = ({ organisationId, newlyGeneratedKey }) => {
   const { showToast } = useToast();
-  const curlCommand = `curl -X GET "${API_BASE_URL}/dataset?organisation=${organisationId}" \\
+  const curlCommand = `curl -X GET "${API_BASE_URL}/api-key" \\
   -H "Authorization: ApiKey ${newlyGeneratedKey || 'YOUR_API_KEY'}" \\
   -H "Content-Type: application/json"`;
 
@@ -23,7 +23,7 @@ export const ApiKeyHowToUseSection: React.FC<ApiKeyHowToUseSectionProps> = ({ or
             <h5>Test Your API Key</h5>
           </CardHeader>
           <CardBody>
-            <p>Use this curl command to test your API key by fetching your datasets:</p>
+            <p>Use this curl command to test your API key by fetching its details:</p>
             <div className="d-flex align-items-start gap-2">
               <pre className="bg-light p-3 rounded flex-grow-1" style={{ fontSize: '0.9em', margin: 0, overflowX: 'auto', minWidth: 0, maxWidth: '100%', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
                 {curlCommand}
@@ -37,8 +37,8 @@ export const ApiKeyHowToUseSection: React.FC<ApiKeyHowToUseSectionProps> = ({ or
               />
             </div>
             <p className="text-muted small mt-2">
-              <strong>Note:</strong> Replace <code>YOUR_API_KEY</code> with your actual API key if you've already saved it.
-              {newlyGeneratedKey && ' The command above uses your newly generated key.'}
+              {newlyGeneratedKey? <span>The command above uses your newly generated key.</span>
+               : <span>Replace <code>YOUR_API_KEY</code> with your actual API key if you've already saved it.</span>}
             </p>
           </CardBody>
         </Card>

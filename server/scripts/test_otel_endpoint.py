@@ -21,11 +21,12 @@ try:
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.resource import Resource
+    from opentelemetry.sdk.resources import Resource
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.trace import Status, StatusCode
 except ImportError as e:
     print(f"Error: Missing required package. Install with: pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http")
+    print(f"Import error details: {e}")
     sys.exit(1)
 
 logging.basicConfig(level=logging.INFO)
@@ -53,10 +54,11 @@ def get_endpoint() -> Optional[str]:
         logger.error("OTEL_EXPORTER_OTLP_ENDPOINT environment variable is required")
         return None
     
-    # Ensure endpoint doesn't have /v1/traces suffix (exporter adds it)
+    # OTLP HTTP exporter requires the full endpoint URL including /v1/traces
+    # Ensure endpoint doesn't have trailing slash, then append /v1/traces if not present
     endpoint = endpoint.rstrip('/')
-    if endpoint.endswith('/v1/traces'):
-        endpoint = endpoint[:-10]
+    if not endpoint.endswith('/v1/traces'):
+        endpoint = f"{endpoint}/v1/traces"
     
     return endpoint
 
@@ -131,7 +133,7 @@ def send_test_span() -> bool:
         
         # Force flush to ensure span is sent
         logger.info("Flushing spans...")
-        tracer_provider.force_flush(timeout=timeout)
+        tracer_provider.force_flush()
         
         logger.info("✓ Test span sent successfully!")
         return True
