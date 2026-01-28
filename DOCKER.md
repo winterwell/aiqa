@@ -239,8 +239,9 @@ docker run -d \
    ```
 
 3. **HTTPS/SSL**: For production, consider:
+   - **For IP address access (no domain)**: See `ssl/README.md` for self-signed certificate setup
    - Using an Application Load Balancer (ALB) with SSL termination
-   - Or running nginx as a reverse proxy with Let's Encrypt certificates
+   - Or running nginx as a reverse proxy with Let's Encrypt certificates (requires domain)
    - Update `VITE_AIQA_SERVER_URL` to use `https://` if using SSL
 
 4. **Database Security**: The default PostgreSQL password is `aiqa`. Change it:

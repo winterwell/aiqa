@@ -75,10 +75,10 @@ services:
     #   - ./server:/app/server
     #   - server_node_modules:/app/server/node_modules
 
-  webapp:
+  nginx:
     build:
       context: .
-      dockerfile: Dockerfile.webapp
+      dockerfile: Dockerfile.nginx
       args:
         # Server URL - defaults to localhost for local development
         # For AWS/production, set VITE_AIQA_SERVER_URL in .env file to your public URL
@@ -88,15 +88,10 @@ services:
         VITE_AUTH0_DOMAIN: ${VITE_AUTH0_DOMAIN:-winterstein.eu.auth0.com}
         VITE_AUTH0_CLIENT_ID: ${VITE_AUTH0_CLIENT_ID:-mRqqp4CHdybD2gTt2skAKBnRvvLcAA7a}
         VITE_AUTH0_AUDIENCE: ${VITE_AUTH0_AUDIENCE:-https://winterstein.eu.auth0.com/api/v2/}
-    container_name: aiqa-webapp
+    container_name: aiqa-nginx
     ports:
-      - "4000:4000"
-    depends_on:
-      - server
-    # Removed volume mounts for production - use built images instead
-    # volumes:
-    #   - ./webapp:/app/webapp
-    #   - webapp_node_modules:/app/webapp/node_modules
+      - "4000:4000"  # HTTP webapp access (AWS handles SSL termination)
+    restart: unless-stopped
 
 volumes:
   postgres_data:
