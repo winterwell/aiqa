@@ -2,6 +2,8 @@
 
 This directory contains all files needed for 24x7 deployment of the AIQA server and webapp on Ubuntu.
 
+Do NOT use this for personal deployments. 
+
 ## Files
 
 ### Service Files

@@ -14,3 +14,4 @@ deploy/sead.org.uk.nginx
 server/.npmrc webapp/.npmrc
 **/.npmrc
 **/__pycache__
+website/webroot
