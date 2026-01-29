@@ -2,7 +2,7 @@ A simple client-side web-app for viewing the server data
 Connects to the server API and displays the data.
 
 Language: typescript
-React framework
+React framework using Vite
 Bootstrap CSS framework
 Use Reactstrap for UI components where appropriate.
 

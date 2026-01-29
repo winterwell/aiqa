@@ -66,6 +66,7 @@ export async function createOrganisation(org: { name: string; members: string[] 
 export async function updateOrganisation(id: string, updates: Partial<{
 	name?: string;
 	members?: string[];
+	pending_members?: string[];
 	member_settings?: Record<string, { role: 'admin' | 'standard' }>;
 }>) {
 	return fetchWithAuth(`/organisation/${id}`, {

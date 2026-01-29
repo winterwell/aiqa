@@ -72,3 +72,30 @@ export function getExampleInputString(input: any, maxLength: number = 100): stri
   return str.substring(0, maxLength) + '...';
 }
 
+/**
+ * Get the text content from the "specific" metric in Example.metrics.
+ * Returns the prompt (for LLM type) or code (for javascript type), or empty string if not found.
+ */
+export function getExampleSpecificMetricText(example: Example): string {
+  if (!example.metrics || !Array.isArray(example.metrics)) {
+    return '';
+  }
+  
+  const specificMetric = example.metrics.find(m => m.id === 'specific');
+  if (!specificMetric) {
+    return '';
+  }
+  
+  // For LLM type, return prompt
+  if (specificMetric.type === 'llm' && specificMetric.prompt) {
+    return specificMetric.prompt;
+  }
+  
+  // For javascript type, return code
+  if (specificMetric.type === 'javascript' && specificMetric.code) {
+    return specificMetric.code;
+  }
+  
+  return '';
+}
+

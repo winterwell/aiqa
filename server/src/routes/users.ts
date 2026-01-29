@@ -5,10 +5,30 @@ import {
   listUsers,
   updateUser,
   deleteUser,
+  processPendingMembers,
 } from '../db/db_sql.js';
 import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import type User from '../common/types/User.js';
+
+/**
+ * Helper to process pending members for a user after creation/update.
+ * Extracted to avoid code duplication.
+ */
+async function processPendingMembersForUser(user: User): Promise<void> {
+  if (!user.email) {
+    return;
+  }
+  try {
+    const addedOrgIds = await processPendingMembers(user.id, user.email);
+    if (addedOrgIds.length > 0) {
+      console.log(`Auto-added user ${user.id} to ${addedOrgIds.length} organisation(s): ${addedOrgIds.join(', ')}`);
+    }
+  } catch (error) {
+    console.error('Error processing pending members:', error);
+    // Don't fail user creation/update if pending member processing fails
+  }
+}
 
 /**
  * Update user email from JWT token if available and different.
@@ -79,7 +99,9 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
           console.log(`User with sub ${newUser.sub} already exists, returning existing user ${existingUser.id}`);
         }
         
-        return await updateUserEmailFromJwt(existingUser, newUser.email);
+        const returnedUser = await updateUserEmailFromJwt(existingUser, newUser.email);
+        await processPendingMembersForUser(returnedUser);
+        return returnedUser;
       }
     }
     
@@ -95,17 +117,20 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
             const updated = await updateUser(matchingUser.id, { sub: newUser.sub });
             if (updated) {
               console.log(`Updated user ${matchingUser.id} with sub from JWT: ${newUser.sub}`);
-              return await updateUserEmailFromJwt(updated, newUser.email);
+
             }
           }
           console.log(`User with email ${newUser.email} already exists, returning existing user ${matchingUser.id}`);
-          return await updateUserEmailFromJwt(matchingUser, newUser.email);
+          const returnedUser = await updateUserEmailFromJwt(matchingUser, newUser.email);
+          await processPendingMembersForUser(returnedUser);
+          return returnedUser;
         }
       }
     }
     
     console.log("creating user: "+newUser.email+" "+newUser.sub+" from JWT token "+JSON.stringify(jwtToken));
     const user = await createUser(newUser);
+    await processPendingMembersForUser(user);
     return user;
   });
 
@@ -132,7 +157,10 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
         }
         const user = users[0];
         console.log(`GET /user/jwt - Found user ${user.id}, current email: ${user.email || 'null'}`);
-        return await updateUserEmailFromJwt(user, jwtToken.email);
+        const updatedUser = await updateUserEmailFromJwt(user, jwtToken.email);
+        // Process pending members in case email changed or user was invited
+        await processPendingMembersForUser(updatedUser);
+        return updatedUser;
       }
       const user = await getUser(id);
       if (!user) {
@@ -193,13 +221,18 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
     console.log("updating user: "+id+" from JWT token "+JSON.stringify(jwtToken));
     const updates = request.body as any;
     // Also update email from JWT if available and not explicitly provided
-    if (jwtToken.email && updates.email === undefined) {
+    const emailChanged = jwtToken.email && updates.email === undefined;
+    if (emailChanged) {
       updates.email = jwtToken.email;
     }
     const user = await updateUser(id, updates);
     if (!user) {
       reply.code(404).send({ error: 'User not found' });
       return;
+    }
+    // Process pending members if email was updated
+    if (emailChanged) {
+      await processPendingMembersForUser(user);
     }
     return user;
   });

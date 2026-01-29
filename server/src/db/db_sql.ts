@@ -492,6 +492,19 @@ await doQuery(`
 		END $$;
 	  `);
 
+	// Add pending_members column to organisations table if it doesn't exist (migration)
+	await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'organisations' AND column_name = 'pending_members'
+		  ) THEN
+			ALTER TABLE organisations ADD COLUMN pending_members TEXT[] DEFAULT '{}';
+		  END IF;
+		END $$;
+	  `);
+
 }
 
 /**
@@ -855,6 +868,69 @@ export async function getOrganisationMembers(organisationId: string): Promise<Us
 		[org.members]
 	);
 	return result.rows;
+}
+
+/**
+ * Process pending members for a newly created user.
+ * Finds all organisations where the user's email is in pending_members,
+ * adds the user to those organisations, and removes the email from pending_members.
+ * @param userId - The ID of the newly created user
+ * @param userEmail - The email of the newly created user
+ * @returns Array of organisation IDs the user was added to
+ */
+export async function processPendingMembers(userId: string, userEmail: string): Promise<string[]> {
+	if (!userEmail || !userId) {
+		return [];
+	}
+
+	const emailLower = userEmail.toLowerCase();
+
+	// Find all organisations with this email in pending_members using SQL query (more efficient than loading all)
+	// Handle NULL/empty arrays by checking array is not null and contains the email
+	const result = await doQuery<Organisation>(
+		`SELECT * FROM organisations WHERE pending_members IS NOT NULL AND $1 = ANY(pending_members)`,
+		[emailLower]
+	);
+	const orgsWithPendingEmail = result.rows.map(transformOrganisation);
+
+	const addedOrgIds: string[] = [];
+
+	for (const org of orgsWithPendingEmail) {
+		try {
+			// Add user to members if not already a member (create new array to avoid mutation)
+			const members = org.members || [];
+			const updatedMembers = members.includes(userId) 
+				? members 
+				: [...members, userId];
+
+			// Remove email from pending_members (normalize for comparison)
+			const pendingMembers = (org.pending_members || []).filter(
+				email => email.toLowerCase() !== emailLower
+			);
+
+			// Ensure member_settings has entry for new member (create new object to avoid mutation)
+			const memberSettings = { ...(org.member_settings || {}) };
+			if (!memberSettings[userId]) {
+				memberSettings[userId] = { role: 'standard' };
+			}
+
+			const updated = await updateOrganisation(org.id, {
+				members: updatedMembers,
+				pending_members: pendingMembers,
+				member_settings: memberSettings,
+			});
+
+			if (updated) {
+				addedOrgIds.push(org.id);
+			} else {
+				console.warn(`Failed to update organisation ${org.id} when processing pending member ${userEmail}`);
+			}
+		} catch (error) {
+			console.error(`Failed to process pending member for org ${org.id}:`, error);
+		}
+	}
+
+	return addedOrgIds;
 }
 
 /**

@@ -21,7 +21,7 @@ import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
-import { getExampleInput, getExampleInputString, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
+import { getExampleInput, getExampleInputString, getFirstSpan, getExampleTraceId, getExampleSpecificMetricText } from '../utils/example-utils';
 
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
@@ -123,6 +123,22 @@ const DatasetDetailsPage: React.FC = () => {
           return (
             <span className="small" title={inputStr}>
               {inputStr || 'N/A'}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'exampleSpecific',
+        header: 'Example Specific',
+        cell: ({ row }) => {
+          const specificText = getExampleSpecificMetricText(row.original);
+          if (!specificText) {
+            return <span className="text-muted">—</span>;
+          }
+          const truncated = getExampleInputString(specificText, 100);
+          return (
+            <span className="small" title={specificText}>
+              {truncated}
             </span>
           );
         },

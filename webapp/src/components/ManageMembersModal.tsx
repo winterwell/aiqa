@@ -36,6 +36,11 @@ export default function ManageMembersModal({
   const queryClient = useQueryClient();
   const [emailInput, setEmailInput] = useState('');
 
+  // Helper to invalidate organisation queries (DRY)
+  const invalidateOrganisation = () => {
+    queryClient.invalidateQueries({ queryKey: ['organisation', organisation.id] });
+  };
+
   // Fetch user details for member IDs
   const memberIds = organisation.members || [];
   const { data: memberUsers } = useQuery({
@@ -56,33 +61,53 @@ export default function ManageMembersModal({
 
   const addMemberMutation = useMutation({
     mutationFn: async (email: string) => {
-      // First, find the user by email
-      const users = await listUsers(`email:${email.trim()}`);
-      if (users.length === 0) {
-        throw new Error(`No user found with email: ${email}`);
-      }
-      const user = users[0];
-
+      const emailLower = email.trim().toLowerCase();
+      
+      // First, try to find the user by email
+      const users = await listUsers(`email:${emailLower}`);
+      
+      // Get current state with defaults (DRY)
       const currentMembers = organisation.members || [];
+      const currentPendingMembers = organisation.pending_members || [];
       const currentMemberSettings = organisation.member_settings || {};
       
-      if (currentMembers.includes(user.id)) {
-        throw new Error('User is already a member of this organisation');
+      if (users.length > 0) {
+        // User exists - add to members
+        const user = users[0];
+        
+        if (currentMembers.includes(user.id)) {
+          throw new Error('User is already a member of this organisation');
+        }
+
+        const updatedMembers = [...currentMembers, user.id];
+        const updatedMemberSettings = {
+          ...currentMemberSettings,
+          [user.id]: currentMemberSettings[user.id] || { role: 'standard' },
+        };
+        
+        // Remove from pending if it was there
+        const updatedPendingMembers = currentPendingMembers.filter(e => e.toLowerCase() !== emailLower);
+
+        return updateOrganisation(organisation.id, {
+          members: updatedMembers,
+          pending_members: updatedPendingMembers,
+          member_settings: updatedMemberSettings,
+        });
+      } else {
+        // User doesn't exist - add to pending_members
+        if (currentPendingMembers.some(e => e.toLowerCase() === emailLower)) {
+          throw new Error('This email is already pending invitation');
+        }
+
+        const updatedPendingMembers = [...currentPendingMembers, emailLower];
+
+        return updateOrganisation(organisation.id, {
+          pending_members: updatedPendingMembers,
+        });
       }
-
-      const updatedMembers = [...currentMembers, user.id];
-      const updatedMemberSettings = {
-        ...currentMemberSettings,
-        [user.id]: currentMemberSettings[user.id] || { role: 'standard' },
-      };
-
-      return updateOrganisation(organisation.id, {
-        members: updatedMembers,
-        member_settings: updatedMemberSettings,
-      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisation', organisation.id] });
+      invalidateOrganisation();
       setEmailInput('');
     },
   });
@@ -110,12 +135,26 @@ export default function ManageMembersModal({
         member_settings: updatedMemberSettings,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisation', organisation.id] });
+    onSuccess: invalidateOrganisation,
+  });
+
+  const removePendingMemberMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const emailLower = email.trim().toLowerCase();
+      const currentPendingMembers = organisation.pending_members || [];
+      const updatedPendingMembers = currentPendingMembers.filter(
+        e => e.toLowerCase() !== emailLower
+      );
+
+      return updateOrganisation(organisation.id, {
+        pending_members: updatedPendingMembers,
+      });
     },
+    onSuccess: invalidateOrganisation,
   });
 
   const members = memberUsers || memberIds.map((id) => ({ id }));
+  const pendingMembers = organisation.pending_members || [];
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,6 +170,12 @@ export default function ManageMembersModal({
     }
     if (window.confirm('Are you sure you want to remove this member?')) {
       removeMemberMutation.mutate(userId);
+    }
+  };
+
+  const handleRemovePendingMember = (email: string) => {
+    if (window.confirm(`Are you sure you want to remove the pending invitation for ${email}?`)) {
+      removePendingMemberMutation.mutate(email);
     }
   };
 
@@ -226,6 +271,49 @@ export default function ManageMembersModal({
             </Alert>
           )}
         </div>
+
+        {pendingMembers.length > 0 && (
+          <div className="mt-4">
+            <h6>Pending Invitations ({pendingMembers.length})</h6>
+            <Alert color="info" className="py-2 mb-3">
+              These users will be automatically added when they sign up.
+            </Alert>
+            <ListGroup>
+              {pendingMembers.map((email: string) => (
+                <ListGroupItem
+                  key={email}
+                  className="d-flex justify-content-between align-items-center"
+                >
+                  <div>
+                    <div>
+                      {email}
+                      <Badge color="warning" className="ms-2">
+                        Pending
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button
+                    color="danger"
+                    size="sm"
+                    onClick={() => handleRemovePendingMember(email)}
+                    disabled={removePendingMemberMutation.isPending}
+                    title="Remove pending invitation"
+                  >
+                    <XIcon size={16} />
+                  </Button>
+                </ListGroupItem>
+              ))}
+            </ListGroup>
+            {removePendingMemberMutation.isError && (
+              <Alert color="danger" className="mt-2 py-2">
+                Failed to remove pending invitation:{' '}
+                {removePendingMemberMutation.error instanceof Error
+                  ? removePendingMemberMutation.error.message
+                  : 'Unknown error'}
+              </Alert>
+            )}
+          </div>
+        )}
       </ModalBody>
       <ModalFooter>
         <Button color="secondary" onClick={handleClose}>

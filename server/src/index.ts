@@ -182,8 +182,12 @@ const start = async () => {
     });
     
     // Register CORS plugin - allow all origins (enables external HTTP clients)
+    // credentials: true is required for requests with Authorization headers
     await fastify.register(cors, {
       origin: true, // Allow requests from any origin
+      credentials: true, // Allow credentials (Authorization headers) in cross-origin requests
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Organisation-Id'],
     });
     
     // Register experiment routes

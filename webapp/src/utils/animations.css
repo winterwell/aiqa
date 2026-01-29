@@ -165,8 +165,6 @@
     background-color: transparent;
     transform: scale(1);
   }
-}
-
-.dataset-nav-animate {
+}.dataset-nav-animate {
   animation: datasetNavPulse 0.3s ease-out;
 }

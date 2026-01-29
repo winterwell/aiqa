@@ -40,6 +40,68 @@ function InputCard({ example }: { example: Example }) {
   );
 }
 
+// MetricCardItem component - reusable card for displaying a single metric
+function MetricCardItem({
+  metric,
+  onEdit,
+  onDelete,
+}: {
+  metric: Metric;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card className="mb-2">
+      <CardBody>
+        <div className="d-flex justify-content-between align-items-start mb-2">
+          <h6 className="mb-0">{metric.name || metric.id}</h6>
+          <div className="d-flex gap-1">
+            <Button color="primary" size="sm" onClick={onEdit}>
+              Edit
+            </Button>
+            <Button color="danger" size="sm" onClick={onDelete}>
+              ×
+            </Button>
+          </div>
+        </div>
+        {metric.description && (
+          <p className="text-muted small mb-1">{metric.description}</p>
+        )}
+        <div className="d-flex gap-2 flex-wrap mb-2">
+          <Badge color="info">{metric.type}</Badge>
+          {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
+        </div>
+        {metric.type === 'llm' && metric.prompt && (
+          <div className="mt-2">
+            <strong className="small d-block mb-1">Prompt:</strong>
+            <pre className="small bg-light p-2 mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {metric.prompt}
+            </pre>
+          </div>
+        )}
+        {metric.type === 'javascript' && metric.code && (
+          <div className="mt-2">
+            <strong className="small d-block mb-1">Code:</strong>
+            <pre className="small bg-light p-2 mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {metric.code}
+            </pre>
+          </div>
+        )}
+        {metric.parameters && Object.keys(metric.parameters).length > 0 && (
+          <details className="mt-2">
+            <summary className="small text-muted" style={{ cursor: 'pointer' }}>
+              Parameters
+            </summary>
+            <pre className="small bg-light p-2 mt-1 mb-0">
+              {JSON.stringify(metric.parameters, null, 2)}
+            </pre>
+          </details>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+
 // MetricsCard component
 function MetricsCard({
   example,
@@ -70,14 +132,30 @@ function MetricsCard({
     return Array.from(metricMap.values());
   }, [datasetMetrics]);
 
-  // Get custom example metrics (not in dataset)
+  // Get custom example metrics (not in dataset, and not the "specific" metric which is shown separately)
   const customExampleMetrics = useMemo(() => {
     if (!example.metrics) return [];
     const metricsArray = asArray(example.metrics) as Metric[];
     if (metricsArray.length === 0) return [];
     const datasetMetricIds = new Set(allDatasetMetrics.map(m => m.id || m.name || ''));
-    return metricsArray.filter(m => !datasetMetricIds.has(m.id || m.name || ''));
+    return metricsArray.filter(m => 
+      m.id !== 'specific' && !datasetMetricIds.has(m.id || m.name || '')
+    );
   }, [example.metrics, allDatasetMetrics]);
+
+  // Get the "specific" metric separately
+  const specificMetric = useMemo(() => {
+    if (!example.metrics) return null;
+    const metricsArray = asArray(example.metrics) as Metric[];
+    return metricsArray.find(m => m.id === 'specific') || null;
+  }, [example.metrics]);
+
+  // Get the index of the specific metric in example.metrics
+  const specificMetricIndex = useMemo(() => {
+    if (!example.metrics || !specificMetric) return -1;
+    const metricsArray = asArray(example.metrics) as Metric[];
+    return metricsArray.findIndex(m => m.id === 'specific');
+  }, [example.metrics, specificMetric]);
 
   const datasetMetricsText = allDatasetMetrics.map(m => m.name || m.id || 'Unknown').join(', ');
 
@@ -95,6 +173,21 @@ function MetricsCard({
             <strong>Dataset metrics:</strong> <span className="text-muted">{datasetMetricsText}</span>
           </div>
         )}
+        {specificMetric && (
+          <div className="mb-3">
+            <strong className="mb-2 d-block">Example Specific:</strong>
+            <MetricCardItem
+              metric={specificMetric}
+              onEdit={() => {
+                onEditMetric(specificMetricIndex, {
+                  ...specificMetric,
+                  name: specificMetric.name || 'Example Specific',
+                });
+              }}
+              onDelete={() => onDeleteMetric(specificMetricIndex)}
+            />
+          </div>
+        )}
         {customExampleMetrics.length > 0 && (
           <div>
             <strong className="mb-2 d-block">Custom metrics on this example:</strong>
@@ -104,59 +197,21 @@ function MetricsCard({
                 (m.id || m.name) === (metric.id || metric.name)
               );
               return (
-                <Card key={index} className="mb-2">
-                  <CardBody>
-                    <div className="d-flex justify-content-between align-items-start mb-2">
-                      <h6 className="mb-0">{metric.name}</h6>
-                      <div className="d-flex gap-1">
-                        <Button
-                          color="primary"
-                          size="sm"
-                          onClick={() => {
-                            onEditMetric(actualIndex, {
-                              name: metric.name,
-                              description: metric.description || '',
-                              unit: metric.unit || '',
-                              type: metric.type,
-                              parameters: metric.parameters || {},
-                            });
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          color="danger"
-                          size="sm"
-                          onClick={() => onDeleteMetric(actualIndex)}
-                        >
-                          ×
-                        </Button>
-                      </div>
-                    </div>
-                    {metric.description && (
-                      <p className="text-muted small mb-1">{metric.description}</p>
-                    )}
-                    <div className="d-flex gap-2 flex-wrap">
-                      <Badge color="info">{metric.type}</Badge>
-                      {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
-                    </div>
-                    {metric.parameters && Object.keys(metric.parameters).length > 0 && (
-                      <details className="mt-2">
-                        <summary className="small text-muted" style={{ cursor: 'pointer' }}>
-                          Parameters
-                        </summary>
-                        <pre className="small bg-light p-2 mt-1 mb-0">
-                          {JSON.stringify(metric.parameters, null, 2)}
-                        </pre>
-                      </details>
-                    )}
-                  </CardBody>
-                </Card>
+                <MetricCardItem
+                  key={index}
+                  metric={metric}
+                  onEdit={() => {
+                    onEditMetric(actualIndex, {
+                      ...metric,
+                    });
+                  }}
+                  onDelete={() => onDeleteMetric(actualIndex)}
+                />
               );
             })}
           </div>
         )}
-        {customExampleMetrics.length === 0 && allDatasetMetrics.length === 0 && (
+        {customExampleMetrics.length === 0 && allDatasetMetrics.length === 0 && !specificMetric && (
           <p className="text-muted">No metrics defined. Click "Add Metric" to create one.</p>
         )}
       </CardBody>
@@ -316,6 +371,14 @@ const ExampleDetailsPage: React.FC = () => {
   });
 
   const handleSaveMetric = (metric: Partial<Metric>) => {
+    // Ensure the metric has id "specific" if we're editing the specific metric
+    if (editingMetricIndex !== null && example?.metrics) {
+      const metricsArray = asArray(example.metrics) as Metric[];
+      const existingMetric = metricsArray[editingMetricIndex];
+      if (existingMetric?.id === 'specific') {
+        metric.id = 'specific';
+      }
+    }
     const metricsArray = asArray(example?.metrics) as Metric[];
     const updatedMetrics = addOrEditMetric(metric, metricsArray);
     updateExampleMutation.mutate({ metrics: updatedMetrics });

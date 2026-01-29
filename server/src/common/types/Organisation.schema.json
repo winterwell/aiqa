@@ -39,6 +39,13 @@
           },
           "type": "array"
         },
+        "pending_members": {
+          "description": "Email addresses of users invited but not yet registered. Auto-added to members when they sign up.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "name": {
           "type": "string"
         },
