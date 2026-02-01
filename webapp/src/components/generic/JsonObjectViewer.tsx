@@ -6,14 +6,20 @@ import ExpandCollapseControl from './ExpandCollapseControl';
 import { truncate } from '../../common/utils/miscutils';
 
 function getMessageContent(json: any): string | null {
-	let baseContent = json.content || (json.choices?.length > 0 ? json.choices[0].message?.content : null);
+	let baseContent = json.content || json.Content || (json.choices?.length > 0 ? json.choices[0].message?.content : null);
 	if ( ! baseContent) return null;
 	// unwrap common chat message formats
 	if (Array.isArray(baseContent) && baseContent.length === 1) {
 		baseContent = baseContent[0];
 	}
-	if (typeof baseContent === "object" && baseContent.type === "text") {
-		baseContent = baseContent.text;
+	if (typeof baseContent === "object") {
+		if (baseContent.type === "text") {
+			return baseContent.text;
+		}
+		// Bedrock Converse format
+		if (baseContent.value || baseContent.Value) {
+			return baseContent.value || baseContent.Value;
+		}
 	}
 	return baseContent;
 }
@@ -29,10 +35,16 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const [expanded, setExpanded] = useState(false);
 	const $copyButton = <CopyButton content={json} logToConsole />
 	let content = getMessageContent(json);
-	
+	let role = json.role || json.Role;
+	// HACK sniff tool use from e.g. Bedrock which uses role:user
+	if (content?.ToolUseId) {
+		role = 'tool';
+	}
 	const otherKVs = { ...json };
 	delete otherKVs.role;
+	delete otherKVs.Role;
 	delete otherKVs.content;
+	delete otherKVs.Content;
 	if (json.choices && json.choices.length === 1 && json.choices[0].message) {
 		delete otherKVs.choices;
 	}
@@ -49,11 +61,11 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 			<div>
 				<b className="ms-2 me-2">Role:</b>
 				<span>
-					{json.role === 'user' && <>🧑 </>}
-					{json.role === 'assistant' && <>🤖 </>}
-					{json.role === 'system' && <>📜 </>}
-					{json.role === 'tool' && <>🛠️ </>}
-					{json.role}
+					{role === 'user' && <>🧑 </>}
+					{role === 'assistant' && <>🤖 </>}
+					{role === 'system' && <>📜 </>}
+					{role === 'tool' && <>🛠️ </>}
+					{role}
 				</span>
 			</div>
 			<span className="ms-auto">{$copyButton}</span>
@@ -91,6 +103,7 @@ function TruncatedText({ text, maxLength, setExpanded }: { text: string, maxLeng
 function isChatMessage(json: any): boolean {
 	if ( ! json) return false;
 	if (json.role && json.content) return true;
+	if (json.Role && json.Content) return true;
 	if (json.role ==="assistant") return true;
 	// HACK is this an LLM chat response? Recognise OpenAI and other common formats
 	if (json.choices && json.choices.length > 0 && json.choices[0].message?.content) {

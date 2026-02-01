@@ -395,11 +395,43 @@ function FullJson({ json }: { json: any }) {
 	  )
 }
 
+function maybeParseJson(suspectedJsonString: unknown): any {
+	if (typeof suspectedJsonString !== 'string') return suspectedJsonString;
+	try {
+		return JSON.parse(suspectedJsonString);
+	} catch (error) {
+		return suspectedJsonString;
+	}
+}
+
+/** Input to show in Span Details: attributes.input, or gen_ai.input.messages when input is unset. */
+function getDisplayInput(attrs: Record<string, unknown> | undefined): any {
+	if (!attrs) return undefined;
+	let input : any = attrs.input;
+	const genaiInputMessages = attrs['gen_ai.input.messages'];
+	if (genaiInputMessages && ! input?.messages) {
+		const messages = maybeParseJson(genaiInputMessages);
+		input = Object.assign({}, input, {messages});
+	} 
+	return input;
+}
+
+function getDisplayOutput(attrs: Record<string, unknown> | undefined): unknown {
+	if (!attrs) return undefined;
+	let output : any = attrs.output;
+	if (attrs['gen_ai.output.messages'] && ! output?.messages) {
+		const messages = maybeParseJson(attrs['gen_ai.output.messages']);
+		output = Object.assign({}, output, {messages});
+	}
+	return output;
+}
+
 function SpanDetails({ span, organisationId, datasets }: { span: Span; organisationId?: string; datasets?: any[] }) {
 	const spanId = getSpanId(span);
 	const spanAny = span as any;
-	const input = spanAny.attributes?.input;
-	const output = spanAny.attributes?.output;
+	const attrs = spanAny.attributes;
+	const input = getDisplayInput(attrs);
+	const output = getDisplayOutput(attrs);
 	const durationMs = getDurationMs(span);
 	const tokenCount = getTotalTokenCount(span);
 	const cost = getCost(span);
@@ -569,6 +601,8 @@ function OtherAttributes({ span }: { span: Span }) {
 	delete attributes2.input;
 	delete attributes2.output;
 	delete attributes2.attributes; // In case of badly nested attributes (which suggests a client bug)
+	delete attributes2['gen_ai.input.messages'];
+	delete attributes2['gen_ai.output.messages'];
 	if (Object.keys(attributes2).length === 0) {
 		return null;
 	}

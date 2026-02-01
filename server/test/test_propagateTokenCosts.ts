@@ -1,13 +1,12 @@
 import tap from 'tap';
 import Span from '../dist/common/types/Span.js';
-import { 
+import {
   propagateTokenCostsToRootSpan,
   getTokenUsage,
   addTokenUsageToSpan,
-  spanIdToHash,
   TokenStats,
-  PropagateTokenCostsDependencies
-} from '../dist/routes/spans.js';
+  PropagateTokenCostsDependencies,
+} from '../dist/routes/server-span-utils.js';
 import SearchQuery from '../dist/common/SearchQuery.js';
 
 /**
@@ -47,7 +46,6 @@ function createTestSpan(
     droppedEventsCount: 0,
     droppedLinksCount: 0,
     starred: false,
-    _seen: [],
     ...(parentId && { parentSpanId: parentId }),
   } as Span;
 }
@@ -105,19 +103,6 @@ tap.test('addTokenUsageToSpan - adds token usage to span', t => {
   t.end();
 });
 
-tap.test('spanIdToHash - converts span ID to hash', t => {
-  const hash1 = spanIdToHash('test-span-id-123');
-  const hash2 = spanIdToHash('test-span-id-123');
-  const hash3 = spanIdToHash('different-id');
-  
-  t.ok(hash1 !== null, 'should return a hash');
-  t.equal(hash1, hash2, 'same ID should produce same hash');
-  t.ok(hash1 !== hash3, 'different IDs should produce different hashes');
-  t.equal(spanIdToHash(undefined), null, 'undefined should return null');
-  t.equal(spanIdToHash(''), null, 'empty string should return null');
-  t.end();
-});
-
 tap.test('propagateTokenCostsToRootSpan - simple parent-child propagation', async t => {
   const child = createTestSpan('child', 'child-span', 'parent', {
     inputTokens: 100,
@@ -140,10 +125,6 @@ tap.test('propagateTokenCostsToRootSpan - simple parent-child propagation', asyn
   t.equal(parentUsage.inputTokens, 110); // 10 + 100
   t.equal(parentUsage.outputTokens, 55); // 5 + 50
   t.equal(parentUsage.cost, 0.0011); // 0.0001 + 0.001
-  
-  // Parent should have child in _seen
-  t.ok((parent as any)._seen.includes(spanIdToHash('child')!), 'parent should have child in _seen');
-  
   t.end();
 });
 
@@ -229,31 +210,26 @@ tap.test('propagateTokenCostsToRootSpan - loads missing parent from database', a
   t.end();
 });
 
-tap.test('propagateTokenCostsToRootSpan - idempotent updates with _seen', async t => {
+tap.test('propagateTokenCostsToRootSpan - parent always set to own + sum(children)', async t => {
   const child = createTestSpan('child', 'child-span', 'parent', {
     inputTokens: 100,
     outputTokens: 50,
     cost: 0.001
   });
-  
+
   const parent = createTestSpan('parent', 'parent-span', undefined, {
     inputTokens: 10,
     outputTokens: 5,
     cost: 0.0001
   });
-  
-  // Mark child as already seen
-  (parent as any)._seen = [spanIdToHash('child')!];
-  
+
   const spans = [child, parent];
-  
+
   await propagateTokenCostsToRootSpan(spans);
-  
-  // Parent should NOT have child's tokens (already processed)
+
   const parentUsage = getTokenUsage(parent);
-  t.equal(parentUsage.inputTokens, 10, 'should not add child tokens if already seen');
-  t.equal(parentUsage.outputTokens, 5, 'should not add child tokens if already seen');
-  
+  t.equal(parentUsage.inputTokens, 110, 'parent = own + child');
+  t.equal(parentUsage.outputTokens, 55, 'parent = own + child');
   t.end();
 });
 
@@ -284,12 +260,59 @@ tap.test('propagateTokenCostsToRootSpan - multiple children', async t => {
   t.equal(parentUsage.inputTokens, 310); // 10 + 100 + 200
   t.equal(parentUsage.outputTokens, 155); // 5 + 50 + 100
   t.ok(Math.abs(parentUsage.cost - 0.0031) < 0.000001, 'cost should be approximately 0.0031'); // 0.0001 + 0.001 + 0.002
-  
-  // Parent should have both children in _seen
-  const seenSet = new Set((parent as any)._seen);
-  t.ok(seenSet.has(spanIdToHash('child1')!), 'should have child1 in _seen');
-  t.ok(seenSet.has(spanIdToHash('child2')!), 'should have child2 in _seen');
-  
+  t.end();
+});
+
+tap.test('propagateTokenCostsToRootSpan - late-arriving batch does not lose earlier counts', async t => {
+  const child1 = createTestSpan('child1', 'child1-span', 'parent', {
+    inputTokens: 100,
+    outputTokens: 50,
+    totalTokens: 150,
+    cost: 0.001
+  });
+  const child2 = createTestSpan('child2', 'child2-span', 'parent', {
+    inputTokens: 200,
+    outputTokens: 100,
+    totalTokens: 300,
+    cost: 0.002
+  });
+  const parent = createTestSpan('parent', 'parent-span', undefined, {
+    inputTokens: 10,
+    outputTokens: 5,
+    totalTokens: 15,
+    cost: 0.0001
+  });
+  await propagateTokenCostsToRootSpan([child1, parent]);
+  const afterBatch1 = getTokenUsage(parent);
+  t.equal(afterBatch1.inputTokens, 110, 'after batch 1: parent = 10 + 100');
+  t.equal(afterBatch1.totalTokens, 165, 'after batch 1: total 15 + 150');
+
+  const mockDeps: PropagateTokenCostsDependencies = {
+    searchSpans: async (_query, _org, _limit, _offset) => ({
+      hits: [{
+        ...parent,
+        attributes: {
+          ...parent.attributes,
+          'gen_ai.usage.input_tokens': 110,
+          'gen_ai.usage.output_tokens': 55,
+          'gen_ai.usage.total_tokens': 165,
+          'gen_ai.cost.usd': 0.0011
+        }
+      }],
+      total: 1
+    }),
+    updateSpan: async (_id, updates) => {
+      Object.assign(parent.attributes, updates?.attributes ?? {});
+      (parent as any)._seen = (updates as any)?._seen ?? [];
+      return parent as Span;
+    }
+  };
+  await propagateTokenCostsToRootSpan([child2], mockDeps);
+  const afterBatch2 = getTokenUsage(parent);
+  t.equal(afterBatch2.inputTokens, 310, 'after late-arriving batch 2: parent = 110 + 200 (earlier counts kept)');
+  t.equal(afterBatch2.outputTokens, 155, 'after batch 2: output 55 + 100');
+  t.equal(afterBatch2.totalTokens, 465, 'after batch 2: total 165 + 300');
+  t.ok(Math.abs(afterBatch2.cost - 0.0031) < 0.000001, 'cost = 0.0011 + 0.002');
   t.end();
 });
 

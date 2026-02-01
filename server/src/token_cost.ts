@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import Span from './common/types/Span.js';
-import { toNumber } from './routes/spans.js';
+import { toNumber } from './routes/server-span-utils.js';
 import {
 	GEN_AI_USAGE_INPUT_TOKENS,
 	GEN_AI_USAGE_OUTPUT_TOKENS,

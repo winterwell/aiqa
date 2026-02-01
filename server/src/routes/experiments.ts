@@ -11,7 +11,7 @@ import { searchExamples, searchSpans } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { scoreMetric } from '../scoring.js';
-import { getTokenUsage } from './spans.js';
+import { getTokenUsage } from './server-span-utils.js';
 import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
 
 interface MetricStats {

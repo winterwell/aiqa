@@ -28,8 +28,8 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   startTime: number;
   /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
   endTime: number;
-  /** internal tracker for child spans that have been processed into this span's token count / cost stats */
-  _seen: number[];
+  /** For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch) */
+  _seen?: number[];
 }
 
 export function getSpanInput(span:Span) {
