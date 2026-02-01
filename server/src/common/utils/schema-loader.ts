@@ -90,6 +90,9 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
   }
 }
 
+/** PostgreSQL limit: tables may have at most 1600 columns. */
+const PG_MAX_COLUMNS = 100; // actual limit is 1600 but > 100 means here would be bogus;
+
 /**
  * Convert PascalCase/camelCase to snake_case
  */
@@ -142,6 +145,14 @@ export function generatePostgresTable(
     columnMap.set(fieldName, columnDef);
   }
   
+  const columnCount = columnMap.size;
+  if (columnCount > PG_MAX_COLUMNS) {
+    const tableName = typeNameToTableName(typeName);
+    throw new Error(
+      `Table ${tableName} (type ${typeName}) would have ${columnCount} columns; PostgreSQL allows at most ${PG_MAX_COLUMNS}. Check that the schema for ${typeName} has a reasonable number of top-level properties.`
+    );
+  }
+
   // Convert map to array of column definitions
   for (const [fieldName, columnDef] of columnMap.entries()) {
     columns.push(`  ${fieldName} ${columnDef}`);
