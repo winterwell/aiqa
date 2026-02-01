@@ -230,10 +230,8 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       reply.code(404).send({ error: 'User not found' });
       return;
     }
-    // Process pending members if email was updated
-    if (emailChanged) {
-      await processPendingMembersForUser(user);
-    }
+    // Process pending members (idempotent); catches invite-after-signup or missed signup-time add
+    await processPendingMembersForUser(user);
     return user;
   });
 

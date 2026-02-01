@@ -10,6 +10,9 @@ import {
   listOrganisations,
   updateOrganisation,
   deleteOrganisation,
+  addOrganisationMemberByEmail,
+  createUser,
+  getUserByEmail,
   createDataset,
   getDataset,
   createExperiment,
@@ -234,6 +237,70 @@ tap.test('full CRUD workflow', async (t) => {
   // Verify deletion
   const retrievedAfterDelete = await getOrganisation(org.id);
   t.equal(retrievedAfterDelete, null, 'organisation should be deleted');
+});
+
+// getUserByEmail (integration, real DB)
+tap.test('getUserByEmail returns user when email exists', async (t) => {
+  const email = `getbyemail-${Date.now()}@example.com`;
+  const created = await createUser({ email, name: 'GetByEmail User' });
+  const found = await getUserByEmail(email);
+  t.ok(found, 'should find user');
+  t.equal(found!.id, created.id, 'should match created user id');
+  t.equal(found!.email, created.email, 'should match email');
+  t.equal(found!.name, created.name, 'should match name');
+});
+
+tap.test('getUserByEmail returns null for non-existent email', async (t) => {
+  const found = await getUserByEmail('no-such-user-' + Date.now() + '@example.com');
+  t.equal(found, null, 'should return null');
+});
+
+tap.test('getUserByEmail is case-insensitive', async (t) => {
+  const base = `case-${Date.now()}`;
+  const email = `${base}@Example.COM`;
+  await createUser({ email, name: 'Case User' });
+  t.ok(await getUserByEmail(email), 'same case should find');
+  t.ok(await getUserByEmail(`${base}@example.com`), 'lowercase should find');
+  t.ok(await getUserByEmail(`${base}@EXAMPLE.COM`), 'uppercase should find');
+});
+
+tap.test('getUserByEmail returns null for empty or invalid input', async (t) => {
+  t.equal(await getUserByEmail(''), null, 'empty string returns null');
+  t.equal(await getUserByEmail('   '), null, 'whitespace-only returns null');
+});
+
+// Add member by email (uses addOrganisationMemberByEmail; same behaviour as POST /organisation/:id/member)
+tap.test('add member by email: existing user added to members', async (t) => {
+  const email = `member-${Date.now()}@example.com`;
+  const user = await createUser({ email, name: 'Member User' });
+  const org = await createOrganisation({ name: 'Org Add Member', members: [] });
+  const result = await addOrganisationMemberByEmail(org.id, email);
+  t.equal(result.kind, 'updated', 'should return updated');
+  t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'org should include user in members');
+  t.ok(result.kind === 'updated' && !(result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'pending_members should not contain email');
+});
+
+tap.test('add member by email: existing user in pending_members is moved to members', async (t) => {
+  const email = `pending-to-member-${Date.now()}@example.com`;
+  const user = await createUser({ email, name: 'Pending To Member' });
+  const org = await createOrganisation({
+    name: 'Org Pending To Member',
+    members: [],
+    pending_members: [email.toLowerCase()],
+  });
+  const result = await addOrganisationMemberByEmail(org.id, email);
+  t.equal(result.kind, 'updated', 'should return updated');
+  t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'user should be in members');
+  t.ok(result.kind === 'updated' && !(result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be removed from pending_members');
+});
+
+tap.test('add member by email: unknown email added to pending_members only', async (t) => {
+  const email = `pending-only-${Date.now()}@example.com`;
+  const org = await createOrganisation({ name: 'Org Pending Only', members: [], pending_members: [] });
+  const result = await addOrganisationMemberByEmail(org.id, email);
+  t.equal(result.kind, 'addedToPending', 'should return addedToPending');
+  t.ok(result.kind === 'addedToPending' && (result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be in pending_members');
+  t.same(result.kind === 'addedToPending' ? result.org.members ?? [] : [], org.members ?? [], 'members should be unchanged');
 });
 
 // Experiment tests

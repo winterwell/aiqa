@@ -6,13 +6,15 @@ import {
   updateOrganisation,
   deleteOrganisation,
   addOrganisationMember,
+  addOrganisationMemberByEmail,
   removeOrganisationMember,
   getOrganisationMembers,
   getOrganisationsForUser,
   getOrganisationAccount,
   getOrganisationAccountByOrganisation,
   createOrganisationAccount,
-  updateOrganisationAccount
+  updateOrganisationAccount,
+  reconcileOrganisationPendingMembers,
 } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin, authenticateWithJwtFromHeader } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
@@ -105,11 +107,12 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
   fastify.get('/organisation/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { id } = request.params as { id: string };
-    const org = await getOrganisation(id);
+    let org = await getOrganisation(id);
     if (!org) {
       reply.code(404).send({ error: 'Organisation not found' });
       return;
     }
+    org = await reconcileOrganisationPendingMembers(org);
     return org;
   });
 
@@ -123,7 +126,8 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       reply.code(401).send({ error: 'User ID not found in authenticated request' });
       return;
     }
-    const orgs = await getOrganisationsForUser(request.userId, searchQuery);
+    let orgs = await getOrganisationsForUser(request.userId, searchQuery);
+    orgs = await Promise.all(orgs.map((org) => reconcileOrganisationPendingMembers(org)));
     return orgs;
   });
 
@@ -160,6 +164,33 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     if (!(await checkOrganisationAdminAccess(request, reply, organisationId))) return;
     const organisation = await addOrganisationMember(organisationId, userId);
     return organisation;
+  });
+
+  // Add member by email: if user exists (case-insensitive), add to members; else add to pending_members.
+  fastify.post('/organisation/:organisationId/member', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    const { organisationId } = request.params as { organisationId: string };
+    if (!(await checkOrganisationAdminAccess(request, reply, organisationId))) return;
+    const body = request.body as { email?: string };
+    const email = typeof body?.email === 'string' ? body.email.trim() : '';
+    if (!email) {
+      reply.code(400).send({ error: 'email is required' });
+      return;
+    }
+    const result = await addOrganisationMemberByEmail(organisationId, email);
+    if (result.kind === 'notFound') {
+      reply.code(404).send({ error: 'Organisation not found' });
+      return;
+    }
+    if (result.kind === 'alreadyMember') {
+      reply.code(400).send({ error: 'User is already a member of this organisation' });
+      return;
+    }
+    if (result.kind === 'alreadyPending') {
+      reply.code(400).send({ error: 'This email is already pending invitation' });
+      return;
+    }
+    return result.org;
   });
 
   // Security: User must be a member of the organisation and have admin role (via member_settings or API key).

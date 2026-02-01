@@ -730,10 +730,24 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       }
     }
 
-    // If query is blank, add parentSpanId:unset to get root spans only
-    const searchQuery = new SearchQuery(query?.trim() || 'parentSpanId:unset');
+    // feedback:positive / feedback:negative in query → resolve to attribute.feedback (trace IDs from feedback spans), then filter root spans
+    let resolvedQ = (query?.trim() || 'parentSpanId:unset');
+    const feedbackValue = SearchQuery.propFromString(resolvedQ, 'feedback');
+    if (feedbackValue === 'positive' || feedbackValue === 'negative') {
+      const thumbsUp = feedbackValue === 'positive';
+      resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
+      const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.thumbs_up:${thumbsUp}`;
+      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['traceId'], undefined);
+      const traceIds = feedbackResult.hits.map((s: Span) => s.traceId).filter(Boolean) as string[];
+      if (traceIds.length === 0) {
+        return { hits: [], total: 0, limit, offset };
+      }
+      const traceIdClause = traceIds.map((id: string) => `traceId:${id}`).join(' OR ');
+      resolvedQ = resolvedQ ? `(${traceIdClause}) AND (${resolvedQ})` : `(${traceIdClause})`;
+    }
 
-    // Pass sourceFields to Elasticsearch for efficient field filtering at the source
+    const searchQuery = new SearchQuery(resolvedQ);
+
     try {
       const result = await searchSpans(searchQuery, organisationId, limit, offset, _source_includes, _source_excludes);
       return {

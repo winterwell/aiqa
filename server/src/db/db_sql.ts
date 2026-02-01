@@ -321,6 +321,20 @@ async function applyMigrations(): Promise<void> {
 		  END IF;
 		END $$;
 	  `);
+	  // Allow NULL in experiments.name (migration: name is optional)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' 
+			AND column_name = 'name' 
+			AND is_nullable = 'NO'
+		  ) THEN
+			ALTER TABLE experiments ALTER COLUMN name DROP NOT NULL;
+		  END IF;
+		END $$;
+	  `);
 	  // add parameters (json object) column to experiments table if it doesn't exist (migration)
 	  await doQuery(`
 		DO $$ 
@@ -744,6 +758,16 @@ export async function listUsers(searchQuery?: SearchQuery | string | null): Prom
 	return listEntities<User>('users', undefined, searchQuery);
 }
 
+/** Find a user by email (case-insensitive). Returns first match or null. */
+export async function getUserByEmail(email: string): Promise<User | null> {
+	if (!email || typeof email !== 'string') return null;
+	const result = await doQuery<User>(
+		'SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+		[email.trim()]
+	);
+	return result.rows[0] || null;
+}
+
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
 	const item: Record<string, any> = {};
 
@@ -818,6 +842,50 @@ export async function deleteApiKey(id: string): Promise<boolean> {
 
 // Organisation Member operations
 
+/** State shape for add-member logic (members, pending_members, member_settings). Matches Organisation fields. */
+type MemberState = {
+	members: string[];
+	member_settings: NonNullable<Organisation['member_settings']>;
+	pending_members: string[];
+};
+
+/**
+ * Pure helper: add userId to members (if not present), optionally remove email from pending_members,
+ * and ensure member_settings[userId] exists with role 'standard'. Used by add-by-email, processPendingMembers, reconcile.
+ */
+function applyMemberAdd(
+	state: MemberState,
+	userId: string,
+	emailToRemove?: string
+): MemberState {
+	const members = state.members.includes(userId)
+		? state.members
+		: [...state.members, userId];
+	const member_settings = { ...state.member_settings };
+	if (!member_settings[userId]) member_settings[userId] = { role: 'standard' as const };
+	const pending_members = emailToRemove
+		? state.pending_members.filter((e) => e.toLowerCase() !== emailToRemove.toLowerCase())
+		: state.pending_members;
+	return { members, member_settings, pending_members };
+}
+
+/**
+ * Returns patch object to add userId to org (and optionally remove email from pending_members).
+ * Idempotent: safe to call when user is already a member.
+ */
+function addMemberToOrganisationPatch(
+	org: Organisation,
+	userId: string,
+	removePendingEmail?: string
+): Partial<Organisation> {
+	const state: MemberState = {
+		members: org.members || [],
+		member_settings: org.member_settings || {},
+		pending_members: org.pending_members || [],
+	};
+	return applyMemberAdd(state, userId, removePendingEmail);
+}
+
 /**
  * @throws Error if organisation not found
  */
@@ -826,18 +894,11 @@ export async function addOrganisationMember(organisationId: string, userId: stri
 	if (!org) {
 		throw new Error('Organisation not found');
 	}
-
-	const members = org.members || [];
-	if (!members.includes(userId)) {
-		members.push(userId);
-		const updated = await updateOrganisation(organisationId, { members });
-		if (!updated) {
-			throw new Error('Failed to update organisation');
-		}
-		return updated;
-	}
-
-	return org;
+	if (org.members?.includes(userId)) return org;
+	const patch = addMemberToOrganisationPatch(org, userId);
+	const updated = await updateOrganisation(organisationId, patch);
+	if (!updated) throw new Error('Failed to update organisation');
+	return updated;
 }
 
 /**
@@ -852,6 +913,43 @@ export async function removeOrganisationMember(organisationId: string, userId: s
 	const members = (org.members || []).filter(id => id !== userId);
 	const updated = await updateOrganisation(organisationId, { members });
 	return updated !== null && members.length < (org.members || []).length;
+}
+
+/**
+ * Add member by email: if user exists (case-insensitive), add to members and remove from pending;
+ * otherwise add email to pending_members only.
+ * @returns Discriminated result for the route to map to responses.
+ */
+export async function addOrganisationMemberByEmail(
+	organisationId: string,
+	email: string
+): Promise<
+	| { kind: 'updated'; org: Organisation }
+	| { kind: 'alreadyMember' }
+	| { kind: 'alreadyPending' }
+	| { kind: 'addedToPending'; org: Organisation }
+	| { kind: 'notFound' }
+> {
+	const org = await getOrganisation(organisationId);
+	if (!org) return { kind: 'notFound' };
+	const emailLower = (email || '').trim().toLowerCase();
+	if (!emailLower) return { kind: 'notFound' };
+
+	const existingUser = await getUserByEmail(email);
+	if (existingUser) {
+		if (org.members?.includes(existingUser.id)) return { kind: 'alreadyMember' };
+		const patch = addMemberToOrganisationPatch(org, existingUser.id, emailLower);
+		const updated = await updateOrganisation(organisationId, patch);
+		return { kind: 'updated', org: updated ?? org };
+	}
+
+	if ((org.pending_members || []).some((e) => e.toLowerCase() === emailLower)) {
+		return { kind: 'alreadyPending' };
+	}
+	const updated = await updateOrganisation(organisationId, {
+		pending_members: [...(org.pending_members || []), emailLower],
+	});
+	return { kind: 'addedToPending', org: updated ?? org };
 }
 
 /**
@@ -887,6 +985,7 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 
 	// Find all organisations with this email in pending_members using SQL query (more efficient than loading all)
 	// Handle NULL/empty arrays by checking array is not null and contains the email
+	// Assume: email normalisation (eg lowercase) is already done 
 	const result = await doQuery<Organisation>(
 		`SELECT * FROM organisations WHERE pending_members IS NOT NULL AND $1 = ANY(pending_members)`,
 		[emailLower]
@@ -897,28 +996,8 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 
 	for (const org of orgsWithPendingEmail) {
 		try {
-			// Add user to members if not already a member (create new array to avoid mutation)
-			const members = org.members || [];
-			const updatedMembers = members.includes(userId) 
-				? members 
-				: [...members, userId];
-
-			// Remove email from pending_members (normalize for comparison)
-			const pendingMembers = (org.pending_members || []).filter(
-				email => email.toLowerCase() !== emailLower
-			);
-
-			// Ensure member_settings has entry for new member (create new object to avoid mutation)
-			const memberSettings = { ...(org.member_settings || {}) };
-			if (!memberSettings[userId]) {
-				memberSettings[userId] = { role: 'standard' };
-			}
-
-			const updated = await updateOrganisation(org.id, {
-				members: updatedMembers,
-				pending_members: pendingMembers,
-				member_settings: memberSettings,
-			});
+			const patch = addMemberToOrganisationPatch(org, userId, emailLower);
+			const updated = await updateOrganisation(org.id, patch);
 
 			if (updated) {
 				addedOrgIds.push(org.id);
@@ -931,6 +1010,35 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 	}
 
 	return addedOrgIds;
+}
+
+/**
+ * Reconcile pending_members with actual users: any email in pending_members that has a user
+ * is moved to members and removed from pending. Fixes the case where a user signed up after
+ * being invited but processPendingMembers did not run (e.g. race or different auth path).
+ */
+export async function reconcileOrganisationPendingMembers(org: Organisation): Promise<Organisation> {
+	const pending = org.pending_members || [];
+	if (pending.length === 0) return org;
+
+	let state: MemberState = {
+		members: org.members || [],
+		member_settings: org.member_settings || {},
+		pending_members: [...pending],
+	};
+	let changed = false;
+
+	for (const email of pending) {
+		const user = await getUserByEmail(email);
+		if (user && !state.members.includes(user.id)) {
+			state = applyMemberAdd(state, user.id, email);
+			changed = true;
+		}
+	}
+	if (!changed) return org;
+
+	const updated = await updateOrganisation(org.id, state);
+	return updated ?? org;
 }
 
 /**

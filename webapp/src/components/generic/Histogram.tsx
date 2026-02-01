@@ -1,5 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { prettyNumber } from '../../utils/span-utils';
 
 export type HistogramDataPoint = {
 	bin: string;
@@ -78,7 +79,7 @@ export default function Histogram({
 	data, 
 	numBins = 8, 
 	width = "100%",
-	height = 300,
+	height = 200,
 	xAxisLabel,
 	yAxisLabel = 'Count',
 	horizontalLabels = false,
@@ -90,16 +91,19 @@ export default function Histogram({
 	if (histogramData.length === 0) {
 		return null;
 	}
+	if ( ! tickFormatter) {
+		tickFormatter = (value) => prettyNumber(value);
+	}
 
 	return (
 		<ResponsiveContainer width={width} height={height}>
-			<BarChart data={histogramData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+			<BarChart data={histogramData} >
 				<CartesianGrid strokeDasharray="3 3" />
 				<XAxis 
 					dataKey="bin" 
 					angle={horizontalLabels ? 0 : -45}
 					textAnchor={horizontalLabels ? 'middle' : 'end'}
-					height={horizontalLabels ? 30 : 80}
+					height={horizontalLabels ? 30 : 30}
 					interval={0}
 					tick={{ fontSize: 10 }}
 					label={xAxisLabel ? { value: xAxisLabel, position: 'insideBottom', offset: -5 } : undefined}

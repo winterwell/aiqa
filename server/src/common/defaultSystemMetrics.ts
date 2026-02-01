@@ -37,3 +37,11 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
   },
 ];
 
+export const SPECIFIC_METRIC: Metric = {
+  id: 'specific',
+  name: 'Example Specific',
+  description: 'Output rules for this example',
+  unit: 'string',
+  type: 'llm',
+};
+

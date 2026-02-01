@@ -1,5 +1,6 @@
 import type { Example, Span } from '../common/types';
 import { getTraceId as getSpanTraceId } from './span-utils';
+import { SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
 
 /**
  * Get the first span from an Example, or return the example itself if it has span-like fields.
@@ -77,25 +78,21 @@ export function getExampleInputString(input: any, maxLength: number = 100): stri
  * Returns the prompt (for LLM type) or code (for javascript type), or empty string if not found.
  */
 export function getExampleSpecificMetricText(example: Example): string {
+  return getExampleMetricDisplayText(example, SPECIFIC_METRIC.id);
+}
+
+/**
+ * Get display text for a metric on an example by metric id.
+ * Returns prompt (LLM), code (javascript), or empty string if not found.
+ */
+export function getExampleMetricDisplayText(example: Example, metricId: string): string {
   if (!example.metrics || !Array.isArray(example.metrics)) {
     return '';
   }
-  
-  const specificMetric = example.metrics.find(m => m.id === 'specific');
-  if (!specificMetric) {
-    return '';
-  }
-  
-  // For LLM type, return prompt
-  if (specificMetric.type === 'llm' && specificMetric.prompt) {
-    return specificMetric.prompt;
-  }
-  
-  // For javascript type, return code
-  if (specificMetric.type === 'javascript' && specificMetric.code) {
-    return specificMetric.code;
-  }
-  
+  const metric = example.metrics.find(m => m.id === metricId);
+  if (!metric) return '';
+  if (metric.type === 'llm' && metric.prompt) return metric.prompt;
+  if (metric.type === 'javascript' && metric.code) return metric.code;
   return '';
 }
 

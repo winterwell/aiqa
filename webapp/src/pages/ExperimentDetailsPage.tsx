@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
+import { Container, Row, Col } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getExperiment, getDataset, deleteExperiment } from '../api';
 import { Experiment, Dataset } from '../common/types';
 import TableUsingAPI from '../components/generic/TableUsingAPI';
-import CopyButton from '../components/generic/CopyButton';
 import { useToast } from '../utils/toast';
 import ExperimentDetailsDashboard from '../components/ExperimentDetailsDashboard';
-import PropInput from '../components/generic/PropInput';
+import NameAndDeleteHeader from '../components/generic/NameAndDeleteHeader';
+import Page from '../components/generic/Page';
+import Spinner from '../components/generic/Spinner';
 import type { ExtendedColumnDef } from '../components/generic/TableUsingAPI';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { getMetricValue } from '../utils/metric-utils';
@@ -23,7 +24,6 @@ const ExperimentDetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const { data: experiment, isLoading, error } = useQuery({
     queryKey: ['experiment', experimentId],
@@ -42,7 +42,6 @@ const ExperimentDetailsPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['experiments', organisationId] });
       queryClient.invalidateQueries({ queryKey: ['experiment', experimentId] });
-      setDeleteModalOpen(false);
       showToast('Experiment deleted successfully', 'success');
       navigate(`/organisation/${organisationId}/dataset/${datasetId}`);
     },
@@ -163,11 +162,7 @@ const ExperimentDetailsPage: React.FC = () => {
   if (isLoading) {
     return (
       <Container>
-        <div className="text-center">
-          <div className="spinner-border" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+        <Spinner centered />
       </Container>
     );
   }
@@ -187,74 +182,38 @@ const ExperimentDetailsPage: React.FC = () => {
   }
 
   return (
-    <Container className="mt-4">
-      <Row>
-        <Col>
-          <Link
-            to={`/organisation/${organisationId}/dataset/${datasetId}`}
-            className="btn btn-link mb-3"
-          >
-            ← Back to Dataset
-          </Link>
-          <div className="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <h1 className="mb-0">Experiment: <PropInput item={experiment} prop="name" label="" inline /></h1>
-            </div>
-            <Button
-              color="danger"
-              size="sm"
-              onClick={() => setDeleteModalOpen(true)}
-              className="ms-3"
-            >
-              Delete
-            </Button>
-          </div>
-          <p className="text-muted">
-            Experiment ID: <code>{experiment.id}</code> <CopyButton content={experiment.id} showToast={showToast} />
-          </p>
-          {dataset && (
-            <p className="text-muted">
+    <Page
+      header={
+        <NameAndDeleteHeader
+          label="Experiment"
+          item={experiment}
+          handleDelete={async () => {
+            await deleteExperimentMutation.mutateAsync();
+          }}
+        />
+      }
+      back={`/organisation/${organisationId}/experiments`}
+      backLabel="Experiments List"
+      item={experiment}
+    >
+      {dataset && (
+        <Row>
+          <Col>
+            <p className="text-muted mb-0">
               Dataset: <Link to={`/organisation/${organisationId}/dataset/${datasetId}`}>{dataset.name || datasetId}</Link>
             </p>
-          )}
-          <p>
-            <strong>Created:</strong> {new Date(experiment.created).toLocaleString()}
-          </p>
-    
-        </Col>
-      </Row>
+          </Col>
+        </Row>
+      )}
 
-	<ExperimentDetailsDashboard experiment={experiment} />
+      <ExperimentDetailsDashboard experiment={experiment} />
 
-		<TableUsingAPI 
-			data={{ hits: experiment.results || [] }} 
-			columns={columns}
-			queryKeyPrefix={['experiment-results', organisationId, experimentId]}
-		/>
-
-      {/* Delete Confirmation Modal */}
-      <Modal isOpen={deleteModalOpen} toggle={() => setDeleteModalOpen(false)}>
-        <ModalHeader toggle={() => setDeleteModalOpen(false)}>
-          Delete Experiment
-        </ModalHeader>
-        <ModalBody>
-          <p>Are you sure you want to delete this experiment?</p>
-          <p className="text-danger">This action cannot be undone.</p>
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            color="danger"
-            onClick={() => deleteExperimentMutation.mutate()}
-            disabled={deleteExperimentMutation.isPending}
-          >
-            {deleteExperimentMutation.isPending ? 'Deleting...' : 'Delete'}
-          </Button>
-          <Button color="secondary" onClick={() => setDeleteModalOpen(false)}>
-            Cancel
-          </Button>
-        </ModalFooter>
-      </Modal>
-    </Container>
+      <TableUsingAPI
+        data={{ hits: experiment.results || [] }}
+        columns={columns}
+        queryKeyPrefix={['experiment-results', organisationId, experimentId]}
+      />
+    </Page>
   );
 };
 

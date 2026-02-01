@@ -8,17 +8,17 @@ interface LogoProps {
 
 /**
  * AIQA Logo Component
- * Displays the logo from aiqa-badge.svg with optional text
+ * Displays the logo from common/icons/aiqa-badge.svg with optional text
  */
 const Logo: React.FC<LogoProps> = ({ size = 48, showText = true, className = '' }) => {
-  // aiqa-badge.svg has viewBox="0 0 200 200" (1:1 aspect ratio)
+  // common/icons/aiqa-badge.svg has viewBox="0 0 200 200" (1:1 aspect ratio)
   // Calculate height to maintain aspect ratio
   const height = size;
   
   return (
     <div className={`d-flex align-items-center ${className}`} style={{ gap: '12px' }}>
       <img
-        src="/aiqa-badge.svg"
+        src="/common/icons/aiqa-badge.svg"
         alt="AIQA Logo"
         width={size}
         height={height}

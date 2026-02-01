@@ -75,6 +75,14 @@ export async function updateOrganisation(id: string, updates: Partial<{
 	});
 }
 
+/** Add member by email: server looks up user (case-insensitive) and adds to members or pending. */
+export async function addOrganisationMemberByEmail(organisationId: string, email: string) {
+	return fetchWithAuth(`/organisation/${organisationId}/member`, {
+		method: 'POST',
+		body: JSON.stringify({ email: email.trim() }),
+	});
+}
+
 // OrganisationAccount endpoints
 export async function getOrganisationAccount(organisationId: string) {
 	return fetchWithAuth(`/organisation/${organisationId}/account`);

@@ -7,35 +7,19 @@ import { Users as UsersIcon } from '@phosphor-icons/react';
 import { getOrganisation, getOrCreateUser, listOrganisations, getUser, getOrganisationAccount } from '../api';
 import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
 import ManageMembersModal from '../components/ManageMembersModal';
+import Organisation from '../common/types/Organisation';
 
 const OrganisationPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
   const { user: auth0User } = useAuth0();
-  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
-
+ 
   const { data: organisation, isLoading, error } = useQuery({
     queryKey: ['organisation', organisationId],
     queryFn: () => getOrganisation(organisationId!),
     enabled: !!organisationId,
   });
 
-  // Fetch user details for member IDs
-  const memberIds = organisation?.members || [];
-  const { data: memberUsers, isLoading: isLoadingMembers } = useQuery({
-    queryKey: ['users-by-ids', memberIds.join(',')],
-    queryFn: async () => {
-      if (memberIds.length === 0) return [];
-      const userPromises = memberIds.map(async (id) => {
-        try {
-          return await getUser(id);
-        } catch {
-          return { id, email: undefined, name: undefined };
-        }
-      });
-      return Promise.all(userPromises);
-    },
-    enabled: !!organisation && memberIds.length > 0,
-  });
+  
 
   const { data: dbUser, isLoading: isLoadingUser } = useQuery({
     queryKey: ['user', auth0User?.email],
@@ -172,7 +156,38 @@ const OrganisationPage: React.FC = () => {
       </Row>
       <Row className="mt-4">
         <Col md={6}>
-          <Card>
+          <MembersCard organisation={organisation} />
+        </Col>
+      </Row>
+
+      
+    </Container>
+  );
+};
+
+
+function MembersCard({ organisation }: { organisation: Organisation}) {
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
+// Fetch user details for member IDs
+const memberIds = organisation?.members || [];
+const pendingMemberEmails = organisation?.pending_members || [];
+const { data: memberUsers, isLoading: isLoadingMembers } = useQuery({
+  queryKey: ['users-by-ids', memberIds.join(',')],
+  queryFn: async () => {
+    if (memberIds.length === 0) return [];
+    const userPromises = memberIds.map(async (id) => {
+      try {
+        return await getUser(id);
+      } catch {
+        return { id, email: undefined, name: undefined };
+      }
+    });
+    return Promise.all(userPromises);
+  },
+  enabled: !!organisation && memberIds.length > 0,
+});
+
+  return <><Card>
             <CardHeader className="d-flex justify-content-between align-items-center">
               <h5>Members</h5>
               <Button color="primary" size="sm" onClick={() => setIsMembersModalOpen(true)}>
@@ -188,42 +203,47 @@ const OrganisationPage: React.FC = () => {
                   No members yet. Click "Manage Members" to add members.
                 </Alert>
               ) : (
-                <ListGroup flush>
+                <><ListGroup flush>
                   {memberUsers.map((member: { id: string; email?: string; name?: string }) => {
                     const memberSettings = organisation.member_settings?.[member.id];
                     return (
                       <ListGroupItem key={member.id}>
                         <div>
-                          <div>
                             {member.name || member.email || 'Unknown'}
-                            {member.email && member.name && (
+                            {member.email && (
                               <span className="text-muted ms-2">({member.email})</span>
                             )}
                             {memberSettings && (
                               <span className="badge bg-secondary ms-2">{memberSettings.role}</span>
                             )}
-                          </div>
                         </div>
                       </ListGroupItem>
                     );
                   })}
                 </ListGroup>
+                <ListGroup flush>
+                  {pendingMemberEmails?.length > 0 && <h6>Pending Members</h6>}
+                  {pendingMemberEmails.map((email: string) => (
+                    <ListGroupItem key={email}>
+                      <div>
+                      {email}
+                      </div>
+                    </ListGroupItem>
+                  ))}
+                </ListGroup>
+                </>
               )}
             </CardBody>
+            
           </Card>
-        </Col>
-      </Row>
-
-      {organisation && (
-        <ManageMembersModal
-          isOpen={isMembersModalOpen}
-          toggle={() => setIsMembersModalOpen(false)}
-          organisation={organisation}
-        />
-      )}
-    </Container>
-  );
-};
+          {organisation && (
+            <ManageMembersModal
+              isOpen={isMembersModalOpen}
+              toggle={() => setIsMembersModalOpen(false)}
+              organisation={organisation}
+            />
+          )}</>
+}
 
 export default OrganisationPage;
 

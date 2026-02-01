@@ -14,7 +14,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { XIcon, UserPlusIcon } from '@phosphor-icons/react';
 import Organisation from '../common/types/Organisation';
-import { listUsers, updateOrganisation, getUser } from '../api';
+import { addOrganisationMemberByEmail, updateOrganisation, getUser } from '../api';
 
 interface User {
   id: string;
@@ -61,50 +61,8 @@ export default function ManageMembersModal({
 
   const addMemberMutation = useMutation({
     mutationFn: async (email: string) => {
-      const emailLower = email.trim().toLowerCase();
-      
-      // First, try to find the user by email
-      const users = await listUsers(`email:${emailLower}`);
-      
-      // Get current state with defaults (DRY)
-      const currentMembers = organisation.members || [];
-      const currentPendingMembers = organisation.pending_members || [];
-      const currentMemberSettings = organisation.member_settings || {};
-      
-      if (users.length > 0) {
-        // User exists - add to members
-        const user = users[0];
-        
-        if (currentMembers.includes(user.id)) {
-          throw new Error('User is already a member of this organisation');
-        }
-
-        const updatedMembers = [...currentMembers, user.id];
-        const updatedMemberSettings = {
-          ...currentMemberSettings,
-          [user.id]: currentMemberSettings[user.id] || { role: 'standard' },
-        };
-        
-        // Remove from pending if it was there
-        const updatedPendingMembers = currentPendingMembers.filter(e => e.toLowerCase() !== emailLower);
-
-        return updateOrganisation(organisation.id, {
-          members: updatedMembers,
-          pending_members: updatedPendingMembers,
-          member_settings: updatedMemberSettings,
-        });
-      } else {
-        // User doesn't exist - add to pending_members
-        if (currentPendingMembers.some(e => e.toLowerCase() === emailLower)) {
-          throw new Error('This email is already pending invitation');
-        }
-
-        const updatedPendingMembers = [...currentPendingMembers, emailLower];
-
-        return updateOrganisation(organisation.id, {
-          pending_members: updatedPendingMembers,
-        });
-      }
+      // Server does lookup (case-insensitive) and adds to members or pending
+      return addOrganisationMemberByEmail(organisation.id, email);
     },
     onSuccess: () => {
       invalidateOrganisation();

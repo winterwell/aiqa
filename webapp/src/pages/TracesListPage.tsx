@@ -5,6 +5,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useQueryClient } from '@tanstack/react-query';
 import { searchSpans } from '../api';
 import { Span } from '../common/types';
+import { propFromString, setPropInString } from '../common/SearchQuery';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
 import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost, getSpanId, durationString, formatCost, prettyNumber } from '../utils/span-utils';
@@ -115,9 +116,19 @@ const TracesListPage: React.FC = () => {
     return '';
   });
   
-  // Get search query from URL params
+  // Get search query from URL params (may include feedback:positive / feedback:negative; server maps to attribute.feedback)
   const searchQuery = searchParams.get('search') || '';
   const [searchInput, setSearchInput] = useState<string>(searchQuery);
+
+  const setSearchWithFeedback = (feedback: 'positive' | 'negative' | null) => {
+    const newSearch = setPropInString(searchQuery, 'feedback', feedback ?? null);
+    const next = new URLSearchParams(searchParams);
+    if (newSearch) next.set('search', newSearch);
+    else next.delete('search');
+    setSearchParams(next, { replace: true });
+  };
+  const fb = propFromString(searchQuery, 'feedback');
+  const feedbackInSearch = (fb === 'positive' || fb === 'negative') ? fb : null;
   
   // Update URL params when date filter changes
   const updateDateFilter = (type: DateFilterType, since?: string, until?: string) => {
@@ -179,24 +190,13 @@ const TracesListPage: React.FC = () => {
     return parts.length > 0 ? parts.join(' AND ') : '';
   };
 
-  // Main loadData function
+  // Main loadData function (server handles feedback:positive/negative in search as attribute.feedback)
   const loadData = async (query: string): Promise<PageableData<Span>> => {
-    // Build combined query with date filter and search query
     const dateFilter = buildDateFilterQuery();
     const parts: string[] = [];
-    
-    if (query) {
-      parts.push(`(${query})`);
-    }
-    
-    if (searchQuery) {
-      parts.push(`(${searchQuery})`);
-    }
-    
-    if (dateFilter) {
-      parts.push(`(${dateFilter})`);
-    }
-    
+    if (query) parts.push(`(${query})`);
+    if (searchQuery) parts.push(`(${searchQuery})`);
+    if (dateFilter) parts.push(`(${dateFilter})`);
     const combinedQuery = parts.length > 0 ? parts.join(' AND ') : '';
     
     // Load root spans with required attributes directly
@@ -402,7 +402,31 @@ const TracesListPage: React.FC = () => {
       },
       {
         id: 'feedback',
-        header: 'Feedback',
+        header: () => (
+          <span>
+            Feedback{' '}
+            <span
+              className={`small ${feedbackInSearch === null ? 'fw-bold' : 'text-muted'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSearchWithFeedback(null)}
+              title="Show all"
+            >All</span>
+            {' · '}
+            <span
+              className={`small ${feedbackInSearch === 'positive' ? 'fw-bold text-success' : 'text-muted'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSearchWithFeedback(feedbackInSearch === 'positive' ? null : 'positive')}
+              title={feedbackInSearch === 'positive' ? 'Clear filter' : 'Filter: thumbs up only'}
+            >👍</span>
+            {' · '}
+            <span
+              className={`small ${feedbackInSearch === 'negative' ? 'fw-bold text-danger' : 'text-muted'}`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSearchWithFeedback(feedbackInSearch === 'negative' ? null : 'negative')}
+              title={feedbackInSearch === 'negative' ? 'Clear filter' : 'Filter: thumbs down only'}
+            >👎</span>
+          </span>
+        ),
         accessorFn: (row) => {
           // Sort: no feedback (0) < negative (1) < neutral (2) < positive (3)
           const traceId = getTraceId(row);
@@ -423,8 +447,22 @@ const TracesListPage: React.FC = () => {
           }
           return (
             <span>
-              {feedback.type === 'positive' && <span className="text-success">👍</span>}
-              {feedback.type === 'negative' && <span className="text-danger">👎</span>}
+              {feedback.type === 'positive' && (
+                <span
+                  className={`text-success ${feedbackInSearch === 'positive' ? 'opacity-100' : ''}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(e) => { e.stopPropagation(); setSearchWithFeedback(feedbackInSearch === 'positive' ? null : 'positive'); }}
+                  title={feedbackInSearch === 'positive' ? 'Clear filter: thumbs up' : 'Filter: thumbs up'}
+                >👍</span>
+              )}
+              {feedback.type === 'negative' && (
+                <span
+                  className={`text-danger ${feedbackInSearch === 'negative' ? 'opacity-100' : ''}`}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(e) => { e.stopPropagation(); setSearchWithFeedback(feedbackInSearch === 'negative' ? null : 'negative'); }}
+                  title={feedbackInSearch === 'negative' ? 'Clear filter: thumbs down' : 'Filter: thumbs down'}
+                >👎</span>
+              )}
               {feedback.type === 'neutral' && <span className="text-muted">○</span>}
               {feedback.comment && (
                 <span className="ms-2" title={feedback.comment}>
@@ -483,7 +521,7 @@ const TracesListPage: React.FC = () => {
         enableSorting: true,
       },
     ],
-    [organisationId, feedbackMap]
+    [organisationId, feedbackMap, feedbackInSearch, searchParams]
   );
 
   // Handle custom date changes

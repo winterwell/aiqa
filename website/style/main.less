@@ -1,11 +1,7 @@
 // AIQA Custom Styles
 // Bootstrap-based with some pizzazz
 
-@primary: #0d6efd;
-@success: #198754;
-@info: #0dcaf0;
-@warning: #ffc107;
-@danger: #dc3545;
+@import "colours.less";
 
 // Hero section
 .hero-section {
@@ -62,8 +58,8 @@
 pre {
 	border-radius: 0.375rem;
 	padding: 1rem;
-	background-color: #1e1e1e;
-	color: #d4d4d4;
+	background-color: @neutral-code-bg;
+	color: @neutral-code-fg;
 	font-size: 0.9rem;
 	line-height: 1.5;
 	overflow-x: auto;
@@ -114,7 +110,7 @@ code {
 
 // Footer
 footer {
-	background: linear-gradient(135deg, #212529 0%, #343a40 100%);
+	background: linear-gradient(135deg, @neutral-footer-from 0%, @neutral-footer-to 100%);
 }
 
 // Print styles
@@ -131,7 +127,7 @@ footer {
 	}
 	
 	.card {
-		border: 1px solid #ddd;
+		border: 1px solid @neutral-border;
 		box-shadow: none;
 	}
 }
@@ -371,7 +367,7 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-	background: #f1f1f1;
+	background: @neutral-light-bg;
 }
 
 ::-webkit-scrollbar-thumb {

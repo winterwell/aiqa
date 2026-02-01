@@ -55,6 +55,10 @@ class SearchQuery {
 	static and: (sq1: SearchQuery | string | null, sq2: SearchQuery | string | null) => SearchQuery | null;
 	static remove: (sq1: SearchQuery | string | null, sq2: SearchQuery | string | null) => SearchQuery | null;
 	static str: (sq: SearchQuery | null | undefined) => string;
+	/** Get value for key from a query string, or null if not present. */
+	static propFromString: (queryString: string, key: string) => string | null;
+	/** Set or remove key:value in a query string. Returns new query string. If value is null/undefined/empty, removes any existing key:value for that key. */
+	static setPropInString: (queryString: string, key: string, value?: string | boolean | null) => string;
 
 	/**
 	 * 
@@ -363,6 +367,25 @@ SearchQuery.remove = (sq1: SearchQuery | string | null, sq2: SearchQuery | strin
  */
 SearchQuery.str = (sq: SearchQuery | null | undefined): string => sq? sq.query : '';
 
+
+/**
+ * Get the value for a key from a query string, or null if not present.
+ */
+SearchQuery.propFromString = (queryString: string, key: string): string | null => {
+	return SearchQuery.prop(new SearchQuery(queryString || ''), key);
+};
+
+
+/**
+ * Set or remove a key:value in a query string. Returns the new query string.
+ * If value is null/undefined/empty, removes any existing key:value for that key.
+ */
+SearchQuery.setPropInString = (queryString: string, key: string, value?: string | boolean | null): string => {
+	return SearchQuery.str(SearchQuery.setProp(queryString || '', key, value));
+};
+
+export const propFromString = SearchQuery.propFromString;
+export const setPropInString = SearchQuery.setPropInString;
 
 /**
  * Convert a parse tree back into a query string

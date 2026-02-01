@@ -1,178 +1,184 @@
-import React, { useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Input, Table, Button, Form, FormGroup, Label, Alert } from 'reactstrap';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listExperiments, createExperiment, listDatasets } from '../api';
-import { Experiment } from '../common/types';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import React, { useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Container, Row, Col } from 'reactstrap';
+import { useQuery } from '@tanstack/react-query';
+import { listExperiments, listDatasets } from '../api';
+import type Experiment from '../common/types/Experiment';
 import ExperimentsListMetricsDashboard from '../components/ExperimentListMetricsDashboard';
+import TableUsingAPI, { ExtendedColumnDef, PageableData } from '../components/generic/TableUsingAPI';
 import A from '../components/generic/A';
-import Spinner from '../components/generic/Spinner';
+import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
+
+function getMetricMean(exp: Experiment, metricId: string): number | null {
+  const summary = exp.summary_results || {};
+  const v = summary[metricId];
+  if (v == null || typeof v !== 'object') return typeof v === 'number' && isFinite(v) ? v : null;
+  const n = v.mean ?? v.avg ?? v.average ?? v.median;
+  return n != null && isFinite(n) ? Number(n) : null;
+}
+
+function getOverallScore(exp: Experiment): number | null {
+  const summary = exp.summary_results || {};
+  const overallScore = summary['Overall Score'];
+  return overallScore?.mean ?? overallScore?.avg ?? overallScore?.average ?? null;
+}
 
 const ExperimentsListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [searchQuery, setSearchQuery] = useState('');
 
-  const { data: experiments, isLoading, error } = useQuery({
-    queryKey: ['experiments', organisationId, searchQuery],
-    queryFn: () => listExperiments(organisationId!, searchQuery || undefined),
+  const { data: experimentsForDashboard } = useQuery({
+    queryKey: ['experiments', organisationId, 'dashboard'],
+    queryFn: () => listExperiments(organisationId!, undefined),
     enabled: !!organisationId,
   });
+  const { data: datasets } = useQuery({
+    queryKey: ['datasets', organisationId],
+    queryFn: () => listDatasets(organisationId!),
+    enabled: !!organisationId,
+  });
+  const datasetNameById = useMemo(() => {
+    if (!datasets || !Array.isArray(datasets)) return new Map<string, string>();
+    return new Map(datasets.map((d: { id: string; name: string }) => [d.id, d.name]));
+  }, [datasets]);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
+  const loadData = async (query: string): Promise<PageableData<Experiment>> => {
+    const hits = await listExperiments(organisationId!, query || undefined);
+    return { hits: Array.isArray(hits) ? hits : [], total: Array.isArray(hits) ? hits.length : 0 };
   };
 
-  // Extract metrics from experiments for charting
-  const chartData = useMemo(() => {
-    if (!experiments || experiments.length === 0) return [];
-    
-    // Sort experiments by created date
-    const sortedExperiments = [...experiments].sort(
-      (a, b) => new Date(a.created).getTime() - new Date(b.created).getTime()
-    );
-    
-    return sortedExperiments.map((exp: Experiment, index: number) => {
-      const date = new Date(exp.created);
-      // Use consistent date format with time to distinguish between experiments on same day
-      const dateLabel = date.toLocaleString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
-      const summary = exp.summary_results || {};
-      
-      // Extract common metrics from summary_results
-      // Handle various possible structures
-      return {
-        name: dateLabel,
-        latency: summary.latency || summary.avg_latency || summary.mean_latency || null,
-        cost: summary.cost || summary.avg_cost || summary.total_cost || null,
-        quality: summary.quality || summary.quality_score || summary.avg_quality || null,
-        experimentId: exp.id,
-        created: exp.created
-      };
-    });
-  }, [experiments]);
-
-  // Check if we have any metrics to display
-  const hasLatency = chartData.some(d => d.latency !== null && d.latency !== undefined);
-  const hasCost = chartData.some(d => d.cost !== null && d.cost !== undefined);
-  const hasQuality = chartData.some(d => d.quality !== null && d.quality !== undefined);
-  const hasAnyMetrics = hasLatency || hasCost || hasQuality;
-
-  // Calculate column width based on number of metrics displayed
-  const getChartColumnWidth = () => {
-    const metricsCount = [hasLatency, hasCost, hasQuality].filter(Boolean).length;
-    if (metricsCount <= 1) return 12;
-    if (metricsCount === 2) return 6;
-    return 4; // 3 metrics
-  };
-  const chartColWidth = getChartColumnWidth();
-
-  if (isLoading) {
-    return (
-      <Container>
-        <Spinner centered />
-      </Container>
-    );
-  }
-
-  if (error) {
-    return (
-      <Container>
-        <div className="alert alert-danger">
-          <h4>Error</h4>
-          <p>Failed to load experiments: {error instanceof Error ? error.message : 'Unknown error'}</p>
-        </div>
-      </Container>
-    );
-  }
-
-  const filteredExperiments = experiments || [];
+  const columns = useMemo<ExtendedColumnDef<Experiment>[]>(() => [
+    {
+      id: 'created',
+      header: 'Created',
+      accessorFn: (row) => new Date(row.created).getTime(),
+      cell: ({ row }) => new Date(row.original.created).toLocaleString(),
+      csvValue: (row) => new Date(row.created).toISOString(),
+      enableSorting: true,
+    },
+    {
+      id: 'id',
+      header: 'ID',
+      accessorKey: 'id',
+      cell: ({ row }) => (
+        <A href={`/organisation/${organisationId}/experiment/${row.original.id}`}>
+          <strong>{row.original.id.substring(0, 8)}...</strong>
+        </A>
+      ),
+      csvValue: (row) => row.id,
+      enableSorting: true,
+    },
+    {
+      id: 'name',
+      header: 'Name',
+      accessorKey: 'name',
+      cell: ({ row }) => row.original.name ?? '-',
+      csvValue: (row) => row.name ?? '',
+      enableSorting: true,
+    },
+    {
+      id: 'dataset',
+      header: 'Dataset',
+      accessorKey: 'dataset',
+      cell: ({ row }) => {
+        const id = row.original.dataset;
+        const name = datasetNameById.get(id);
+        return name ? `${name} | ${id}` : id;
+      },
+      csvValue: (row) => {
+        const id = row.dataset;
+        const name = datasetNameById.get(id);
+        return name ? `${name} | ${id}` : id;
+      },
+      enableSorting: true,
+    },
+    {
+      id: 'exampleCount',
+      header: 'Examples',
+      accessorFn: (row) => row.summary_results?.duration?.count ?? 0,
+      csvValue: (row) => {
+        return row.summary_results?.duration?.count ?? 0;
+      },
+    },
+    {
+      id: 'overallScore',
+      header: 'Overall Score',
+      accessorFn: (row) => getOverallScore(row),
+      cell: ({ row }) => {
+        const v = getOverallScore(row.original);
+        return v !== null && isFinite(v) ? v.toFixed(2) : '-';
+      },
+      csvValue: (row) => {
+        const v = getOverallScore(row);
+        return v !== null && isFinite(v) ? String(v) : '';
+      },
+      enableSorting: true,
+    },
+    {
+      id: 'duration',
+      header: 'Duration',
+      accessorFn: (row) => getMetricMean(row, 'duration'),
+      cell: ({ row }) => {
+        const ms = getMetricMean(row.original, 'duration');
+        return ms != null ? durationString(ms) : '-';
+      },
+      csvValue: (row) => {
+        const ms = getMetricMean(row, 'duration');
+        return ms != null ? String(ms) : '';
+      },
+      enableSorting: true,
+    },
+    {
+      id: 'tokensPerExample',
+      header: 'Tokens per example',
+      accessorFn: (row) => getMetricMean(row, 'gen_ai.usage.total_tokens'),
+      cell: ({ row }) => {
+        const v = getMetricMean(row.original, 'gen_ai.usage.total_tokens');
+        return v != null ? prettyNumber(v) : '-';
+      },
+      csvValue: (row) => {
+        const v = getMetricMean(row, 'gen_ai.usage.total_tokens');
+        return v != null ? String(v) : '';
+      },
+      enableSorting: true,
+    },
+    {
+      id: 'costPerExample',
+      header: 'Cost per example',
+      accessorFn: (row) => getMetricMean(row, 'gen_ai.cost.usd'),
+      cell: ({ row }) => {
+        const v = getMetricMean(row.original, 'gen_ai.cost.usd');
+        return v != null ? formatCost(v) : '-';
+      },
+      csvValue: (row) => {
+        const v = getMetricMean(row, 'gen_ai.cost.usd');
+        return v != null ? String(v) : '';
+      },
+      enableSorting: true,
+    },
+  ], [organisationId, datasetNameById]);
 
   return (
     <Container className="mt-4">
       <Row>
         <Col>
           <div className="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <h1>Experiment Results</h1>
-            </div>
+            <h1>Experiment Results</h1>
           </div>
         </Col>
       </Row>
 
-      <ExperimentsListMetricsDashboard experiments={filteredExperiments} />
+      <ExperimentsListMetricsDashboard experiments={Array.isArray(experimentsForDashboard) ? experimentsForDashboard : []} />
 
       <Row className="mt-3">
         <Col>
-          <Input
-            type="text"
-            placeholder="Search experiments (Gmail-style syntax)"
-            value={searchQuery}
-            onChange={handleSearchChange}
+          <TableUsingAPI<Experiment>
+            loadData={loadData}
+            columns={columns}
+            queryKeyPrefix={['experiments', organisationId]}
+            searchPlaceholder="Search experiments (Gmail-style syntax)"
+            onRowClick={(row) => navigate(`/organisation/${organisationId}/experiment/${row.id}`)}
           />
-        </Col>
-      </Row>
-
-      {/* Performance Charts */}
-      {filteredExperiments.length > 0 && hasAnyMetrics && 
-	   <ExperimentsListMetricsDashboard experiments={filteredExperiments} />}
-
-      {/* Experiments List */}
-      <Row className="mt-3">
-        <Col>
-          <Card>
-            <CardBody>
-              {filteredExperiments.length === 0 ? (
-                <p className="text-muted">No experiments found.</p>
-              ) : (
-                <Table hover>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Dataset ID</th>
-                      <th>Overall Score</th>
-                      <th>Created</th>
-                      <th>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredExperiments.map((experiment: Experiment) => {
-                      const summary = experiment.summary_results || {};
-                      const overallScore = summary['Overall Score'];
-                      const overallScoreMean = overallScore?.mean ?? overallScore?.avg ?? overallScore?.average ?? null;
-                      const overallScoreValue = overallScoreMean !== null && isFinite(overallScoreMean) 
-                        ? overallScoreMean.toFixed(2) 
-                        : '-';
-                      
-                      return (
-                        <tr 
-                          key={experiment.id}
-                          onClick={() => navigate(`/organisation/${organisationId}/experiment/${experiment.id}`)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <td>
-                            <A href={`/organisation/${organisationId}/experiment/${experiment.id}`}><strong>{experiment.id.substring(0, 8)}...</strong></A>
-                          </td>
-                          <td>                          
-                              {experiment.dataset.substring(0, 8)}...
-                          </td>
-                          <td>{overallScoreValue}</td>
-                          <td>{new Date(experiment.created).toLocaleString()}</td>
-                          <td>{new Date(experiment.updated).toLocaleString()}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </Table>
-              )}
-            </CardBody>
-          </Card>
         </Col>
       </Row>
     </Container>

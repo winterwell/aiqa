@@ -486,3 +486,20 @@ tap.test('SearchQuery.parse - OR query with AND after parentheses', t => {
   t.ok(parentSpanIdBit, 'should parse parentSpanId field');
   t.end();
 });
+
+tap.test('SearchQuery.propFromString - get value from query string', t => {
+  t.equal(SearchQuery.propFromString('feedback:positive', 'feedback'), 'positive', 'should get value');
+  t.equal(SearchQuery.propFromString('foo AND feedback:negative AND bar', 'feedback'), 'negative', 'should get value from AND query');
+  t.equal(SearchQuery.propFromString('parentSpanId:unset', 'feedback'), null, 'should return null when key absent');
+  t.equal(SearchQuery.propFromString('', 'feedback'), null, 'should return null for empty string');
+  t.end();
+});
+
+tap.test('SearchQuery.setOrRemoveInString - set and remove key:value', t => {
+  t.equal(SearchQuery.setOrRemoveInString('foo', 'feedback', 'positive'), 'foo AND feedback:positive', 'should add key:value');
+  t.equal(SearchQuery.setOrRemoveInString('foo AND bar', 'feedback', 'negative'), 'foo AND bar AND feedback:negative', 'should add to existing AND');
+  t.equal(SearchQuery.setOrRemoveInString('feedback:positive AND parentSpanId:unset', 'feedback', null), 'parentSpanId:unset', 'should remove key');
+  t.equal(SearchQuery.setOrRemoveInString('feedback:positive', 'feedback', null), '', 'should return empty when only key removed');
+  t.equal(SearchQuery.setOrRemoveInString('a AND feedback:positive AND b', 'feedback', null), 'a AND b', 'should remove key from middle');
+  t.end();
+});

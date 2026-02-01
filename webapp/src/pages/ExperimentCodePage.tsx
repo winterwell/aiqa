@@ -72,6 +72,15 @@ const ExperimentCodePage: React.FC = () => {
                 </NavItem>
                 <NavItem>
                   <NavLink
+                    className={activeTab === 'golang' ? 'active' : ''}
+                    onClick={() => setActiveTab('golang')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Go
+                  </NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink
                     className={activeTab === 'api' ? 'active' : ''}
                     onClick={() => setActiveTab('api')}
                     style={{ cursor: 'pointer' }}
@@ -83,6 +92,8 @@ const ExperimentCodePage: React.FC = () => {
             </CardHeader>
             <CardBody>
               <TabContent activeTab={activeTab}>
+               
+                <TabPanePython />
                 <TabPane tabId="javascript">
                   <h5>Running Experiments with JavaScript</h5>
                   <ol>
@@ -113,36 +124,7 @@ const ExperimentCodePage: React.FC = () => {
                     </li>
                   </ol>
                 </TabPane>
-                <TabPane tabId="python">
-                  <h5>Running Experiments with Python</h5>
-                  <ol>
-                    <li>
-                      <strong>Prepare your Dataset</strong> – these are the example inputs that will be tested.
-                    </li>
-                    <li>
-                      <strong>Setup your Metrics</strong>.
-                    </li>
-                    <li>
-                      <strong>Install the Python client library:</strong>
-                      <br />
-                      <code>pip install aiqa-client</code>
-                    </li>
-                    <li>
-						<HowToSetYourEnv />
-                    </li>
-                    <li>
-                      <strong>Use the AIQA ExperimentRunner:</strong>
-                      <ul>
-                        <li>Fetch the dataset</li>
-                        <li>Run the experiment</li>
-                        <li>Upload the results</li>
-                      </ul>
-                    </li>
-                    <li>
-                      This will create a new experiment here.
-                    </li>
-                  </ol>
-                </TabPane>
+                <TabPaneGolang />
                 <TabPane tabId="api">
                   <h5>Running Experiments via API</h5>
                   <ol>
@@ -187,6 +169,76 @@ const ExperimentCodePage: React.FC = () => {
     </Container>
   );
 };
+
+function TabPanePython() {
+return <TabPane tabId="python">
+<h5>Running Experiments with Python</h5>
+<ol>
+  <li>
+    <strong>Prepare your Dataset</strong> – these are the example inputs that will be tested.
+  </li>
+  <li>
+    <strong>Setup your Metrics</strong>.
+  </li>
+  <li>
+    <strong>Install the Python client library:</strong>
+    <br />
+    <code>pip install aiqa-client</code>
+  </li>
+  <li>
+<HowToSetYourEnv />
+  </li>
+  <li>
+    <strong>Use the AIQA ExperimentRunner:</strong>
+    <ul>
+      <li>Fetch the dataset</li>
+      <li>Run the experiment</li>
+      <li>Upload the results</li>
+    </ul>
+  </li>
+  <li>
+    This will create a new experiment here.
+  </li>
+</ol>
+</TabPane>;
+}
+
+function TabPaneGolang() {
+  return (
+    <TabPane tabId="golang">
+      <h5>Running Experiments with Go</h5>
+      <ol>
+        <li>
+          <strong>Prepare your Dataset</strong> – these are the example inputs that will be tested.
+        </li>
+        <li>
+          <strong>Setup your Metrics</strong>.
+        </li>
+        <li>
+          <strong>Install the client-go library:</strong>
+          <br />
+          <code>go get github.com/winterwell/aiqa-client-go</code>
+        </li>
+        <li>
+          <HowToSetYourEnv />
+        </li>
+        <li>
+          <strong>Use the AIQA ExperimentRunner:</strong>
+          <ul>
+            <li>Create a runner with <code>aiqa.NewExperimentRunner(aiqa.ExperimentRunnerOptions{'{'}...{'}'})</code></li>
+            <li>Fetch the dataset with <code>runner.GetDataset(ctx)</code></li>
+            <li>Define an engine function <code>func(input, parameters) (output, error)</code> and optional scorer (or nil)</li>
+            <li>Run with <code>runner.Run(ctx, engine, scorer)</code></li>
+            <li>Get summary with <code>runner.GetSummaryResults(ctx)</code></li>
+          </ul>
+        </li>
+        <li>
+          This will create a new experiment here.
+        </li>
+      </ol>
+    </TabPane>
+  );
+}
 
 export default ExperimentCodePage;
 

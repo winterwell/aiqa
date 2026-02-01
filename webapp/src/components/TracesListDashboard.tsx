@@ -13,6 +13,7 @@ import { useTraceMetrics, useHistogramData, useTokensHistogramData, useCostHisto
 import { durationString, isRootSpan, getDurationMs, prettyNumber } from '../utils/span-utils';
 import { CHART_HEIGHT, CHART_WIDTH, FEEDBACK_ICONS } from './dashboard/chart-constants';
 import DashboardStrip from './DashboardStrip';
+import WordcloudCard from './dashboard/WordcloudCard';
 
 interface TracesListDashboardProps {
   spans: Span[];
@@ -114,6 +115,8 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
           </DashboardStrip>
         </CardBody>
       </Card>
+
+      <WordcloudCard spans={spans} />
     </div>
   );
 };

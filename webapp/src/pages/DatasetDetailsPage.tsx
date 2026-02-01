@@ -15,13 +15,14 @@ import MetricModal, { addOrEditMetric } from '../components/MetricModal';
 import AddExampleModal from '../components/AddExampleModal';
 import PropInput from '../components/generic/PropInput';
 import Tags from '../components/generic/Tags';
+import NameAndDeleteHeader from '../components/generic/NameAndDeleteHeader';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
-import { getExampleInput, getExampleInputString, getFirstSpan, getExampleTraceId, getExampleSpecificMetricText } from '../utils/example-utils';
+import { getExampleInputString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
 
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
@@ -91,7 +92,7 @@ const DatasetDetailsPage: React.FC = () => {
     () => [
       {
         accessorKey: 'id',
-        header: 'Example ID',
+        header: 'ID',
         cell: ({ row }) => (
           <code className="small">{row.original.id?.substring(0, 16)}...</code>
         ),
@@ -104,32 +105,24 @@ const DatasetDetailsPage: React.FC = () => {
           return span ? (span as any).name || 'N/A' : 'N/A';
         },
       },
-      {
-        id: 'traceId',
-        header: 'Trace ID',
-        cell: ({ row }) => {
-          const traceId = getExampleTraceId(row.original);
+      // One column per dataset metric
+      ...(dataset?.metrics ? asArray(dataset.metrics).map((metric: Metric) => ({
+        id: `metric-${metric.id}`,
+        header: metric.name || metric.id,
+        cell: ({ row }: { row: { original: Example } }) => {
+          const text = getExampleMetricDisplayText(row.original, metric.id || metric.name || '');
+          if (!text) return <span className="text-muted">—</span>;
+          const truncated = getExampleInputString(text, 80);
           return (
-            <code className="small">{(traceId || 'N/A').substring(0, 16)}...</code>
-          );
-        },
-      },
-      {
-        id: 'input',
-        header: 'Input',
-        cell: ({ row }) => {
-          const input = getExampleInput(row.original);
-          const inputStr = getExampleInputString(input, 100);
-          return (
-            <span className="small" title={inputStr}>
-              {inputStr || 'N/A'}
+            <span className="small" title={text}>
+              {truncated}
             </span>
           );
         },
-      },
+      })) : []),
       {
-        id: 'exampleSpecific',
-        header: 'Example Specific',
+        id: 'specific',
+        header: 'Specific',
         cell: ({ row }) => {
           const specificText = getExampleSpecificMetricText(row.original);
           if (!specificText) {
@@ -141,13 +134,6 @@ const DatasetDetailsPage: React.FC = () => {
               {truncated}
             </span>
           );
-        },
-      },
-      {
-        id: 'created',
-        header: 'Created',
-        cell: ({ row }) => {
-          return <span>{new Date(row.original.created).toLocaleString()}</span>;
         },
       },
       {
@@ -207,7 +193,7 @@ const DatasetDetailsPage: React.FC = () => {
         enableSorting: false,
       },
     ],
-    [organisationId, queryClient, showToast, deleteExampleMutation.isPending]
+    [organisationId, queryClient, showToast, deleteExampleMutation.isPending, dataset]
   ); // end columns
 
   const handleSaveMetric = (metric: Partial<Metric>) => {
@@ -245,18 +231,11 @@ const DatasetDetailsPage: React.FC = () => {
   return (
     <Page
       header={
-        <span className="d-flex align-items-center gap-2">
-          <span>Dataset:</span>
-          <PropInput 
-            item={dataset} 
-            prop="name" 
-            label="" 
-            inline 
-            onChange={() => {
-              updateDatasetMutation.mutate({ name: dataset.name });
-            }}
-          />
-        </span>
+        <NameAndDeleteHeader
+          label="Dataset"
+          item={dataset}
+          handleNameChange={() => updateDatasetMutation.mutate({ name: dataset.name })}
+        />
       }
       back={`/organisation/${organisationId}/dataset`}
       backLabel="Datasets"

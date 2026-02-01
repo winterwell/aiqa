@@ -29,3 +29,8 @@ http://localhost:4318 - local server
 ## Deployment
 
 For 24x7 deployment on Ubuntu with CI/CD, see [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md).
+
+## Brand Mission and Values: Better applied AI, easily
+Help people and companies make better, safer, and more reliable applied AI solutions.
+Trust, ease of use.
+See docs/brand-guidelines.md
