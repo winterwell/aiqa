@@ -26,7 +26,7 @@ export function useTraceSpans(
       if (!organisationId || !traceId) return [];
       const result = await searchSpans({
         organisationId,
-        query: `trace_id:${traceId}`,
+        query: `trace:${traceId}`,
         limit: 1000,
         offset: 0,
         fields: options?.fields || '*',
@@ -56,7 +56,7 @@ async function createBatchLoader<T>(
   
   for (let i = 0; i < traceIds.length; i += BATCH_SIZE) {
     const batch = traceIds.slice(i, i + BATCH_SIZE);
-    const traceIdQuery = batch.map(id => `trace_id:${id}`).join(' OR ');
+    const traceIdQuery = batch.map(id => `trace:${id}`).join(' OR ');
     const sortedBatch = [...batch].sort();
     const cacheKey = [cacheKeyPrefix, organisationId, sortedBatch.join(','), options.fields, options.exclude];
     
@@ -205,7 +205,7 @@ export function useConversationTraceIds(
       // Query for root spans with this conversation ID
       const result = await searchSpans({
         organisationId,
-        query: `attributes.gen_ai\\.conversation\\.id:${conversationId} AND parent_span_id:unset`,
+        query: `attributes.gen_ai\\.conversation\\.id:${conversationId} AND parent:unset`,
         limit: 1000,
         offset: 0,
         // Only need traceId, so exclude attributes to save bandwidth

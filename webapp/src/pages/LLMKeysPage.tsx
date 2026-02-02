@@ -178,8 +178,8 @@ const LLMKeysPage: React.FC = () => {
                             Provider: {model.provider}
                             {model.version && ` • Version: ${model.version}`}
                           </div>
-                          {model.api_key_sig && (
-                            <div className="text-muted small mt-2">API Key: {model.api_key_sig}</div>
+                          {model.keyEnd && (
+                            <div className="text-muted small mt-2">API Key: {model.keyEnd}</div>
                           )}
                           {model.description && (
                             <div className="text-muted small mt-2">{model.description}</div>

@@ -10,14 +10,16 @@ export interface Metric {
    * llm: LLM as judge, e.g. "this answer should be a joke about cats"
    * system: a built in metric AIQA handles eg token count, duration, etc
   */
-  type: 'javascript' | 'llm' | 'number' | 'system'
+  type: 'javascript' | 'llm' | 'number' | 'contains' | 'equals' | 'not_contains' | 'not_equals' | 'similar' | 'system';
   provider?: 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'other';
   model?: string;
   /** for LLM-as-judge */
   prompt?: string;
-  /** Use instead of prompt. For LLM-as-judg with the standard prompt template - this sets the core of "what criteria should the LLM judge be looking for?" */
-  prompt_criteria?: string;
+  /** Use instead of prompt. For LLM-as-judge with the standard prompt template - this sets the core of "what criteria should the LLM judge be looking for?" */
+  promptCriteria?: string;
   code?: string;
+  /** for type:contains|equals|not_contains|not_equals */
+  value?: string | number
   parameters?: Record<string, any>;
 }
 

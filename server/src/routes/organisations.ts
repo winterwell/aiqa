@@ -68,11 +68,11 @@ async function checkOrganisationAdminAccess(
     }
   }
 
-  // Check member_settings for admin role
-  const memberSettings = org.member_settings || {};
+  // Check memberSettings for admin role
+  const memberSettings = org.memberSettings || {};
   const userSettings = memberSettings[request.userId];
   
-  // Check if any member has admin role in member_settings
+  // Check if any member has admin role in memberSettings
   const hasAnyAdmin = Object.values(memberSettings).some(
     (settings: any) => settings && settings.role === 'admin'
   );
@@ -156,8 +156,8 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
   });
 
   // ===== ORGANISATION MEMBER ENDPOINTS =====
-  // Security: User must be a member of the organisation and have admin role (via member_settings or API key).
-  // If no one has admin role in member_settings, any member can admin (to avoid lockout).
+  // Security: User must be a member of the organisation and have admin role (via memberSettings or API key).
+  // If no one has admin role in memberSettings, any member can admin (to avoid lockout).
   fastify.post('/organisation/:organisationId/member/:userId', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { organisationId, userId } = request.params as { organisationId: string; userId: string };
@@ -193,8 +193,8 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     return result.org;
   });
 
-  // Security: User must be a member of the organisation and have admin role (via member_settings or API key).
-  // If no one has admin role in member_settings, any member can admin (to avoid lockout).
+  // Security: User must be a member of the organisation and have admin role (via memberSettings or API key).
+  // If no one has admin role in memberSettings, any member can admin (to avoid lockout).
   fastify.delete('/organisation/:organisationId/member/:userId', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { organisationId, userId } = request.params as { organisationId: string; userId: string };
@@ -249,10 +249,10 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
         subscription: {
           type: 'free',
           status: 'active',
-          start_date: new Date(),
-          end_date: null,
-          renewal_date: null,
-          price_per_month: 0,
+          start: new Date(),
+          end: null,
+          renewal: null,
+          pricePerMonth: 0,
           currency: 'USD',
         },
       });
@@ -420,12 +420,12 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       );
       
       await updateOrganisationAccount(account.id, {
-        stripe_customer_id: customerId,
-        stripe_subscription_id: subscriptionId || undefined,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscriptionId || undefined,
         subscription: {
           ...account.subscription,
           type: 'free',
-          price_per_month: 0,
+          pricePerMonth: 0,
         },
       });
       
@@ -495,8 +495,8 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     
     // For enterprise, we don't create a Stripe subscription (manually managed)
     // For other plans, create/update Stripe subscription
-    let customerId = account.stripe_customer_id;
-    let subscriptionId = account.stripe_subscription_id;
+    let customerId = account.stripeCustomerId;
+    let subscriptionId = account.stripeSubscriptionId;
     
     if (body.planType !== 'enterprise') {
       const result = await createOrUpdateSubscription(
@@ -524,16 +524,16 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     
     // Calculate price based on plan
     const pricePerMonth = getPlanPrice(body.planType, noPaymentNeeded, body.pricePerMonth) || 
-      (body.planType === 'enterprise' ? (account.subscription?.price_per_month || 0) : 0);
+      (body.planType === 'enterprise' ? (account.subscription?.pricePerMonth || 0) : 0);
     
     const updated = await updateOrganisationAccount(account.id, {
-      stripe_customer_id: customerId,
-      stripe_subscription_id: subscriptionId || undefined,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId || undefined,
       subscription: {
         ...account.subscription,
         type: body.planType,
-        price_per_month: pricePerMonth,
-        start_date: new Date(),
+        pricePerMonth: pricePerMonth,
+        start: new Date(),
       },
     });
     
@@ -556,14 +556,14 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     if (!access) return;
     
     const account = await getOrganisationAccountByOrganisation(organisationId);
-    if (!account || !account.stripe_customer_id) {
+    if (!account || !account.stripeCustomerId) {
       reply.code(404).send({ error: 'Stripe customer not found. Please create a subscription first.' });
       return;
     }
     
     const baseUrl = process.env.WEBAPP_URL || 'http://localhost:4000';
     const returnUrl = `${baseUrl}/organisation/${organisationId}/account`;
-    const portalUrl = await getCustomerPortalUrl(account.stripe_customer_id, returnUrl);
+    const portalUrl = await getCustomerPortalUrl(account.stripeCustomerId, returnUrl);
     
     return { url: portalUrl };
   });
@@ -632,15 +632,15 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
             if (subscription) {
               const planType = subscription.metadata?.plan_type || 'pro';
               await updateOrganisationAccount(account.id, {
-                stripe_customer_id: session.customer as string,
-                stripe_subscription_id: session.subscription as string,
+                stripeCustomerId: session.customer as string,
+                stripeSubscriptionId: session.subscription as string,
                 subscription: {
                   ...account.subscription,
                   type: planType as 'free' | 'pro' | 'enterprise',
                   status: 'active',
-                  start_date: new Date(subscription.current_period_start * 1000),
-                  end_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
-                  renewal_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  start: new Date(subscription.current_period_start * 1000),
+                  end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                  renewal: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
                 },
               });
             }
@@ -656,15 +656,15 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
         
         if (organisationId) {
           const account = await getOrganisationAccountByOrganisation(organisationId);
-          if (account && account.stripe_subscription_id === subscription.id) {
+          if (account && account.stripeSubscriptionId === subscription.id) {
             const planType = subscription.metadata?.plan_type || account.subscription.type;
             await updateOrganisationAccount(account.id, {
               subscription: {
                 ...account.subscription,
                 type: planType as 'free' | 'pro' | 'enterprise',
                 status: subscription.status === 'active' ? 'active' : 'closed',
-                end_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
-                renewal_date: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
+                renewal: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
               },
             });
           }

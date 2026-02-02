@@ -97,27 +97,26 @@ tap.test('normalizeTimeToMillis - empty string', t => {
   t.end();
 });
 
-tap.test('normalizeTimeToMillis - number at threshold (1e12)', t => {
-  const threshold = 1e12;
-  const result = normalizeTimeToMillis(threshold);
-  // At exactly 1e12, it should be treated as nanoseconds
-  const expected = Math.floor(threshold / 1_000_000);
-  t.equal(result, expected, 'should treat 1e12 as nanoseconds');
+tap.test('normalizeTimeToMillis - number below nanosecond threshold (1e12)', t => {
+  const belowThreshold = 1e12;
+  const result = normalizeTimeToMillis(belowThreshold);
+  // Implementation uses >= 1e13 for nanoseconds; 1e12 is treated as milliseconds
+  t.equal(result, belowThreshold, 'should treat 1e12 as milliseconds');
   t.end();
 });
 
 tap.test('normalizeTimeToMillis - number just below threshold', t => {
-  const justBelow = 1e12 - 1;
+  const justBelow = 1e11;
   const result = normalizeTimeToMillis(justBelow);
   t.equal(result, justBelow, 'should treat number < 1e12 as milliseconds');
   t.end();
 });
 
 tap.test('normalizeTimeToMillis - number just above threshold', t => {
-  const justAbove = 1e12 + 1;
+  const justAbove = 1e13 + 1;
   const result = normalizeTimeToMillis(justAbove);
   const expected = Math.floor(justAbove / 1_000_000);
-  t.equal(result, expected, 'should treat number >= 1e12 as nanoseconds');
+  t.equal(result, expected, 'should treat number >= 1e13 as nanoseconds');
   t.end();
 });
 

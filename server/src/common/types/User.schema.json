@@ -19,6 +19,7 @@
           "type": "string"
         },
         "sub": {
+          "description": "Auth0 subject identifier (e.g., \"google-oauth2|1234\")",
           "type": "string"
         },
         "updated": {

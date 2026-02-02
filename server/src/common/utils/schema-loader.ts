@@ -94,9 +94,9 @@ export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
 const PG_MAX_COLUMNS = 100; // actual limit is 1600 but > 100 means here would be bogus;
 
 /**
- * Convert PascalCase/camelCase to snake_case
+ * Convert PascalCase/camelCase to snake_case. Exported for DB layer (column name mapping).
  */
-function toSnakeCase(str: string): string {
+export function toSnakeCase(str: string): string {
   return str
     .replace(/([A-Z])/g, '_$1')
     .toLowerCase()
@@ -153,9 +153,9 @@ export function generatePostgresTable(
     );
   }
 
-  // Convert map to array of column definitions
+  // Convert map to array of column definitions (snake_case column names for PostgreSQL)
   for (const [fieldName, columnDef] of columnMap.entries()) {
-    columns.push(`  ${fieldName} ${columnDef}`);
+    columns.push(`  ${toSnakeCase(fieldName)} ${columnDef}`);
   }
   
   // Add constraints
@@ -166,7 +166,8 @@ export function generatePostgresTable(
 }
 
 /**
- * Convert JSON Schema property to Elasticsearch mapping
+ * Convert JSON Schema property to Elasticsearch mapping.
+ * By default, strings are stored as keyword fields - except for name, description fields.
  */
 export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
   const type = prop.type;
@@ -181,7 +182,9 @@ export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
   
   switch (type) {
     case 'string':
-      if (fieldName === 'name') {
+      // default to keyword as id-lookup is the normal case
+      // but name, description are text searchable fields.
+      if (fieldName === 'name' || fieldName === 'description') {
         return { type: 'text', fields: { keyword: { type: 'keyword' } } };
       }
       return { type: 'keyword' };

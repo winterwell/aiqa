@@ -21,7 +21,7 @@ import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
-import { asArray } from '../common/utils/miscutils';
+import { asArray, truncate } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
 import { getExampleInputString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
 

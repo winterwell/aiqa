@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { bulkInsertSpans, searchSpans, updateSpan, deleteSpans } from '../db/db_es.js';
+import { bulkInsertSpans, searchSpans, getSpan, updateSpan, deleteSpans } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
@@ -46,23 +46,23 @@ function convertOtlpSpansToInternalScopeSpan(
       time: normalizeTimeToMillis(event.timeUnixNano || event.time) ?? 0,
       attributes: convertKeyValueArray(event.attributes),
     }));
-    
+
     // Convert links
     const links = (otlpSpan.links || []).map((link: any) => ({
       context: {
         traceId: link.traceId ? bytesToHex(link.traceId) : '',
         spanId: link.spanId ? bytesToHex(link.spanId) : '',
-        traceState: link.traceState || undefined,
+        traceState: link.traceState ?? undefined,
       },
       attributes: convertKeyValueArray(link.attributes),
     }));
-    
-    // Convert trace ID and span ID from bytes to hex
-    const traceId = otlpSpan.traceId ? bytesToHex(otlpSpan.traceId) : '';
-    const id = otlpSpan.spanId ? bytesToHex(otlpSpan.spanId) : '';
+
+    // Convert trace ID and span ID from bytes to hex (OTLP JSON may send hex; protobuf sends base64/Buffer)
+    const traceId = bytesToHex(otlpSpan.traceId) || '';
+    const id = bytesToHex(otlpSpan.spanId) || '';
     const parentSpanId = otlpSpan.parentSpanId ? bytesToHex(otlpSpan.parentSpanId) : undefined;
-    
-    // Convert times - support multiple formats
+
+    // Convert times
     const startTime = normalizeTimeToMillis(otlpSpan.startTimeUnixNano || otlpSpan.startTime) ?? 0;
     const endTime = normalizeTimeToMillis(otlpSpan.endTimeUnixNano || otlpSpan.endTime);
     const duration = endTime !== null ? endTime - startTime : null;
@@ -84,12 +84,13 @@ function convertOtlpSpansToInternalScopeSpan(
     if (exampleId !== undefined) delete attributes.example;
     if (experimentId !== undefined) delete attributes.experiment;
     
+    // Span type requires end: number; use startTime when endTime is null (in-progress span)
     internalSpans.push({
       name: otlpSpan.name || '',
       kind: otlpSpan.kind ?? 0,
-      parent_span_id: parentSpanId,
-      start_time: startTime,
-      end_time: endTime,
+      parent: parentSpanId,
+      start: startTime,
+      end: endTime ?? startTime,
       status: {
         code: statusCode,
         message: status.message || undefined,
@@ -98,7 +99,7 @@ function convertOtlpSpansToInternalScopeSpan(
       links,
       events,
       resource: { attributes: resourceAttrs },
-      trace_id: traceId,
+      trace: traceId,
       id,
       traceFlags: otlpSpan.flags ?? 0,
       duration,
@@ -116,68 +117,68 @@ function convertOtlpSpansToInternalScopeSpan(
     });
   }
   
+  console.log('spans.ts convertOtlpSpansToInternalScopeSpan: Internal spans:', internalSpans);
   return internalSpans;
 }
 
 /**
  * Convert OTLP span format to internal span format.
- * OTLP format: ResourceSpans -> ScopeSpans -> Spans
+ * OTLP format: ResourceSpans -> ScopeSpans -> Spans (camelCase per spec/example).
  */
 function convertOtlpSpansToInternal(otlpRequest: any): any[] {
   const internalSpans: any[] = [];
-  
-  if (!otlpRequest.resourceSpans || !Array.isArray(otlpRequest.resourceSpans)) {
+  const resourceSpansList = otlpRequest.resourceSpans;
+  if (!resourceSpansList || !Array.isArray(resourceSpansList)) {
     return internalSpans;
   }
-  
-  for (const resourceSpan of otlpRequest.resourceSpans) {
+
+  for (const resourceSpan of resourceSpansList) {
     const resource = resourceSpan.resource || {};
     const resourceAttrs = convertKeyValueArray(resource.attributes);
-    
-    const scopeSpans = resourceSpan.scopeSpans || [];
-    for (const scopeSpan of scopeSpans) {
+    const scopeSpansList = resourceSpan.scopeSpans || [];
+    for (const scopeSpan of scopeSpansList) {
       const spans = convertOtlpSpansToInternalScopeSpan(scopeSpan, resourceAttrs);
       internalSpans.push(...spans);
     }
   }
-  
+
   return internalSpans;
 }
 
 /**
- * Convert OTLP AnyValue to JavaScript value.
+ * Convert OTLP AnyValue to JavaScript value (camelCase per OTLP JSON spec).
  */
 function convertOtlpValue(value: any): any {
   if (value.stringValue !== undefined) return value.stringValue;
   if (value.boolValue !== undefined) return value.boolValue;
   if (value.intValue !== undefined) return value.intValue;
   if (value.doubleValue !== undefined) return value.doubleValue;
-  if (value.arrayValue && value.arrayValue.values) {
+  if (value.arrayValue?.values) {
     return value.arrayValue.values.map((v: any) => convertOtlpValue(v));
   }
-  if (value.kvlistValue && value.kvlistValue.values) {
+  if (value.kvlistValue?.values) {
     const obj: Record<string, any> = {};
     for (const kv of value.kvlistValue.values) {
-      if (kv.key && kv.value) {
-        obj[kv.key] = convertOtlpValue(kv.value);
-      }
+      if (kv.key && kv.value) obj[kv.key] = convertOtlpValue(kv.value);
     }
     return obj;
   }
-  if (value.bytesValue) {
-    // Return bytes as base64 string (already in base64 format from protobuf)
-    return value.bytesValue;
-  }
+  if (value.bytesValue !== undefined) return value.bytesValue;
   return null;
 }
 
 /**
- * Convert bytes (base64 string, array, or Uint8Array) to hex string.
+ * Convert bytes (base64 string, Buffer, or Uint8Array) to hex string.
+ * If the value is already a hex string (16 or 32 chars), returns as-is.
+ * OTLP JSON can send IDs as hex (see opentelemetry-proto/examples/trace.json) or base64.
  */
 function bytesToHex(bytes: any): string {
   if (!bytes) return '';
+  if (typeof bytes === 'string' && /^[0-9a-fA-F]+$/.test(bytes) && (bytes.length === 16 || bytes.length === 32)) {
+    return bytes;
+  }
   try {
-    const buffer = typeof bytes === 'string' 
+    const buffer = typeof bytes === 'string'
       ? Buffer.from(bytes, 'base64')
       : Buffer.from(bytes);
     return buffer.toString('hex');
@@ -202,12 +203,26 @@ export async function processOtlpTraceExport(
 ): Promise<{ success: boolean; error?: { code: number; message: string } }> {
   // Convert OTLP spans to internal format
   const spansArray = convertOtlpSpansToInternal(otlpRequest);
-  
+
   if (spansArray.length === 0) {
+    console.log('spans.ts processOtlpTraceExport: Empty request');
     // Empty request - return success per OTLP spec
     return { success: true };
   }
-  
+
+  // Reject spans missing required trace-id or span-id (per OTLP spec)
+  if (spansArray.some(s => !s.trace?.trim() || !s.id?.trim())) {
+    // log the bad spans
+    console.error('spans.ts processOtlpTraceExport: Invalid spans:', spansArray.filter(s => !s.trace?.trim() || !s.id?.trim()));
+    return {
+      success: false,
+      error: {
+        code: 3, // INVALID_ARGUMENT
+        message: 'Each span must have trace_id and span_id',
+      },
+    };
+  }
+
   // Get organisation account to check rate limit
   const account = await getOrganisationAccountByOrganisation(organisation);
   const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
@@ -267,21 +282,17 @@ export function normalizeTimeToMillis(time: string | number | [number, number] |
     }
     // Try parsing as number string (epoch milliseconds or nanoseconds)
     const num = parseFloat(time);
-    if (!isNaN(num)) {
-      // If it's a very large number (>= 1e12), assume nanoseconds
-      if (num >= 1e12) {
-        return Math.floor(num / 1_000_000);
-      }
-      return num;
+    if (isNaN(num)) {
+      return null;
     }
-    return null;
+    time = num; // carry on to the next case
   }
 
   // Handle number (epoch milliseconds or nanoseconds)
   if (typeof time === 'number') {
-    // If it's a very large number (>= 1e12), assume nanoseconds
+    // If it's a very large number (>= 1e13), assume nanoseconds
     // This threshold is around year 2286 in milliseconds
-    if (time >= 1e12) {
+    if (time >= 1e13) {
       return Math.floor(time / 1_000_000);
     }
     // Otherwise assume milliseconds
@@ -337,6 +348,8 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         // Parse JSON (default)
         otlpRequest = request.body as any;
       }
+
+      console.log('spans.ts POST: OTLP request:', JSON.stringify(otlpRequest, null, 2));
       
       // Process the OTLP trace export (rate limiting, storage, etc.)
       const result = await processOtlpTraceExport(otlpRequest, organisation);
@@ -352,15 +365,20 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       reply.code(200).send({});
       
     } catch (error: any) {
-      console.error('spans.ts POST: Error in OTLP HTTP endpoint:', error);
       if (isConnectionError(error)) {
+        console.error('spans.ts POST: Error in OTLP HTTP endpoint:', error);
         reply.code(503).send({
           code: 14, // UNAVAILABLE
           message: 'Elasticsearch service unavailable',
         });
         return;
       }
-      // Bad data - return 400 per OTLP spec
+      // Bad data (e.g. invalid/truncated protobuf) - return 400 per OTLP spec; log briefly to avoid noisy stacks
+      if (error.message?.includes('Invalid protobuf') || error.message?.includes('Invalid request')) {
+        console.warn('spans.ts POST: OTLP /v1/traces invalid request:', error.message);
+      } else {
+        console.error('spans.ts POST: Error in OTLP HTTP endpoint:', error);
+      }
       reply.code(400).send({
         code: 3, // INVALID_ARGUMENT
         message: error.message || 'Invalid request data',
@@ -390,10 +408,12 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
     const query = (request.query as any).q as string | undefined;  
-    const limit = parseInt((request.query as any).limit || '100');
-    const offset = parseInt((request.query as any).offset || '0');
+    const limitRaw = parseInt(String((request.query as any).limit ?? 100), 10);
+    const offsetRaw = parseInt(String((request.query as any).offset ?? 0), 10);
+    const limit = Number.isNaN(limitRaw) || limitRaw < 1 ? 100 : limitRaw;
+    const offset = Number.isNaN(offsetRaw) || offsetRaw < 0 ? 0 : offsetRaw;
     const fieldsParam = (request.query as any).fields as string | undefined;
-	const excludeFieldsParam = (request.query as any).exclude as string | undefined;
+    const excludeFieldsParam = (request.query as any).exclude as string | undefined;
 
     // Parse fields parameter for Elasticsearch _source filtering
     let _source_includes: string[] | undefined;
@@ -413,18 +433,18 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
 
     // feedback:positive / feedback:negative in query → resolve to attribute.feedback (trace IDs from feedback spans), then filter root spans
-    let resolvedQ = (query?.trim() || 'parent_span_id:unset');
+    let resolvedQ = (query?.trim() || 'parent:unset');
     const feedbackValue = SearchQuery.propFromString(resolvedQ, 'feedback');
     if (feedbackValue === 'positive' || feedbackValue === 'negative') {
       const thumbsUp = feedbackValue === 'positive';
       resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
       const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.thumbs_up:${thumbsUp}`;
-      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace_id'], undefined);
-      const traceIds = feedbackResult.hits.map((s: Span) => s.trace_id).filter(Boolean) as string[];
+      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace'], undefined);
+      const traceIds = feedbackResult.hits.map((s: Span) => s.trace).filter(Boolean) as string[];
       if (traceIds.length === 0) {
         return { hits: [], total: 0, limit, offset };
       }
-      const traceIdClause = traceIds.map((id: string) => `trace_id:${id}`).join(' OR ');
+      const traceIdClause = traceIds.map((id: string) => `trace:${id}`).join(' OR ');
       resolvedQ = resolvedQ ? `(${traceIdClause}) AND (${resolvedQ})` : `(${traceIdClause})`;
     }
 
@@ -445,6 +465,18 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       }
       throw error;
     }
+  });
+
+  fastify.get('/span/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    const organisation = request.organisation!;
+    const { id } = request.params as { id: string };
+    const span = await getSpan(id, organisation);
+    if (!span) {
+      reply.code(404).send({ error: 'Span not found or does not belong to your organisation' });
+      return;
+    }
+    return span;
   });
 
   /**
@@ -491,26 +523,27 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
   });
 
   /**
-   * Delete spans by IDs or by trace_ids.
-   * 
-   * Body: Either { spanIds: string[] } or { trace_ids: string[] }
-   * 
+   * Delete spans by IDs or by trace IDs.
+   *
+   * Body: Either { spanIds: string[] } or { traceIds: string[] }.
+   *
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware.
    * Deletions are scoped to the authenticated user's organisation.
    */
   fastify.delete('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const organisation = request.organisation!;
-    const body = request.body as { spanIds?: string[]; trace_ids?: string[] };
+    const body = request.body as { spanIds?: string[]; traceIds?: string[] };
+    const traceIds = body.traceIds;
 
     // Validate request body
-    if (!body.spanIds && !body.trace_ids) {
-      reply.code(400).send({ error: 'Either spanIds or trace_ids must be provided' });
+    if (!body.spanIds && !traceIds) {
+      reply.code(400).send({ error: 'Either spanIds or traceIds must be provided' });
       return;
     }
 
-    if (body.spanIds && body.trace_ids) {
-      reply.code(400).send({ error: 'Cannot specify both spanIds and trace_ids' });
+    if (body.spanIds && traceIds) {
+      reply.code(400).send({ error: 'Cannot specify both spanIds and traceIds' });
       return;
     }
 
@@ -519,16 +552,16 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
 
-    if (body.trace_ids && (!Array.isArray(body.trace_ids) || body.trace_ids.length === 0)) {
-      reply.code(400).send({ error: 'trace_ids must be a non-empty array' });
+    if (traceIds && (!Array.isArray(traceIds) || traceIds.length === 0)) {
+      reply.code(400).send({ error: 'traceIds must be a non-empty array' });
       return;
     }
 
     try {
-      const options = body.spanIds 
-        ? { spanIds: body.spanIds }
-        : { trace_ids: body.trace_ids! };
-      
+      const options = body.spanIds
+        ? { spans: body.spanIds }
+        : { traces: traceIds! };
+
       const deletedCount = await deleteSpans(options, organisation);
       return { success: true, deleted: deletedCount };
     } catch (error: any) {

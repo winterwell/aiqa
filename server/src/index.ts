@@ -109,7 +109,7 @@ async function initializeAiqaOrg(): Promise<void> {
       id: AIQA_ORG_ID,
       name: 'AIQA',
       members: [],
-      member_settings: {},
+      memberSettings: {},
     });
     fastify.log.info(`Created AIQA organisation: ${aiqaOrg.id}`);
   }
@@ -147,10 +147,10 @@ async function initializeAiqaOrg(): Promise<void> {
       subscription: {
         type: 'enterprise',
         status: 'active',
-        start_date: new Date(),
-        end_date: null,
-        renewal_date: null,
-        price_per_month: 0,
+        start: new Date(),
+        end: null,
+        renewal: null,
+        pricePerMonth: 0,
         currency: 'USD',
       },
     });

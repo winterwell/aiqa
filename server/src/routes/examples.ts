@@ -1,14 +1,16 @@
 import { FastifyInstance } from 'fastify';
+import { randomUUID } from 'crypto';
 import { bulkInsertExamples, searchExamples, getExample, updateExample, deleteExample, updateSpan } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Example from '../common/types/Example.js';
 import { checkAccessDeveloper, parseSearchQuery, send404 } from './route_helpers.js';
+import { getSpanId, getParentSpanId } from '../common/types/Span.js';
 
 /**
  * Clean spans for use in examples by:
  * 1. Removing resource attributes from span.attributes (they belong in resource.attributes)
- * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, id, parent_span_id
+ * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, id, parent
  * 
  * Note: Supports objects and arrays in attributes (e.g., attributes.input can be an object)
  */
@@ -50,19 +52,15 @@ function cleanSpanForExample(span: any): any {
 		}
 	}
 	
-	// Get id from various possible locations (id is standard, spanId is legacy fallback)
-	const id = span.id || span.spanId || span.client_span_id || span.span?.id || (span as any).clientSpanId;
 	
-	// Get parent_span_id from various possible locations
-	const parentSpanId = span.parent_span_id || (span as any).parentSpanId || span.span?.parent?.id;
-	
-	// Strip span to minimal fields: name, attributes (with input), id, parent_span_id
+	const id = getSpanId(span);
+	const parent = getParentSpanId(span);
+
 	return {
-		id: id,
+		id,
 		name: span.name || '',
 		attributes: cleanedAttrs,
-    ...(span.client_span_id && { client_span_id: span.client_span_id }),
-		...(parentSpanId && { parent_span_id: parentSpanId }),
+		...(parent !== undefined && parent !== '' && { parent }),
 	};
 }
 
@@ -77,14 +75,17 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     if (!checkAccessDeveloper(request, reply)) return;
     const organisation = request.organisation!;
     const example = request.body as Example;
-    // user can specify an id if they wish -- check it is a valid UUID. Or we will create one for them.
+    // id is required for examples - generate one if falsy
     // Important: ES must use the id as the document _id.
     // Strip empty id strings (defensive: clients may send empty strings instead of omitting the field)
     if (example.id === "") {
       delete example.id;
     }
-    if (example.id) {
-      // Validate UUID format (RFC 4122)
+    // Generate UUID if id is falsy (undefined, null, empty string, etc.)
+    if (!example.id) {
+      example.id = randomUUID();
+    } else {
+      // Validate UUID format (RFC 4122) if provided
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidRegex.test(example.id)) {
         reply.code(400).send({ error: 'id must be a valid UUID if provided' });
@@ -98,16 +99,16 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       return;
     }
     
-    // Check for duplicates: same trace_id + dataset combination
-    if (example.trace_id) {
-      // Build a search query for trace_id AND dataset
-      let searchQuery = SearchQuery.setProp(null, 'trace_id', example.trace_id);
+    // Check for duplicates: same trace + dataset combination
+    if (example.trace) {
+      // Build a search query for trace AND dataset
+      let searchQuery = SearchQuery.setProp(null, 'trace', example.trace);
       searchQuery = SearchQuery.setProp(searchQuery, 'dataset', example.dataset);
-      
+
       const existing = await searchExamples(searchQuery, organisation, example.dataset, 1, 0);
       if (existing.total > 0) {
-        reply.code(409).send({ 
-          error: `Example with trace_id "${example.trace_id}" and dataset "${example.dataset}" already exists` 
+        reply.code(409).send({
+          error: `Example with trace "${example.trace}" and dataset "${example.dataset}" already exists`
         });
         return;
       }
@@ -115,12 +116,17 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     
     // Add organisation and timestamps
     const now = new Date();
-    // Clean spans if present
+    // Clean spans if present; require canonical shape (id required per span)
     let cleanedSpans = example.spans;
     if (Array.isArray(cleanedSpans)) {
+      const missingId = cleanedSpans.find((s: any) => !s.id);
+      if (missingId) {
+        reply.code(400).send({ error: 'Each span in example.spans must have an id' });
+        return;
+      }
       cleanedSpans = cleanedSpans.map(span => cleanSpanForExample(span));
     }
-    
+
     const exampleWithOrg = {
       ...example,
       spans: cleanedSpans,
@@ -129,28 +135,19 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       updated: example.updated || now,
     };
 
-    const exampleIdObjects = (await bulkInsertExamples([exampleWithOrg]));
-    const exampleId = exampleIdObjects[0].id;
-    exampleWithOrg.id = exampleId;
+    await bulkInsertExamples([exampleWithOrg]);
     
     // Extract span IDs from original spans (before cleaning)
     if (Array.isArray(example.spans) && example.spans.length > 0) {
-      const spanIds: string[] = [];
-      for (const span of example.spans) {
-        // Get id from various possible locations (id is standard, spanId is legacy fallback)
-        const spanId = span.id || span.spanId || span.client_span_id || span.span?.id || (span as any).clientSpanId;
-        if (spanId) {
-          spanIds.push(spanId);
-        }
-      }
+      const spanIds = example.spans.map((s: any) => s.id).filter(Boolean) as string[];
       
       // Update each span with example.id
       for (const spanId of spanIds) {
         try {
-          await updateSpan(spanId, { example: exampleId }, organisation);
+          await updateSpan(spanId, { example: exampleWithOrg.id }, organisation);
         } catch (error) {
           // Log but don't fail - span might not exist or might belong to different org
-          console.warn(`Failed to update span ${spanId} with example.id ${exampleId}:`, error);
+          console.warn(`Failed to update span ${spanId} with example.id ${exampleWithOrg.id}:`, error);
         }
       }
     }

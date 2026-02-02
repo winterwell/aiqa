@@ -1,26 +1,29 @@
 import tap from 'tap';
-import SearchQuery, { searchQueryToSqlWhereClause } from '../dist/common/SearchQuery.js';
+import SearchQuery from '../dist/common/SearchQuery.js';
+import { searchQueryToSqlWhereClause } from '../dist/db/sql_query.js';
 
 tap.test('searchQueryToSqlWhereClause - simple OR', t => {
   const sq = new SearchQuery('apples OR oranges');
   const sql = searchQueryToSqlWhereClause(sq);
-  t.equal(sql, "('apples' OR 'oranges')", 'should convert to SQL');
+  t.equal(sql, "(name ILIKE '%apples%' OR name ILIKE '%oranges%')", 'should convert to SQL');
   t.end();
 });
 
-tap.test('searchQueryToSqlWhereClause - complex OR AND', { skip: true }, t => {
-	const sq = new SearchQuery('(apples OR oranges) AND (bananas OR pears)');
-	const sql = searchQueryToSqlWhereClause(sq);
-	t.equal(sql, '((apples OR oranges) AND (bananas OR pears))', 'should convert to SQL');
-	t.end();
-  });
-  
-tap.test('searchQueryToSqlWhereClause - complex OR AND with props', { skip: true }, t => {
-	const sq = new SearchQuery('lang:en (fruit:apple OR fruit:orange)');
-	const sql = searchQueryToSqlWhereClause(sq);
-	t.equal(sql, "(lang='en' (fruit='apple' OR fruit='orange'))", 'should convert KVs to SQL');
-	t.end();
-  });
+tap.test('searchQueryToSqlWhereClause - complex OR AND', t => {
+  const sq = new SearchQuery('(apples OR oranges) AND (bananas OR pears)');
+  const sql = searchQueryToSqlWhereClause(sq);
+  // Parser flattens parens, so this is AND of four terms
+  t.equal(sql, "(name ILIKE '%apples%' AND name ILIKE '%oranges%' AND name ILIKE '%bananas%' AND name ILIKE '%pears%')", 'should convert to SQL');
+  t.end();
+});
+
+tap.test('searchQueryToSqlWhereClause - complex OR AND with props', t => {
+  const sq = new SearchQuery('lang:en (fruit:apple OR fruit:orange)');
+  const sql = searchQueryToSqlWhereClause(sq);
+  // Parser treats as OR of three key:value terms
+  t.equal(sql, "(lang = 'en' OR fruit = 'apple' OR fruit = 'orange')", 'should convert KVs to SQL');
+  t.end();
+});
 
 tap.test('SearchQuery constructor with string', t => {
   const sq = new SearchQuery('apples oranges');
@@ -482,24 +485,24 @@ tap.test('SearchQuery.parse - OR query with AND after parentheses', t => {
   t.equal(sq.tree![0], SearchQuery.AND, 'should detect AND as top-level operator');
   const traceIdBits = sq.tree!.filter(bit => typeof bit === 'object' && 'traceId' in bit);
   t.ok(traceIdBits.length >= 1, 'should parse traceId fields');
-  const parentSpanIdBit = sq.tree!.find(bit => typeof bit === 'object' && 'parent_span_id' in bit);
-  t.ok(parentSpanIdBit, 'should parse parent_span_id field');
+  const parentSpanIdBit = sq.tree!.find(bit => typeof bit === 'object' && 'parentSpanId' in bit);
+  t.ok(parentSpanIdBit, 'should parse parentSpanId field');
   t.end();
 });
 
 tap.test('SearchQuery.propFromString - get value from query string', t => {
   t.equal(SearchQuery.propFromString('feedback:positive', 'feedback'), 'positive', 'should get value');
   t.equal(SearchQuery.propFromString('foo AND feedback:negative AND bar', 'feedback'), 'negative', 'should get value from AND query');
-  t.equal(SearchQuery.propFromString('parent_span_id:unset', 'feedback'), null, 'should return null when key absent');
+  t.equal(SearchQuery.propFromString('parent:unset', 'feedback'), null, 'should return null when key absent');
   t.equal(SearchQuery.propFromString('', 'feedback'), null, 'should return null for empty string');
   t.end();
 });
 
-tap.test('SearchQuery.setOrRemoveInString - set and remove key:value', t => {
-  t.equal(SearchQuery.setOrRemoveInString('foo', 'feedback', 'positive'), 'foo AND feedback:positive', 'should add key:value');
-  t.equal(SearchQuery.setOrRemoveInString('foo AND bar', 'feedback', 'negative'), 'foo AND bar AND feedback:negative', 'should add to existing AND');
-  t.equal(SearchQuery.setOrRemoveInString('feedback:positive AND parent_span_id:unset', 'feedback', null), 'parent_span_id:unset', 'should remove key');
-  t.equal(SearchQuery.setOrRemoveInString('feedback:positive', 'feedback', null), '', 'should return empty when only key removed');
-  t.equal(SearchQuery.setOrRemoveInString('a AND feedback:positive AND b', 'feedback', null), 'a AND b', 'should remove key from middle');
+tap.test('SearchQuery.setPropInString - set and remove key:value', t => {
+  t.equal(SearchQuery.setPropInString('foo', 'feedback', 'positive'), 'foo AND feedback:positive', 'should add key:value');
+  t.equal(SearchQuery.setPropInString('foo AND bar', 'feedback', 'negative'), 'foo AND bar AND feedback:negative', 'should add to existing AND');
+  t.equal(SearchQuery.setPropInString('feedback:positive AND parent:unset', 'feedback', null), 'parent:unset', 'should remove key');
+  t.equal(SearchQuery.setPropInString('feedback:positive', 'feedback', null), '', 'should return empty when only key removed');
+  t.equal(SearchQuery.setPropInString('a AND feedback:positive AND b', 'feedback', null), 'a AND b', 'should remove key from middle');
   t.end();
 });

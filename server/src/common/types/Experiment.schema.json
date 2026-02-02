@@ -6,12 +6,9 @@
       "additionalProperties": false,
       "description": "An Experiment is a run of a Dataset of examples over your code, scoring the outputs. Individual results may be traced as per normal tracing.",
       "properties": {
-        "comparison_parameters": {
-          "description": "The parameters you are directly comparing this experiment with multiple tests, e.g. model:gpt-4o vs model:gpt-4o-mini \n-- and the ExperimentRunner will do both. For each example, the runner will loop over this array, and run the engine with each set of parameters. These + parameters are (a) set as environment variables, and (b) passed as kwargs to the engine function, in a loop.",
-          "items": {
-            "type": "object"
-          },
-          "type": "array"
+        "batch": {
+          "description": "optional - links a set of experiments together for comparison",
+          "type": "string"
         },
         "created": {
           "format": "date-time",
@@ -31,38 +28,16 @@
           "type": "string"
         },
         "parameters": {
-          "description": "The parameters you are testing in this experiment, e.g. model:gpt-4o vs another Experiment with model:gpt-4o-mini  These + comparison_parameters are (a) set as environment variables, and (b) passed as kwargs to the engine function.",
+          "description": "Parameters for this experiment (e.g. model, temperature). Set as env vars and passed as kwargs to the engine.",
           "type": "object"
         },
         "results": {
           "items": {
-            "additionalProperties": false,
-            "properties": {
-              "errors": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "exampleId": {
-                "type": "string"
-              },
-              "scores": {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              }
-            },
-            "required": [
-              "exampleId",
-              "scores"
-            ],
-            "type": "object"
+            "$ref": "#/definitions/Result"
           },
           "type": "array"
         },
-        "summary_results": {
+        "summaries": {
           "description": "metric name: -> summary stats: average, min, max, variance, histogram, count"
         },
         "updated": {
@@ -76,6 +51,41 @@
         "organisation",
         "created",
         "updated"
+      ],
+      "type": "object"
+    },
+    "Result": {
+      "additionalProperties": false,
+      "description": "The Result from one example, with the scores for each metric",
+      "properties": {
+        "errors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "example": {
+          "type": "string"
+        },
+        "messages": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "trace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "example",
+        "scores"
       ],
       "type": "object"
     }

@@ -5,6 +5,24 @@ import { createClient, RedisClientType } from 'redis';
 
 dotenv.config();
 
+const REDIS_CHECK_TIMEOUT_MS = 2000;
+
+/** Check if Redis is reachable (with short timeout). Use to skip tests when Redis is unavailable. */
+async function isRedisAvailable(redisUrl?: string): Promise<boolean> {
+  const url = redisUrl || process.env.REDIS_URL || 'redis://localhost:6379';
+  try {
+    const client = createClient({ url });
+    await Promise.race([
+      client.connect(),
+      new Promise<void>((_, rej) => setTimeout(() => rej(new Error('timeout')), REDIS_CHECK_TIMEOUT_MS)),
+    ]);
+    await client.quit();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Helper to get a test Redis client for cleanup
 async function getTestRedisClient(): Promise<RedisClientType | null> {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -47,7 +65,10 @@ tap.test('Rate Limit: Redis unavailable (fail-open)', async t => {
 
 tap.test('Rate Limit: Initialize and close Redis', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   // Test initialization
   try {
     await initRedis(redisUrl);
@@ -77,8 +98,11 @@ tap.test('Rate Limit: Initialize and close Redis', async t => {
 
 tap.test('Rate Limit: Check limit with empty history', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-empty';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -104,8 +128,11 @@ tap.test('Rate Limit: Check limit with empty history', async t => {
 
 tap.test('Rate Limit: Record and check single span', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-single';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -137,8 +164,11 @@ tap.test('Rate Limit: Record and check single span', async t => {
 
 tap.test('Rate Limit: Record multiple spans', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-multiple';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -170,9 +200,12 @@ tap.test('Rate Limit: Record multiple spans', async t => {
 
 tap.test('Rate Limit: Exceed limit', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-exceed';
   const limit = 10; // Small limit for testing
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -217,8 +250,11 @@ tap.test('Rate Limit: Exceed limit', async t => {
 
 tap.test('Rate Limit: Default limit (1000)', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-default';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -243,8 +279,11 @@ tap.test('Rate Limit: Default limit (1000)', async t => {
 
 tap.test('Rate Limit: Sliding window - old entries removed', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-sliding';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -296,8 +335,11 @@ tap.test('Rate Limit: Sliding window - old entries removed', async t => {
 
 tap.test('Rate Limit: Reset time calculation', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId = 'test-org-reset';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId);
   
@@ -340,9 +382,12 @@ tap.test('Rate Limit: Reset time calculation', async t => {
 
 tap.test('Rate Limit: Different organisations isolated', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   const testOrgId1 = 'test-org-isolated-1';
   const testOrgId2 = 'test-org-isolated-2';
-  
   // Clean up any existing keys
   await cleanupTestKeys(testOrgId1);
   await cleanupTestKeys(testOrgId2);
@@ -384,7 +429,10 @@ tap.test('Rate Limit: Different organisations isolated', async t => {
 
 tap.test('Rate Limit: Error handling in checkRateLimit', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   // Initialize Redis
   await initRedis(redisUrl);
   
@@ -405,7 +453,10 @@ tap.test('Rate Limit: Error handling in checkRateLimit', async t => {
 
 tap.test('Rate Limit: Error handling in recordSpanPosting', async t => {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  
+  if (!(await isRedisAvailable(redisUrl))) {
+    t.skip('Redis not available');
+    return;
+  }
   // Initialize Redis
   await initRedis(redisUrl);
   

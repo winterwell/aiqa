@@ -13,27 +13,29 @@ import { checkAccessDeveloper, getOrganisationId, parseSearchQuery, send404 } fr
  * Register API key endpoints with Fastify
  */
 export async function registerApiKeyRoutes(fastify: FastifyInstance): Promise<void> {
-  // Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided. Only accepts key_hash (not plaintext).
+  // Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided. Only accepts hash (not plaintext).
   fastify.post('/api-key', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloper(request, reply)) return;
     const body = request.body as any;
-    
-    // Ensure we only accept key_hash, not key (security: frontend should hash before sending)
+    const hash = body.hash ?? body.key_hash;
+    const keyEnd = body.keyEnd ?? body.key_end;
+
+    // Ensure we only accept hash, not key (security: frontend should hash before sending)
     if (body.key) {
-      reply.code(400).send({ error: 'Cannot accept plaintext key. Send key_hash instead.' });
+      reply.code(400).send({ error: 'Cannot accept plaintext key. Send hash instead.' });
       return;
     }
-    
-    if (!body.key_hash) {
-      reply.code(400).send({ error: 'key_hash is required' });
+
+    if (!hash) {
+      reply.code(400).send({ error: 'hash is required' });
       return;
     }
-    
+
     const apiKey = await createApiKey({
       organisation: body.organisation,
       name: body.name,
-      key_hash: body.key_hash,
-      key_end: body.key_end,
+      hash,
+      keyEnd,
       role: body.role || 'developer',
     });
     

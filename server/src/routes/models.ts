@@ -50,18 +50,18 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
       organisation: organisationId,
       provider: body.provider,
       name: body.name,
-      api_key: body.api_key,
+      apiKey: body.apiKey ?? body.api_key,
       version: body.version,
       description: body.description,
     });
     
     // Mask the API key in the response
-    const response = { ...model, api_key_sig: maskApiKey(model.api_key), api_key: undefined };
+    const response = { ...model, hash: maskApiKey(model.apiKey), apiKey: undefined };
     return response;
   });
 
   // Security: Authenticated users only. Organisation membership verified by authenticate middleware.
-  // Returns api_key_sig by default. Returns full api_key if fields=api_key parameter is sent AND requester has developer/admin role.
+  // Returns hash (masked api key) by default. Returns full api_key if fields=api_key parameter is sent AND requester has developer/admin role.
   fastify.get('/model/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     const { id } = request.params as { id: string };
     const model = await getModel(id);
@@ -76,7 +76,7 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
     
     // Check if requester wants full api_key (must have developer/admin role)
     const fields = (request.query as any).fields as string | undefined;
-    const includeApiKey = fields === 'api_key';
+    const includeApiKey = fields === 'apiKey' || fields === 'api_key';
     
     if (includeApiKey) {
       // Already checked access above, so return full model
@@ -84,7 +84,7 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
     }
     
     // Return masked API key
-    const response = { ...model, api_key_sig: maskApiKey(model.api_key), api_key: undefined };
+    const response = { ...model, hash: maskApiKey(model.apiKey), apiKey: undefined };
     return response;
   });
 
@@ -96,9 +96,9 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
     // Check access (must be developer/admin)
     if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     
-    // Check if requester wants full api_key
+    // Check if requester wants full apiKey
     const fields = (request.query as any).fields as string | undefined;
-    const includeApiKey = fields === 'api_key';
+    const includeApiKey = fields === 'apiKey' || fields === 'api_key';
     
     const searchQuery = parseSearchQuery(request);
     const models = await listModels(organisationId, searchQuery);
@@ -107,8 +107,8 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
     if (!includeApiKey) {
       return models.map(model => ({
         ...model,
-        api_key_sig: maskApiKey(model.api_key),
-        api_key: undefined,
+        hash: maskApiKey(model.apiKey),
+        apiKey: undefined,
       }));
     }
     

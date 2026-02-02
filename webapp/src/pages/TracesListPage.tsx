@@ -183,7 +183,7 @@ const TracesListPage: React.FC = () => {
     
     if (sinceParam) {
       const sinceValue = sinceParam.startsWith('-') ? getRelativeTime(sinceParam) : sinceParam;
-      parts.push(`start_time:>=${sinceValue}`);
+      parts.push(`start:>=${sinceValue}`);
     }
     
     if (dateFilterType === 'custom' && untilParam) {
@@ -235,7 +235,7 @@ const TracesListPage: React.FC = () => {
       const spans = await queryClient.fetchQuery({
         queryKey: cacheKey,
         queryFn: async () => {
-          const traceIdQuery = batch.map(id => `trace_id:${id}`).join(' OR ');
+          const traceIdQuery = batch.map(id => `trace:${id}`).join(' OR ');
           const feedbackResult = await searchSpans({
             organisationId: organisationId!,
             query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
@@ -506,7 +506,11 @@ const TracesListPage: React.FC = () => {
     setDeleteModalOpen(true);
   }
   const handleBulkDeleteConfirmed = async () => {
-    console.log('handleBulkDeleteConfirmed:', selectedRowIds, selectedRows);
+    if (!organisationId) {
+      console.warn('No organisation context for bulk delete');
+      setDeleteModalOpen(false);
+      return;
+    }
     if (selectedRows.length === 0) {
       console.warn('No rows selected for deletion');
       setDeleteModalOpen(false);
@@ -529,10 +533,10 @@ const TracesListPage: React.FC = () => {
 
     try {
       if (traceIds.size > 0) {
-        await deleteSpans({ trace_ids: Array.from(traceIds) });
+        await deleteSpans(organisationId!, { traceIds: Array.from(traceIds) });
       }
       if (orphanSpanIds.size > 0) {
-        await deleteSpans({ spanIds: Array.from(orphanSpanIds) });
+        await deleteSpans(organisationId!, { spanIds: Array.from(orphanSpanIds) });
       }
       // Invalidate queries to refresh the table data
       // Invalidate both the table-data queries and trace-related queries
@@ -685,10 +689,10 @@ const TracesListPage: React.FC = () => {
             columns={columns}
             pageSize={50}
             enableInMemoryFiltering={true}
-            initialSorting={[{ id: 'start_time', desc: true }]}
+            initialSorting={[{ id: 'start', desc: true }]}
             queryKeyPrefix={['traces', organisationId, searchQuery, dateFilterType, sinceParam, untilParam]}
             getRowId={(span) => {
-              // Use trace_id as the stable row ID, fallback to span ID if no trace_id
+              // Use trace as the stable row ID, fallback to span ID if no trace
               const traceId = getTraceId(span);
               if (traceId) return traceId;
               const spanId = getSpanId(span);

@@ -8,15 +8,14 @@
 import { Client } from '@elastic/elasticsearch';
 import Span from '../common/types/Span.js';
 import SearchQuery from '../common/SearchQuery.js';
-import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/utils/schema-loader.js';
 import { searchEntities as searchEntitiesEs } from './es_query.js';
 import Example from '../common/types/Example.js';
 
 let client: Client | null = null;
-const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
-const SPAN_INDEX_ALIAS = process.env.SPANS_INDEX_ALIAS || 'aiqa_spans_alias';
-const DATASET_EXAMPLES_INDEX = process.env.DATASET_EXAMPLES_INDEX || 'aiqa_dataset_examples';
-const DATASET_EXAMPLES_INDEX_ALIAS = process.env.DATASET_EXAMPLES_INDEX_ALIAS || 'aiqa_dataset_examples_alias';
+export const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
+export const SPAN_INDEX_ALIAS = process.env.SPANS_INDEX_ALIAS || 'aiqa_spans_alias';
+export const DATASET_EXAMPLES_INDEX = process.env.DATASET_EXAMPLES_INDEX || 'aiqa_dataset_examples';
+export const DATASET_EXAMPLES_INDEX_ALIAS = process.env.DATASET_EXAMPLES_INDEX_ALIAS || 'aiqa_dataset_examples_alias';
 
 /**
  * Initialize Elasticsearch client. Must be called before any operations.
@@ -51,160 +50,7 @@ export async function checkElasticsearchAvailable(): Promise<boolean> {
   }
 }
 
-/**  Recursively generate Elasticsearch mappings from JSON Schema properties */
-function generateEsMappingsFromSchema(properties: Record<string, any>): Record<string, any> {
-  const mappings: Record<string, any> = {};
-  
-  for (const [fieldName, prop] of Object.entries(properties)) {
-    // Special handling: use 'flattened' type for all 'attributes' fields to avoid mapping explosion
-    if (fieldName === 'attributes' && prop.type === 'object') {
-      mappings[fieldName] = { type: 'flattened' };
-      continue;
-    }
-    
-    // Special handling for time fields (start_time, end_time, duration)
-    // These are stored as milliseconds (long)
-    if ((fieldName === 'start_time' || fieldName === 'end_time' || fieldName === 'duration') &&
-        prop.type === 'number') {
-      mappings[fieldName] = { type: 'long' };
-      continue;
-    }
-    
-    const baseMapping = jsonSchemaToEsMapping(prop, fieldName);
-    
-    // If it's an object type, recursively process nested properties
-    if (prop.type === 'object' && prop.properties) {
-      baseMapping.properties = generateEsMappingsFromSchema(prop.properties);
-    }
-    
-    // If it's an array with object items, process the item properties
-    if (prop.type === 'array' && prop.items?.type === 'object' && prop.items.properties) {
-      baseMapping.properties = generateEsMappingsFromSchema(prop.items.properties);
-    }
-    
-    // Special handling for events array (nested type with specific structure)
-    // Events have 'time' property (milliseconds) which maps to 'timestamp' in ES
-    if (fieldName === 'events' && prop.type === 'array' && prop.items?.properties) {
-      const eventProps = prop.items.properties;
-      baseMapping.properties = {};
-      if (eventProps.name) {
-        baseMapping.properties.name = jsonSchemaToEsMapping(eventProps.name, 'name');
-      }
-      // Map 'time' (milliseconds) to 'timestamp' (long) in Elasticsearch
-      if (eventProps.time) {
-        baseMapping.properties.timestamp = { type: 'long' };
-      }
-      // Use flattened type for event attributes
-      if (eventProps.attributes) {
-        baseMapping.properties.attributes = { type: 'flattened' };
-      }
-    }
-    
-    mappings[fieldName] = baseMapping;
-  }
-  
-  return mappings;
-}
-
-
-// Generate Elasticsearch mappings from Span schema
-export function generateSpanMappings(): any {
-  const spanSchema = loadSchema('Span');
-  const spanDef = getTypeDefinition(spanSchema, 'Span');
-  
-  if (!spanDef || !spanDef.properties) {
-    throw new Error('Could not find Span properties in schema');
-  }
-  
-  // Generate all mappings from schema (including nested objects)
-  const mappings = generateEsMappingsFromSchema(spanDef.properties);
-  // "hidden" backend support for large attributes that get truncated
-  mappings.unindexed_attributes = {
-    type: 'object',
-    enabled: false  // Disable indexing to allow storing large values without truncation
-  };
-  return mappings;
-}
-
-// Generate Elasticsearch mappings for Example schema
-// Examples have a spans field that should use flattened and time types like Span
-function generateExampleMappings(): any {
-  const exampleSchema = loadSchema('Example');
-  const exampleDef = getTypeDefinition(exampleSchema, 'Example');
-  
-  if (!exampleDef || !exampleDef.properties) {
-    throw new Error('Could not find Example properties in schema');
-  }
-  
-  // Generate base mappings from schema
-  const mappings = generateEsMappingsFromSchema(exampleDef.properties);
-  
-  // Reuse span mappings for the spans array field - spans are nested Span objects
-  if (mappings.spans && mappings.spans.type === 'nested') {
-    const spanMappings = generateSpanMappings();
-    mappings.spans.properties = spanMappings;
-  }
-  
-  // Special handling for input field - use flattened type for searchable but avoiding mapping explosion
-  if (mappings.input) {
-    mappings.input = { type: 'flattened' };
-  }
-  
-  // Special handling for outputs field - store but not searchable
-  if (mappings.outputs) {
-    mappings.outputs = { type: 'object', enabled: false };
-  }
-  
-  // Special handling for metrics array - parameters should be stored but not searchable
-  if (mappings.metrics && mappings.metrics.type === 'nested' && mappings.metrics.properties) {
-    if (mappings.metrics.properties.parameters) {
-      mappings.metrics.properties.parameters = { type: 'object', enabled: false };
-    }
-  }
-  
-  return mappings;
-}
-
-// Generic function to create an Elasticsearch index
-async function createIndex(indexName: string, mappings: any): Promise<void> {
-  if (!client) {
-    throw new Error('Elasticsearch client not initialized.');
-  }
-
-  const indexExists = await client.indices.exists({ index: indexName });
-  if (indexExists) {
-    // Index exists - try to update mapping with any new fields
-    // Elasticsearch allows adding new fields but not changing existing ones
-    try {
-      await client.indices.putMapping({
-        index: indexName,
-        properties: mappings
-      });
-    } catch (error: any) {
-      // Ignore mapping update errors (e.g., if fields already exist or can't be updated)
-      // This is safe - existing fields won't be changed, new fields will be added
-      console.warn(`Could not update mapping for ${indexName}:`, error.message);
-    }
-    return;
-  }
-
-  await client.indices.create({
-    index: indexName,
-    body: {
-      settings: {
-        number_of_shards: 1,
-        number_of_replicas: 0,
-        'mapping.total_fields.limit': 1000,
-        'mapping.depth.limit': 20,
-      },
-      mappings: {
-        properties: mappings,
-        dynamic: false
-      }
-    }
-  });
-}
-
+export { createIndices, generateSpanMappings } from './db_es_init.js';
 
 // Elasticsearch flattened fields have a max value size of 32,766 bytes
 // We truncate to 30KB to leave some margin for encoding overhead
@@ -268,6 +114,26 @@ function hasKeys(obj: any): boolean {
   return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
 }
 
+/** Keys that must be stored as objects in ES flattened attributes to avoid mapping conflicts (e.g. Go sends string, Python sends object). */
+const ATTRIBUTE_OBJECT_KEYS = ['input', 'output'];
+
+/**
+ * Normalize attribute.input, .output to always be objects for ES: wrap primitives in { value } so the index always sees an object.
+ */
+function normalizeAttributesForFlattened(attributes: any): any {
+  if (!attributes || typeof attributes !== 'object') return attributes;
+  const out = { ...attributes };
+  for (const key of ATTRIBUTE_OBJECT_KEYS) {
+    if (out[key] === undefined || out[key] === null) continue;
+    const v = out[key];
+    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      out[key] = { value: v };
+    }
+    // Arrays and objects left as-is so nested input/output still work
+  }
+  return out;
+}
+
 /**
  * Process attributes field: truncate and collect big attributes.
  * Returns the truncated attributes and big attributes (if any).
@@ -309,7 +175,8 @@ function transformSpanForEs(doc: any): any {
   
   // Process top-level attributes
   const { truncated: attrsTruncated, bigAttributes: attrsBig } = processAttributes(transformed.attributes);
-  transformed.attributes = attrsTruncated;
+  // Normalize input/output so ES flattened always sees objects (avoids document_parsing_exception when clients send string)
+  transformed.attributes = normalizeAttributesForFlattened(attrsTruncated);
   if (hasKeys(attrsBig)) {
     unindexedBigAttributes.attributes = attrsBig;
   }
@@ -369,7 +236,7 @@ function transformSpanForEs(doc: any): any {
   }
   
   return transformed;
-}
+} //  end transformSpanForEs
 
 // Transform example document for Elasticsearch
 function transformExampleForEs(doc: any): any {
@@ -389,15 +256,10 @@ function transformExampleForEs(doc: any): any {
     // If it's already an object or array, leave it as-is
   }
   
-  // Process example-level attributes
-  const { truncated: attrsTruncated, bigAttributes: attrsBig } = processAttributes(transformed.attributes);
-  transformed.attributes = attrsTruncated;
-  if (hasKeys(attrsBig)) {
-    transformed.unindexed_attributes = { attributes: attrsBig };
-  }
-  
+
+
   return transformed;
-}
+} //  end transformExampleForEs
 
 /** Generic bulk insert function. Returns the IDs of the documents that were inserted. */
 async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (doc: any) => any): Promise<{ id: string }[]> {
@@ -411,16 +273,18 @@ async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (d
 
   const body = documents.flatMap(doc => {
     const transformed = transform(doc);
-    const docId = (doc as any).id || (doc as any).spanId;
+    const docId = (doc as any).id;
     const indexAction = docId 
       ? { index: { _index: indexName, _id: docId } }
       : { index: { _index: indexName } };
     return [indexAction, transformed];
   });
 
-  const response = await client.bulk({ 
+  // refresh: true = immediate visibility (good for tests, avoid in production); wait_for = visible within ~1s
+  const refresh = process.env.REFRESH_AFTER_INDEX === 'true' ? true : 'wait_for';
+  const response = await client.bulk({
     body,
-    refresh: 'wait_for' // Make documents immediately searchable
+    refresh,
   });
 
   // Check for errors in bulk response
@@ -443,6 +307,10 @@ async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (d
   return response.items.map((action: any) => ({ id: action.index._id }));
 }
 
+function isNotFoundError(error: any): boolean {
+  return error.meta?.statusCode === 404;
+}
+
 /**Generic search function wrapper. This is the function for getting entities from Elasticsearch. */
 async function searchEntities<T>(
   indexName: string,
@@ -457,148 +325,6 @@ async function searchEntities<T>(
     throw new Error('Elasticsearch client not initialized.');
   }
   return searchEntitiesEs<T>(client, indexName, searchQuery, filters, limit, offset, _source_includes, _source_excludes);
-}
-
-/**
- * Check if an error is a 404 (not found) error.
- */
-function isNotFoundError(error: any): boolean {
-  return error.meta?.statusCode === 404;
-}
-
-/**
- * Get indices that have a given alias, excluding the specified index.
- */
-async function getOtherIndicesWithAlias(alias: string, excludeIndex: string): Promise<string[]> {
-  if (!client) throw new Error('Elasticsearch client not initialized.');
-  
-  try {
-    const aliasIndices = await client.indices.getAlias({ name: alias });
-    if (aliasIndices && typeof aliasIndices === 'object' && !Array.isArray(aliasIndices)) {
-      return Object.keys(aliasIndices).filter(i => i !== excludeIndex);
-    }
-  } catch (error: any) {
-    if (!isNotFoundError(error)) throw error;
-  }
-  return [];
-}
-
-// Also ensure index aliases exist and point to the correct indices
-async function ensureAlias(index: string, alias: string): Promise<void> {
-  if (index === alias) return; // skip if alias is just the index name
-  if (!client) throw new Error('Elasticsearch client not initialized.');
-  
-  // Check if index exists first
-  const indexExists = await client.indices.exists({ index });
-  if (!indexExists) {
-    throw new Error(`Index ${index} does not exist. Create it before setting up aliases.`);
-  }
-  
-  // Check if alias already points to this index
-  try {
-    const aliasExists = await client.indices.existsAlias({ name: alias, index });
-    if (aliasExists) return; // Alias already correctly configured
-  } catch (error: any) {
-    if (!isNotFoundError(error)) throw error;
-  }
-  
-  // Get indices that currently have this alias (excluding our target index)
-  const indicesWithAlias = await getOtherIndicesWithAlias(alias, index);
-  
-  // Build actions: remove alias from other indices, then add to target index
-  const actions: any[] = [];
-  if (indicesWithAlias.length > 0) {
-    actions.push(...indicesWithAlias.map(i => ({ remove: { index: i, alias } })));
-  }
-  actions.push({ add: { index, alias } });
-  
-  // Update aliases atomically
-  await client.indices.updateAliases({ body: { actions } });
-}
-  
-/**
- * Apply migration to add unindexed_attributes field to an index if it doesn't exist.
- */
-async function migrationAddUnindexedAttributesToIndex(indexName: string): Promise<void> {
-  if (!client) {
-    throw new Error('Elasticsearch client not initialized.');
-  }
-
-  const indexExists = await client.indices.exists({ index: indexName });
-  if (!indexExists) return;
-
-  try {
-    const currentMapping = await client.indices.getMapping({ index: indexName });
-    const mappingKey = Object.keys(currentMapping)[0];
-    const properties = currentMapping[mappingKey]?.mappings?.properties;
-    
-    if (!properties?.unindexed_attributes) {
-      const unindexedMapping: any = { type: 'object', enabled: false };
-      await client.indices.putMapping({
-        index: indexName,
-        properties: { unindexed_attributes: unindexedMapping }
-      });
-      console.log(`Added unindexed_attributes field to ${indexName}`);
-    }
-  } catch (error: any) {
-    console.warn(`Could not apply migration to ${indexName}:`, error.message);
-  }
-}
-
-/**
- * Apply migration to ensure starred field is indexed in spans index.
- */
-async function migrationEnsureStarredField(indexName: string): Promise<void> {
-  if (!client) {
-    throw new Error('Elasticsearch client not initialized.');
-  }
-
-  const indexExists = await client.indices.exists({ index: indexName });
-  if (!indexExists) return;
-
-  try {
-    const currentMapping = await client.indices.getMapping({ index: indexName });
-    const mappingKey = Object.keys(currentMapping)[0];
-    const properties = currentMapping[mappingKey]?.mappings?.properties;
-    
-    // Check if starred field exists and is properly mapped
-    if (!properties?.starred) {
-      await client.indices.putMapping({
-        index: indexName,
-        properties: { starred: { type: 'boolean' } }
-      });
-      console.log(`Added starred field to ${indexName}`);
-    }
-  } catch (error: any) {
-    console.warn(`Could not apply starred field migration to ${indexName}:`, error.message);
-  }
-}
-
-/**
- * Apply migrations to Elasticsearch indices. Safe to call multiple times.
- * Updates mappings for existing indices.
- */
-async function applyMigrations(): Promise<void> {
-  await migrationAddUnindexedAttributesToIndex(SPAN_INDEX);
-  await migrationAddUnindexedAttributesToIndex(DATASET_EXAMPLES_INDEX);
-  await migrationEnsureStarredField(SPAN_INDEX);
-}
-
-/**
- * Create Elasticsearch indices with mappings. Safe to call multiple times (skips if index exists).
- * Call during application startup.
- */
-export async function createIndices(): Promise<void> {
-  const spanMappings = generateSpanMappings();
-  const exampleMappings = generateExampleMappings();
-  await createIndex(SPAN_INDEX, spanMappings);
-  await createIndex(DATASET_EXAMPLES_INDEX, exampleMappings);
- 
-  await ensureAlias(SPAN_INDEX, SPAN_INDEX_ALIAS);
-  await ensureAlias(DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS);
-  
-  // Apply migrations after indices are created/updated
-  await applyMigrations();
 }
 
 /**
@@ -677,7 +403,7 @@ export async function updateSpan(
       return currentSpan as Span;
     }
 
-    // Transform the update document if needed (for fields like start_time, end_time)
+    // Transform the update document if needed (for fields like start, end)
     // For starred, we can update directly
     const transformedUpdate = { ...updateDoc };
     
@@ -714,16 +440,52 @@ export async function bulkInsertExamples(examples: Example[]): Promise<{ id: str
 }
 
 /**
- * Get a single example by ID from Elasticsearch.
- * @param id - Example ID
- * @param organisationId - Optional organisation ID for verification
- * @returns Example or null if not found
+ * Get a document by ID from an Elasticsearch index using get-by-ID (not search).
+ * Verifies organisation if organisationId is provided (doc.organisation must match).
+ * @param index - Index alias (e.g. SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX_ALIAS)
+ * @param id - Document ID (used as _id in Elasticsearch)
+ * @param organisationId - Optional organisation ID; if provided, document must match or null is returned
+ * @returns Document _source or null if not found or organisation mismatch
+ */
+export async function getItem(index: string, id: string, organisationId?: string): Promise<any | null> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+  try {
+    const getResponse = await client.get({ index, id });
+    const doc = getResponse._source as any;
+    if (organisationId != null && doc.organisation !== organisationId) {
+      return null;
+    }
+    return doc;
+  } catch (error: any) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get a single example by ID. Uses getItem; unwraps input.value for backward compatibility.
  */
 export async function getExample(id: string, organisationId?: string): Promise<Example | null> {
-  const result = await searchExamples(`id:${id}`, organisationId, undefined, 1, 0);
-  // searchExamples already handles unwrapping input.value, so we can just return the first hit
-  return result.hits.length > 0 ? result.hits[0] : null;
+  const doc = await getItem(DATASET_EXAMPLES_INDEX_ALIAS, id, organisationId);
+  if (!doc) return null;
+  if (doc.input && typeof doc.input === 'object' && !Array.isArray(doc.input) && doc.input.value !== undefined && Object.keys(doc.input).length === 1) {
+    doc.input = doc.input.value;
+  }
+  return doc as Example;
 }
+
+/**
+ * Get a single span by ID. Uses getItem.
+ */
+export async function getSpan(id: string, organisationId?: string): Promise<Span | null> {
+  const doc = await getItem(SPAN_INDEX_ALIAS, id, organisationId);
+  return doc != null ? (doc as Span) : null;
+}
+
 
 /**
  * Update an example by ID in ElasticSearch. Performs partial update (only updates provided fields).
@@ -855,13 +617,13 @@ export async function deleteExample(
 }
 
 /**
- * Delete spans by IDs or by trace_ids.
- * @param options - Either { spanIds: string[] } or { trace_ids: string[] }
+ * Delete spans by IDs or by trace IDs.
+ * @param options - Either { span: string[] } or { traces: string[] }
  * @param organisationId - Organisation ID to verify ownership
  * @returns Number of deleted spans
  */
 export async function deleteSpans(
-  options: { spanIds: string[] } | { trace_ids: string[] },
+  options: { spans: string[] } | { traces: string[] },
   organisationId: string
 ): Promise<number> {
   if (!client) {
@@ -871,11 +633,12 @@ export async function deleteSpans(
   if (!organisationId) {
     throw new Error('organisationId is required for deleteSpans');
   }
+  const spanIds = (options as any).spans;
+  const traceIds = (options as any).traces;
 
   try {
-    if ('spanIds' in options) {
+    if (spanIds) {
       // Delete by span IDs using bulk delete
-      const spanIds = options.spanIds;
       if (spanIds.length === 0) {
         return 0;
       }
@@ -925,24 +688,17 @@ export async function deleteSpans(
 
       return successCount;
     } else {
-      // Delete by trace_ids using deleteByQuery
-      const traceIds = options.trace_ids;
+      // Delete by trace IDs using deleteByQuery
       if (traceIds.length === 0) {
         return 0;
       }
-      
-      // Build must clauses - only include organisation if provided
-      const mustClauses: any[] = [
-        { terms: { trace_id: traceIds } }
-      ];
-      
-      if (organisationId) {
-        mustClauses.unshift({ term: { organisation: organisationId } });
-      }
-      
+      // Note: organisation and trace are both keyword fields, so terms is the correct query type
       const query = {
         bool: {
-          must: mustClauses
+          must: [
+            { term: { organisation: organisationId } },
+            { terms: { trace: traceIds } }
+          ]
         }
       };
 
@@ -1018,7 +774,7 @@ export async function deleteIndex(indexName: string): Promise<void> {
 
 /**
  * Delete old spans for an organisation based on retention period.
- * Deletes spans where end_time (or start_time if end_time is missing) is older than the cutoff date.
+ * Deletes spans where end (or start if end is missing) is older than the cutoff date.
  * @param organisationId - Organisation ID
  * @param retentionDays - Number of days to retain (spans older than this will be deleted)
  * @returns Number of deleted spans
@@ -1037,7 +793,7 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
 
   // Delete spans where:
   // - organisation matches
-  // - (end_time < cutoffTime OR (end_time missing AND start_time < cutoffTime))
+  // - (end < cutoffTime OR (end missing AND start < cutoffTime))
   // Use deleteByQuery for efficient bulk deletion
   const query = {
     bool: {
@@ -1045,13 +801,13 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
         { term: { organisation: organisationId } }
       ],
       should: [
-        // Spans with end_time older than cutoff
-        { range: { end_time: { lt: cutoffTime } } },
-        // Spans without end_time but with start_time older than cutoff
+        // Spans with end older than cutoff
+        { range: { end: { lt: cutoffTime } } },
+        // Spans without end but with start older than cutoff
         {
           bool: {
-            must_not: { exists: { field: 'end_time' } },
-            must: { range: { start_time: { lt: cutoffTime } } }
+            must_not: { exists: { field: 'end' } },
+            must: { range: { start: { lt: cutoffTime } } }
           }
         }
       ],

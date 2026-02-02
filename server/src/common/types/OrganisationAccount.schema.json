@@ -22,31 +22,39 @@
           "format": "date-time",
           "type": "string"
         },
-        "experiment_retention_days": {
+        "experimentRetentionDays": {
           "type": "number"
         },
         "id": {
           "type": "string"
         },
-        "max_datasets": {
+        "maxDatasets": {
           "type": "number"
         },
-        "max_examples_per_dataset": {
+        "maxExamplesPerDataset": {
           "type": "number"
         },
-        "max_members": {
+        "maxMembers": {
           "type": "number"
         },
         "organisation": {
           "type": "string"
         },
-        "rate_limit_per_hour": {
+        "rateLimitPerHour": {
           "description": "default: 1000",
           "type": "number"
         },
-        "retention_period_days": {
+        "retentionPeriodDays": {
           "description": "default: 20",
           "type": "number"
+        },
+        "stripeCustomerId": {
+          "description": "Stripe customer ID",
+          "type": "string"
+        },
+        "stripeSubscriptionId": {
+          "description": "Stripe subscription ID",
+          "type": "string"
         },
         "subscription": {
           "additionalProperties": false,
@@ -59,7 +67,7 @@
               ],
               "type": "string"
             },
-            "end_date": {
+            "end": {
               "anyOf": [
                 {
                   "format": "date-time",
@@ -70,10 +78,10 @@
                 }
               ]
             },
-            "price_per_month": {
+            "pricePerMonth": {
               "type": "number"
             },
-            "renewal_date": {
+            "renewal": {
               "anyOf": [
                 {
                   "format": "date-time",
@@ -84,7 +92,7 @@
                 }
               ]
             },
-            "start_date": {
+            "start": {
               "format": "date-time",
               "type": "string"
             },
@@ -104,10 +112,10 @@
           "required": [
             "type",
             "status",
-            "start_date",
-            "end_date",
-            "renewal_date",
-            "price_per_month",
+            "start",
+            "end",
+            "renewal",
+            "pricePerMonth",
             "currency"
           ],
           "type": "object"

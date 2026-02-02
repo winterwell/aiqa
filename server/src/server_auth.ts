@@ -126,7 +126,7 @@ function hashApiKey(key: string): string {
 
 /**
  * Authenticate using API key.
- * The incoming key is hashed and compared against stored key_hash values.
+ * The incoming key is hashed and compared against stored hash values.
  */
 async function authenticateWithApiKey(
 	request: AuthenticatedRequest,
@@ -134,13 +134,13 @@ async function authenticateWithApiKey(
 	apiKeyPlaintext: string
 ): Promise<boolean> {
 	// Hash the incoming API key
-	const keyHash = hashApiKey(apiKeyPlaintext);
+	const hash = hashApiKey(apiKeyPlaintext);
 	
 	// Look up API key by hash
-	const apiKey = await getApiKeyByHash(keyHash);
+	const apiKey = await getApiKeyByHash(hash);
 
 	if (!apiKey) {
-		console.error('API key not found for hash:', keyHash.substring(0, 16) + '...');
+		console.error('API key not found for hash:', hash.substring(0, 16) + '...');
 		return false;
 	}
 
@@ -407,8 +407,8 @@ export async function authenticateFromGrpcMetadata(request: AuthenticatedRequest
   // Check for API key authentication: "ApiKey <api-key>"
   if (authHeader.startsWith('ApiKey ')) {
     const apiKey = authHeader.substring(7).trim();
-    const keyHash = hashApiKey(apiKey);
-    const apiKeyRecord = await getApiKeyByHash(keyHash);
+    const hash = hashApiKey(apiKey);
+    const apiKeyRecord = await getApiKeyByHash(hash);
     
     if (!apiKeyRecord) {
       throw new Error('Invalid API key');

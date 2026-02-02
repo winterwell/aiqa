@@ -16,7 +16,7 @@ import {
 	Experiment,
 } from '../common/types/index.js';
 import SearchQuery from '../common/SearchQuery.js';
-import { loadSchema, generatePostgresTable, getTypeDefinition } from '../common/utils/schema-loader.js';
+import { loadSchema, generatePostgresTable, getTypeDefinition, toSnakeCase } from '../common/utils/schema-loader.js';
 import { searchQueryToSqlWhereClause } from './sql_query.js';
 
 let pool: Pool | null = null;
@@ -230,20 +230,25 @@ async function applyMigrations(): Promise<void> {
 		END $$;
 	  `);
 	
-	// Add key_hash column to api_keys table if it doesn't exist (migration)
+	// Add hash column to api_keys (migration: was key_hash, renamed to hash)
 	await doQuery(`
 		DO $$ 
 		BEGIN
-		  IF NOT EXISTS (
+		  IF EXISTS (
 			SELECT 1 FROM information_schema.columns 
 			WHERE table_name = 'api_keys' AND column_name = 'key_hash'
 		  ) THEN
-			ALTER TABLE api_keys ADD COLUMN key_hash VARCHAR(255);
+			ALTER TABLE api_keys RENAME COLUMN key_hash TO hash;
+		  ELSIF NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'api_keys' AND column_name = 'hash'
+		  ) THEN
+			ALTER TABLE api_keys ADD COLUMN hash VARCHAR(255);
 		  END IF;
 		END $$;
 	  `);
 	
-	// Allow NULL in key column (migration: key is never stored, only key_hash is)
+	// Allow NULL in key column (migration: key is never stored, only hash is)
 	await doQuery(`
 		DO $$ 
 		BEGIN
@@ -306,6 +311,21 @@ async function applyMigrations(): Promise<void> {
 			WHERE table_name = 'experiments' AND column_name = 'summary_results'
 		  ) THEN
 			ALTER TABLE experiments ADD COLUMN summary_results JSONB;
+		  END IF;
+		END $$;
+	  `);
+	  // rename summary_results -> summaries (migration)
+	  await doQuery(`
+		DO $$ 
+		BEGIN
+		  IF EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'summary_results'
+		  ) AND NOT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'experiments' AND column_name = 'summaries'
+		  ) THEN
+			ALTER TABLE experiments RENAME COLUMN summary_results TO summaries;
 		  END IF;
 		END $$;
 	  `);
@@ -375,8 +395,8 @@ async function applyMigrations(): Promise<void> {
 //   max_datasets?: number;
 //   experiment_retention_days?: number;
 //   max_examples_per_dataset?: number;
-//  to organisations table if it doesn't exist (migration)
-// add subscription (json object) column to organisations table if it doesn't exist (migration)
+//  to organisations table if they don't exist (migration)
+// Check and add each column individually, with error handling for column limit issues
 await doQuery(`
 	DO $$ 
 	BEGIN
@@ -384,10 +404,57 @@ await doQuery(`
 		SELECT 1 FROM information_schema.columns 
 		WHERE table_name = 'organisations' AND column_name = 'max_members'
 	  ) THEN
-		ALTER TABLE organisations ADD COLUMN max_members INT;
-		ALTER TABLE organisations ADD COLUMN max_datasets INT;
-		ALTER TABLE organisations ADD COLUMN experiment_retention_days INT;
-		ALTER TABLE organisations ADD COLUMN max_examples_per_dataset INT;
+		BEGIN
+		  ALTER TABLE organisations ADD COLUMN max_members INT;
+		EXCEPTION WHEN OTHERS THEN
+		  -- Ignore errors (e.g., table has too many columns)
+		  NULL;
+		END;
+	  END IF;
+	END $$;
+  `);
+await doQuery(`
+	DO $$ 
+	BEGIN
+	  IF NOT EXISTS (
+		SELECT 1 FROM information_schema.columns 
+		WHERE table_name = 'organisations' AND column_name = 'max_datasets'
+	  ) THEN
+		BEGIN
+		  ALTER TABLE organisations ADD COLUMN max_datasets INT;
+		EXCEPTION WHEN OTHERS THEN
+		  NULL;
+		END;
+	  END IF;
+	END $$;
+  `);
+await doQuery(`
+	DO $$ 
+	BEGIN
+	  IF NOT EXISTS (
+		SELECT 1 FROM information_schema.columns 
+		WHERE table_name = 'organisations' AND column_name = 'experiment_retention_days'
+	  ) THEN
+		BEGIN
+		  ALTER TABLE organisations ADD COLUMN experiment_retention_days INT;
+		EXCEPTION WHEN OTHERS THEN
+		  NULL;
+		END;
+	  END IF;
+	END $$;
+  `);
+await doQuery(`
+	DO $$ 
+	BEGIN
+	  IF NOT EXISTS (
+		SELECT 1 FROM information_schema.columns 
+		WHERE table_name = 'organisations' AND column_name = 'max_examples_per_dataset'
+	  ) THEN
+		BEGIN
+		  ALTER TABLE organisations ADD COLUMN max_examples_per_dataset INT;
+		EXCEPTION WHEN OTHERS THEN
+		  NULL;
+		END;
 	  END IF;
 	END $$;
   `);
@@ -581,6 +648,7 @@ async function createEntity<T extends QueryResultRow>(
 ): Promise<T> {
 	const filteredItem = filterFields(tableName, item);
 	const fields = Object.keys(filteredItem);
+	const columnNames = fields.map(f => toSnakeCase(f));
 	let values = fields.map(field => filteredItem[field]);
 	// convert Object values to JSON strings for storage
 	// Pass string arrays directly (TEXT[]), but JSON.stringify arrays containing objects (JSONB)
@@ -601,7 +669,7 @@ async function createEntity<T extends QueryResultRow>(
 	});
 	const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
 	const result = await doQuery<T>(
-		`INSERT INTO ${tableName} (${fields.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+		`INSERT INTO ${tableName} (${columnNames.join(', ')}) VALUES (${placeholders}) RETURNING *`,
 		values
 	);
 	return transform ? transform(result.rows[0]) : result.rows[0];
@@ -619,6 +687,7 @@ async function updateEntity<T extends QueryResultRow>(
 		return getById<T>(tableName, id, transform);
 	}
 
+	const columnNames = fields.map(f => toSnakeCase(f));
 	let values = fields.map(field => filteredItem[field]);
 	// convert Object values to JSON strings for storage
 	// Pass string arrays directly (TEXT[]), but JSON.stringify arrays containing objects (JSONB)
@@ -638,7 +707,7 @@ async function updateEntity<T extends QueryResultRow>(
 		return value;
 	});
 
-	const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
+	const setClause = columnNames.map((col, i) => `${col} = $${i + 1}`).join(', ');
 	const idParam = `$${fields.length + 1}`;
 	const result = await doQuery<T>(
 		`UPDATE ${tableName} SET ${setClause}, updated = NOW() WHERE id = ${idParam} RETURNING *`,
@@ -654,17 +723,19 @@ async function deleteEntity(tableName: string, id: string): Promise<boolean> {
 }
 
 
-// Helper function to transform Organisation
+// Helper function to transform Organisation (snake_case columns -> camelCase)
 function transformOrganisation(row: any): Organisation {
+	const { member_settings, pending_members, ...rest } = row;
 	return {
-		...row,
-		member_settings: row.member_settings ? (typeof row.member_settings === 'string' ? JSON.parse(row.member_settings) : row.member_settings) : {},
+		...rest,
+		memberSettings: member_settings != null ? (typeof member_settings === 'string' ? JSON.parse(member_settings) : member_settings) : {},
+		pendingMembers: pending_members ?? rest.pendingMembers,
 	};
 }
 
 // CRUD operations for Organisation
 export async function createOrganisation(org: Omit<Organisation, 'created' | 'updated'> & { id?: string }): Promise<Organisation> {
-	if ( ! org.member_settings) org.member_settings = {};
+	if ( ! org.memberSettings) org.memberSettings = {};
 	if ( ! org.members) org.members = [];
 	return createEntity<Organisation>(
 		'organisations', org,
@@ -694,17 +765,36 @@ export async function deleteOrganisation(id: string): Promise<boolean> {
 	return deleteEntity('organisations', id);
 }
 
-// Helper function to transform OrganisationAccount
+// Helper function to transform OrganisationAccount (subscription JSON may have snake_case or camelCase)
 function transformOrganisationAccount(row: any): OrganisationAccount {
+	const sub = row.subscription ? (typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription) : {};
+	const subscription = {
+		type: sub.type ?? 'free',
+		status: sub.status ?? 'active',
+		start: sub.start ?? sub.start_date ?? new Date(),
+		end: sub.end ?? sub.end_date ?? null,
+		renewal: sub.renewal ?? sub.renewal_date ?? null,
+		pricePerMonth: sub.pricePerMonth ?? sub.price_per_month ?? 0,
+		currency: sub.currency ?? 'USD',
+	};
+	const { stripe_customer_id, stripe_subscription_id, rate_limit_per_hour, retention_period_days, max_members, max_datasets, experiment_retention_days, max_examples_per_dataset, ...rest } = row;
 	return {
-		...row,
-		subscription: row.subscription ? (typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription) : { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' },
+		...rest,
+		subscription,
+		stripeCustomerId: stripe_customer_id ?? rest.stripeCustomerId,
+		stripeSubscriptionId: stripe_subscription_id ?? rest.stripeSubscriptionId,
+		rateLimitPerHour: rate_limit_per_hour ?? rest.rateLimitPerHour,
+		retentionPeriodDays: retention_period_days ?? rest.retentionPeriodDays,
+		maxMembers: max_members ?? rest.maxMembers,
+		maxDatasets: max_datasets ?? rest.maxDatasets,
+		experimentRetentionDays: experiment_retention_days ?? rest.experimentRetentionDays,
+		maxExamplesPerDataset: max_examples_per_dataset ?? rest.maxExamplesPerDataset,
 	};
 }
 
 // CRUD operations for OrganisationAccount
 export async function createOrganisationAccount(account: Omit<OrganisationAccount, 'id' | 'created' | 'updated'>): Promise<OrganisationAccount> {
-	if ( ! account.subscription) account.subscription = { type: 'free', status: 'active', start_date: new Date(), end_date: null, renewal_date: null, price_per_month: 0, currency: 'USD' };
+	if ( ! account.subscription) account.subscription = { type: 'free', status: 'active', start: new Date(), end: null, renewal: null, pricePerMonth: 0, currency: 'USD' };
 	return createEntity<OrganisationAccount>(
 		'organisation_accounts', account,
 		transformOrganisationAccount
@@ -781,9 +871,10 @@ export async function deleteUser(id: string): Promise<boolean> {
 	return deleteEntity('users', id);
 }
 
-// Helper function to transform ApiKey (no transformation needed, column names match interface)
+// Helper function to transform ApiKey (snake_case columns -> camelCase)
 function transformApiKey(row: any): ApiKey {
-	return row as ApiKey;
+	const { key_hash, hash, key_end, ...rest } = row;
+	return { ...rest, hash: hash ?? key_hash ?? rest.hash, keyEnd: key_end ?? rest.keyEnd } as ApiKey;
 }
 
 // CRUD operations for ApiKey
@@ -805,13 +896,13 @@ export async function getApiKey(id: string): Promise<ApiKey | null> {
 /**
  * Get API key by its hash (for authentication).
  */
-export async function getApiKeyByHash(keyHash: string): Promise<ApiKey | null> {
+export async function getApiKeyByHash(hash: string): Promise<ApiKey | null> {
 	if (!pool) {
 		throw new Error('Database pool not initialized. Call initPool() first.');
 	}
 	const result = await pool.query(
-		'SELECT * FROM api_keys WHERE key_hash = $1 LIMIT 1',
-		[keyHash]
+		'SELECT * FROM api_keys WHERE hash = $1 LIMIT 1',
+		[hash]
 	);
 	if (result.rows.length === 0) {
 		return null;
@@ -842,11 +933,11 @@ export async function deleteApiKey(id: string): Promise<boolean> {
 
 // Organisation Member operations
 
-/** State shape for add-member logic (members, pending_members, member_settings). Matches Organisation fields. */
+/** State shape for add-member logic (members, pendingMembers, memberSettings). Matches Organisation fields. */
 type MemberState = {
 	members: string[];
-	member_settings: NonNullable<Organisation['member_settings']>;
-	pending_members: string[];
+	memberSettings: NonNullable<Organisation['memberSettings']>;
+	pendingMembers: string[];
 };
 
 /**
@@ -861,12 +952,12 @@ function applyMemberAdd(
 	const members = state.members.includes(userId)
 		? state.members
 		: [...state.members, userId];
-	const member_settings = { ...state.member_settings };
-	if (!member_settings[userId]) member_settings[userId] = { role: 'standard' as const };
-	const pending_members = emailToRemove
-		? state.pending_members.filter((e) => e.toLowerCase() !== emailToRemove.toLowerCase())
-		: state.pending_members;
-	return { members, member_settings, pending_members };
+	const memberSettings = { ...state.memberSettings };
+	if (!memberSettings[userId]) memberSettings[userId] = { role: 'standard' as const };
+	const pendingMembers = emailToRemove
+		? state.pendingMembers.filter((e) => e.toLowerCase() !== emailToRemove.toLowerCase())
+		: state.pendingMembers;
+	return { members, memberSettings, pendingMembers };
 }
 
 /**
@@ -880,8 +971,8 @@ function addMemberToOrganisationPatch(
 ): Partial<Organisation> {
 	const state: MemberState = {
 		members: org.members || [],
-		member_settings: org.member_settings || {},
-		pending_members: org.pending_members || [],
+		memberSettings: org.memberSettings || {},
+		pendingMembers: org.pendingMembers || [],
 	};
 	return applyMemberAdd(state, userId, removePendingEmail);
 }
@@ -943,11 +1034,11 @@ export async function addOrganisationMemberByEmail(
 		return { kind: 'updated', org: updated ?? org };
 	}
 
-	if ((org.pending_members || []).some((e) => e.toLowerCase() === emailLower)) {
+	if ((org.pendingMembers || []).some((e) => e.toLowerCase() === emailLower)) {
 		return { kind: 'alreadyPending' };
 	}
 	const updated = await updateOrganisation(organisationId, {
-		pending_members: [...(org.pending_members || []), emailLower],
+		pendingMembers: [...(org.pendingMembers || []), emailLower],
 	});
 	return { kind: 'addedToPending', org: updated ?? org };
 }
@@ -990,6 +1081,7 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 		`SELECT * FROM organisations WHERE pending_members IS NOT NULL AND $1 = ANY(pending_members)`,
 		[emailLower]
 	);
+	// Note: column name is snake_case in DB; transformOrganisation maps to pendingMembers
 	const orgsWithPendingEmail = result.rows.map(transformOrganisation);
 
 	const addedOrgIds: string[] = [];
@@ -1018,19 +1110,19 @@ export async function processPendingMembers(userId: string, userEmail: string): 
  * being invited but processPendingMembers did not run (e.g. race or different auth path).
  */
 export async function reconcileOrganisationPendingMembers(org: Organisation): Promise<Organisation> {
-	const pending = org.pending_members || [];
+	const pending = org.pendingMembers || [];
 	if (pending.length === 0) return org;
 
 	let state: MemberState = {
 		members: org.members || [],
-		member_settings: org.member_settings || {},
-		pending_members: [...pending],
+		memberSettings: org.memberSettings || {},
+		pendingMembers: [...pending],
 	};
 	let changed = false;
 
 	for (const email of pending) {
 		const user = await getUserByEmail(email);
-		if (user && !state.members.includes(user.id)) {
+		if (user) {
 			state = applyMemberAdd(state, user.id, email);
 			changed = true;
 		}
@@ -1060,12 +1152,11 @@ export async function getOrganisationsForUser(userId: string, searchQuery?: Sear
 	return result.rows.map(transformOrganisation);
 }
 
-// Helper function to transform Dataset JSON fields
+// Helper function to transform Dataset (snake_case columns -> camelCase, parse JSON)
 function transformDataset(row: any): Dataset {
+	const { input_schema: _i, output_schema: _o, ...rest } = row;
 	return {
-		...row,
-		input_schema: row.input_schema ? (typeof row.input_schema === 'string' ? JSON.parse(row.input_schema) : row.input_schema) : undefined,
-		output_schema: row.output_schema ? (typeof row.output_schema === 'string' ? JSON.parse(row.output_schema) : row.output_schema) : undefined,
+		...rest,
 		metrics: row.metrics ? (typeof row.metrics === 'string' ? JSON.parse(row.metrics) : row.metrics) : undefined,
 	};
 }
@@ -1073,7 +1164,7 @@ function transformDataset(row: any): Dataset {
 // CRUD operations for Dataset
 
 /**
- * JSON fields (input_schema, output_schema, metrics) are automatically serialized.
+ * JSON field (metrics) is automatically serialized.
  */
 export async function createDataset(dataset: Omit<Dataset, 'id' | 'created' | 'updated'>): Promise<Dataset> {
 	return createEntity<Dataset>(
@@ -1123,11 +1214,12 @@ function transformExperiment(row: any): Experiment {
 		results = [];
 	}
 	
+	const summariesCol = row.summaries ?? row.summary_results;
+	const { comparison_parameters: _dropped, ...rest } = row;
 	return {
-		...row,
-		summary_results: typeof row.summary_results === 'string' ? JSON.parse(row.summary_results) : row.summary_results,
+		...rest,
+		summaries: typeof summariesCol === 'string' ? JSON.parse(summariesCol) : summariesCol,
 		parameters: row.parameters !== null && row.parameters !== undefined ? (typeof row.parameters === 'string' ? JSON.parse(row.parameters) : row.parameters) : undefined,
-		comparison_parameters: row.comparison_parameters !== null && row.comparison_parameters !== undefined ? (typeof row.comparison_parameters === 'string' ? JSON.parse(row.comparison_parameters) : row.comparison_parameters) : undefined,
 		results,
 	};
 }
@@ -1135,11 +1227,11 @@ function transformExperiment(row: any): Experiment {
 // CRUD operations for Experiment
 
 /**
- * summary_results JSON field is automatically serialized.
+ * summaries JSON field is automatically serialized.
  */
 export async function createExperiment(experiment: Omit<Experiment, 'id' | 'created' | 'updated'>): Promise<Experiment> {
 	// fill in any missing fields with defaults
-	if ( ! experiment.summary_results) experiment.summary_results = {};
+	if ( ! experiment.summaries) experiment.summaries = {};
 	if ( ! experiment.results) experiment.results = [];
 	return createEntity<Experiment>(
 		'experiments',
@@ -1149,7 +1241,7 @@ export async function createExperiment(experiment: Omit<Experiment, 'id' | 'crea
 }
 
 /**
- * summary_results JSON field is automatically parsed.
+ * summaries JSON field is automatically parsed.
  */
 export async function getExperiment(id: string): Promise<Experiment | null> {
 	return getById<Experiment>('experiments', id, transformExperiment);
@@ -1164,17 +1256,16 @@ export async function listExperiments(organisationId: string, searchQuery?: Sear
 }
 
 /**
- * summary_results, results, parameters, and comparison_parameters JSON fields are automatically serialized.
+ * summaries, results, and parameters JSON fields are automatically serialized.
  */
 export async function updateExperiment(id: string, updates: Partial<Experiment>): Promise<Experiment | null> {
 	// TODO more reflection less custom code - sending any extra fields is not an issue, and updateEntity should handle updates generically (except for if an array should be converted to json), converting {} to json by default
 	const item: Record<string, any> = {};
 
 	if (updates.name !== undefined) item.name = updates.name;
-	if (updates.summary_results !== undefined) item.summary_results = JSON.stringify(updates.summary_results);
+	if (updates.summaries !== undefined) item.summaries = JSON.stringify(updates.summaries);
 	if (updates.results !== undefined) item.results = JSON.stringify(updates.results);
 	if (updates.parameters !== undefined) item.parameters = updates.parameters !== null && updates.parameters !== undefined ? JSON.stringify(updates.parameters) : null;
-	if (updates.comparison_parameters !== undefined) item.comparison_parameters = updates.comparison_parameters !== null && updates.comparison_parameters !== undefined ? JSON.stringify(updates.comparison_parameters) : null;
 
 	return updateEntity<Experiment>('experiments', id, item, transformExperiment);
 }
@@ -1183,16 +1274,23 @@ export async function deleteExperiment(id: string): Promise<boolean> {
 	return deleteEntity('experiments', id);
 }
 
+// Helper function to transform Model (snake_case columns -> camelCase)
+function transformModel(row: any): Model {
+	const { api_key, api_key_sig, ...rest } = row;
+	return { ...rest, apiKey: api_key ?? rest.apiKey, hash: api_key_sig ?? rest.hash } as Model;
+}
+
 // CRUD operations for Model
 export async function createModel(model: Omit<Model, 'id' | 'created' | 'updated'>): Promise<Model> {
 	return createEntity<Model>(
 		'models',
-		model
+		model,
+		transformModel
 	);
 }
 
 export async function getModel(id: string): Promise<Model | null> {
-	return getById<Model>('models', id);
+	return getById<Model>('models', id, transformModel);
 }
 
 /**
@@ -1200,11 +1298,11 @@ export async function getModel(id: string): Promise<Model | null> {
  * @param searchQuery - Gmail-style search query or SearchQuery instance. Returns all if null.
  */
 export async function listModels(organisationId: string, searchQuery?: SearchQuery | string | null): Promise<Model[]> {
-	return listEntities<Model>('models', organisationId, searchQuery);
+	return listEntities<Model>('models', organisationId, searchQuery, transformModel);
 }
 
 export async function updateModel(id: string, updates: Partial<Model>): Promise<Model | null> {
-	return updateEntity<Model>('models', id, updates);
+	return updateEntity<Model>('models', id, updates, transformModel);
 }
 
 export async function deleteModel(id: string): Promise<boolean> {

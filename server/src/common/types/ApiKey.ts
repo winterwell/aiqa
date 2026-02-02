@@ -15,11 +15,11 @@ export default interface ApiKey {
    * This is used to authenticate requests.
    * Hash algorithm: sha256
    */
-  key_hash: string;
+  hash: string;
   /** store the last 4 characters of the API key so the user can identify it in the webapp */
-  key_end?: string;
-  // rate_limit_per_hour?: number;
-  // retention_period_days?: number;
+  keyEnd?: string;
+  // rateLimitPerHour?: number;
+  // retentionPeriodDays?: number;
   /** Role of the API key: 'trace' (can only post spans), 'developer' (most endpoints), or 'admin' (all endpoints) */
   role: 'trace' | 'developer' | 'admin';
   created: Date;

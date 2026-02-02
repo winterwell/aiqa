@@ -14,7 +14,7 @@ let root: protobuf.Root | null = null;
  * Get or create the OTLP protobuf root by loading the actual proto files.
  * Proto files are loaded from opentelemetry-proto/ directory.
  */
-function getOtlpProtoRoot(): protobuf.Root {
+export function getOtlpProtoRoot(): protobuf.Root {
   if (root) {
     return root;
   }
@@ -67,6 +67,9 @@ function getOtlpProtoRoot(): protobuf.Root {
  * The output format matches what convertOtlpSpansToInternal expects (JSON with base64-encoded bytes).
  */
 export function parseOtlpProtobuf(buffer: Buffer): any {
+  if (!buffer || buffer.length === 0) {
+    return { resourceSpans: [] };
+  }
   const protoRoot = getOtlpProtoRoot();
   const ExportTraceServiceRequest = protoRoot.lookupType('opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest');
   
@@ -79,7 +82,12 @@ export function parseOtlpProtobuf(buffer: Buffer): any {
   try {
     message = ExportTraceServiceRequest.decode(buffer);
   } catch (error) {
-    throw new Error(`Failed to decode protobuf message: ${error instanceof Error ? error.message : String(error)}`);
+    const raw = error instanceof Error ? error.message : String(error);
+    // Avoid exposing low-level decoder errors (e.g. "index out of range") to clients
+    const clientMessage = /index out of range|truncated|malformed/i.test(raw)
+      ? 'Invalid protobuf: truncated or malformed message'
+      : `Invalid protobuf: ${raw}`;
+    throw new Error(clientMessage);
   }
   
   // Convert to plain JavaScript object

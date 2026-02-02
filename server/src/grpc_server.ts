@@ -22,11 +22,11 @@ function getOtlpProtoPackage(): protoLoader.PackageDefinition {
   const protoPath = join(protoDir, 'opentelemetry/proto/collector/trace/v1/trace_service.proto');
   
   try {
-    // Load from opentelemetry-proto directory
+    // Load from opentelemetry-proto directory. Use camelCase + numeric enums so request shape matches HTTP/Protobuf path.
     return protoLoader.loadSync(protoPath, {
-      keepCase: true,
+      keepCase: false,
       longs: String,
-      enums: String,
+      enums: Number,
       defaults: true,
       oneofs: true,
       includeDirs: [protoDir],
@@ -97,19 +97,10 @@ async function handleExport(
     }
     
     const request = call.request;
-    
-    // Convert protobuf message to JSON format
-    // The request is already a JavaScript object from @grpc/proto-loader
-    // but we need to ensure bytes are converted properly
-    let otlpRequest: any;
-    if (request.resourceSpans) {
-      // Already parsed by proto-loader
-      otlpRequest = request;
-    } else {
-      // If we get raw bytes, parse them
-      const buffer = Buffer.from(request);
-      otlpRequest = parseOtlpProtobuf(buffer);
-    }
+    // Proto-loader with keepCase: false, enums: Number yields camelCase + numeric enums (same shape as HTTP/Protobuf).
+    const otlpRequest = Buffer.isBuffer(request)
+      ? parseOtlpProtobuf(request)
+      : request;
     
     // Process the OTLP trace export (rate limiting, storage, etc.)
     const result = await processOtlpTraceExport(otlpRequest, organisation);
@@ -204,21 +195,35 @@ export async function startGrpcServer(port: number = 4317): Promise<{ server: gr
   }
 }
 
+/** Max wait for graceful shutdown before forcing (avoids hang when clients don't close). */
+const SHUTDOWN_GRACE_MS = 2000;
+
 /**
  * Stop the gRPC server.
+ * Uses tryShutdown first; if it doesn't complete within SHUTDOWN_GRACE_MS (e.g. clients left open),
+ * forceShutdown is used so the process can exit.
  */
 export async function stopGrpcServer(): Promise<void> {
-  if (grpcServer) {
-    return new Promise((resolve, reject) => {
-      grpcServer!.tryShutdown((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          grpcServer = null;
-          resolve();
-        }
-      });
+  if (!grpcServer) return;
+  const server = grpcServer;
+  grpcServer = null;
+  await new Promise<void>((resolve) => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+    server.tryShutdown((error) => {
+      if (error) {
+        server.forceShutdown();
+      }
+      done();
     });
-  }
+    setTimeout(() => {
+      server.forceShutdown();
+      done();
+    }, SHUTDOWN_GRACE_MS);
+  });
 }
 

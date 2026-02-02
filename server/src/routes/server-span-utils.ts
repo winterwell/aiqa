@@ -143,7 +143,7 @@ export async function propagateTokenCostsToRootSpan(
 
   const missingParentIds = new Set<string>();
   for (const span of spans) {
-    const parentSpanId = (span as any).parent_span_id;
+    const parentSpanId = (span as any).parent;
     if (parentSpanId && !spanMap.has(parentSpanId)) {
       missingParentIds.add(parentSpanId);
     }
@@ -160,14 +160,14 @@ export async function propagateTokenCostsToRootSpan(
         organisation,
         1,
         0,
-        ['id', 'parent_span_id', 'trace_id', 'organisation', 'attributes', '_seen'],
+        ['id', 'parent', 'trace', 'organisation', 'attributes', '_seen'],
         undefined
       );
       if (result.hits.length > 0) {
         const parent = result.hits[0];
         loadedParents.set(parentId, parent);
         spanMap.set(parentId, parent);
-        const grandparentId = (parent as any).parent_span_id;
+        const grandparentId = (parent as any).parent;
         if (grandparentId && !spanMap.has(grandparentId)) {
           toLoad.push(grandparentId);
         }
@@ -188,7 +188,7 @@ export async function propagateTokenCostsToRootSpan(
       console.warn('propagateTokenCostsToRootSpan: span missing id in allSpans, skipping', (span as any).name);
       continue;
     }
-    const parentSpanId = (span as any).parent_span_id;
+    const parentSpanId = (span as any).parent;
     if (!parentSpanId) {
       rootSpans.push(span);
     } else {

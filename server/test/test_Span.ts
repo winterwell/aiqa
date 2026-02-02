@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
 import Fastify from 'fastify';
+import * as crypto from 'crypto';
 import { initPool, createTables, closePool, createOrganisation, createApiKey } from '../dist/db/db_sql.js';
 import { initClient, createIndices, closeClient, checkElasticsearchAvailable } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
@@ -40,19 +41,19 @@ tap.before(async () => {
 
           // Import route handlers
           const { authenticateApiKey } = await import('../dist/server_auth.js');
-  const { bulkInsertSpans, searchSpans } = await import('../dist/db/db_es.js');
+  const { bulkInsertSpans, searchSpans, getSpan } = await import('../dist/db/db_es.js');
   const SearchQuery = (await import('../dist/common/SearchQuery.js')).default;
 
-  // Register span endpoints
+  // Register span endpoints (AuthenticatedRequest uses organisation, not organisationId)
   fastify.post('/span', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
-    const organisationId = request.organisationId!;
+    const organisation = request.organisation!;
     const spans = request.body as Span | Span[];
 
     const spansArray = Array.isArray(spans) ? spans : [spans];
     
     const spansWithOrg = spansArray.map(span => ({
       ...span,
-      organisation: organisationId,
+      organisation,
     }));
 
     await bulkInsertSpans(spansWithOrg);
@@ -60,13 +61,13 @@ tap.before(async () => {
   });
 
   fastify.get('/span', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
-    const organisationId = request.organisationId!;
+    const organisation = request.organisation!;
     const query = (request.query as any).q as string | undefined;
     const limit = parseInt((request.query as any).limit || '100');
     const offset = parseInt((request.query as any).offset || '0');
 
     const searchQuery = query ? new SearchQuery(query) : null;
-    const result = await searchSpans(searchQuery, organisationId, limit, offset);
+    const result = await searchSpans(searchQuery, organisation, limit, offset);
     
     return {
       hits: result.hits,
@@ -74,6 +75,16 @@ tap.before(async () => {
       limit,
       offset,
     };
+  });
+
+  fastify.get('/span/:id', { preHandler: authenticateApiKey }, async (request: AuthenticatedRequest, reply) => {
+    const organisation = request.organisation!;
+    const { id } = request.params as { id: string };
+    const span = await getSpan(id, organisation);
+    if (!span) {
+      return reply.code(404).send({ error: 'Span not found or does not belong to your organisation' });
+    }
+    return span;
   });
 
   await fastify.listen({ port: 0, host: '127.0.0.1' });
@@ -84,10 +95,14 @@ tap.before(async () => {
   });
   testOrgId = org.id;
 
-  // Create test API key
+  // Create test API key (hash is required; auth uses plain key, DB stores hash)
   const apiKey = 'test-api-key-' + Date.now();
+  const hash = crypto.createHash('sha256').update(apiKey).digest('hex');
   await createApiKey({
     organisation: testOrgId,
+    hash,
+    keyEnd: apiKey.substring(apiKey.length - 4),
+    role: 'developer',
   });
   testApiKey = apiKey;
 });
@@ -112,20 +127,16 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   }
 
   const serverUrl = `http://127.0.0.1:${(fastify.server.address() as any)?.port}`;
-  const clientSpanId = 'test-span-' + Date.now();
   const traceId = 'test-trace-id-' + Date.now();
   const spanId = 'test-span-id-' + Date.now();
   const now = Date.now();
-  const startTime: [number, number] = [Math.floor(now / 1000), (now % 1000) * 1000000];
-  const endTime: [number, number] = [Math.floor(now / 1000), (now % 1000) * 1000000];
 
-  // Create a minimal span object that matches the serialized format
-  // Based on SerializableSpan interface from aiqa-exporter.ts
+  // Create a minimal span object matching Span type (trace, id, start, end)
   const span = {
     name: 'test-span',
     kind: 1, // SpanKind.INTERNAL
-    startTime,
-    endTime,
+    start: now,
+    end: now,
     status: {
       code: 1, // SpanStatusCode.OK
     },
@@ -135,14 +146,14 @@ tap.test('create a new span and retrieve it by id', async (t) => {
     resource: {
       attributes: {},
     },
-    traceId,
-    spanId,
+    trace: traceId,
+    id: spanId,
     traceFlags: 1,
-    parent_span_id: undefined,
+    parent: undefined,
     instrumentationLibrary: {
       name: 'test',
     },
-    clientSpanId: clientSpanId,
+    starred: false,
   };
 
   // Create span via POST /span
@@ -163,8 +174,8 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   // Wait a bit for Elasticsearch to index
   await new Promise(resolve => setTimeout(resolve, 1000));
 
-  // Retrieve span by id via GET /span?q=clientSpanId:xxx
-  const getResponse = await fetch(`${serverUrl}/span?q=clientSpanId:${clientSpanId}`, {
+  // Retrieve span by id via GET /span/:id (get-by-id returns exactly one span)
+  const getResponse = await fetch(`${serverUrl}/span/${encodeURIComponent(spanId)}`, {
     method: 'GET',
     headers: {
       'Authorization': `ApiKey ${testApiKey}`,
@@ -172,12 +183,9 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   });
 
   t.equal(getResponse.status, 200, 'should retrieve span successfully');
-  const getResult = await getResponse.json() as { hits: Span[]; total: number; limit: number; offset: number };
-  t.ok(getResult.hits, 'should have hits array');
-  t.ok(Array.isArray(getResult.hits), 'hits should be an array');
-  t.equal(getResult.hits.length, 1, 'should find exactly one span');
-  t.equal(getResult.hits[0].client_span_id, clientSpanId, 'should match the created span id');
-  t.equal(getResult.hits[0].organisation, testOrgId, 'should have correct organisation');
-  t.equal(getResult.hits[0].name, 'test-span', 'should have correct name');
+  const spanResult = await getResponse.json() as Span;
+  t.equal(spanResult.id, spanId, 'should match the created span id');
+  t.equal(spanResult.organisation, testOrgId, 'should have correct organisation');
+  t.equal(spanResult.name, 'test-span', 'should have correct name');
 });
 

@@ -4,6 +4,7 @@
   "definitions": {
     "Organisation": {
       "additionalProperties": false,
+      "description": "See OrganisationAccount for subscription and retention period details.",
       "properties": {
         "created": {
           "format": "date-time",
@@ -12,7 +13,7 @@
         "id": {
           "type": "string"
         },
-        "member_settings": {
+        "memberSettings": {
           "additionalProperties": {
             "additionalProperties": false,
             "properties": {
@@ -39,15 +40,15 @@
           },
           "type": "array"
         },
-        "pending_members": {
+        "name": {
+          "type": "string"
+        },
+        "pendingMembers": {
           "description": "Email addresses of users invited but not yet registered. Auto-added to members when they sign up.",
           "items": {
             "type": "string"
           },
           "type": "array"
-        },
-        "name": {
-          "type": "string"
         },
         "updated": {
           "format": "date-time",

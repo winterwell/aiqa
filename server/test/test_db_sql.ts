@@ -13,26 +13,33 @@ import {
   addOrganisationMemberByEmail,
   createUser,
   getUserByEmail,
+  processPendingMembers,
+  reconcileOrganisationPendingMembers,
   createDataset,
   getDataset,
+  deleteDataset,
   createExperiment,
   getExperiment,
   listExperiments,
   updateExperiment,
   deleteExperiment,
+  deleteUser,
 } from '../dist/db/db_sql.js';
 
 dotenv.config();
 
+let dbAvailable = true;
+
 tap.before(async () => {
-  // Initialize database connection
-  const pgConnectionString = process.env.DATABASE_URL || 
+  const pgConnectionString = process.env.DATABASE_URL ||
     `postgresql://${process.env.PGUSER}:${process.env.PGPASSWORD}@${process.env.PGHOST}/${process.env.PGDATABASE}?sslmode=${process.env.PGSSLMODE || 'require'}`;
-  
-  initPool(pgConnectionString);
-  
-  // Create schema (tables and indexes)
-  await createTables();
+
+  try {
+    initPool(pgConnectionString);
+    await createTables();
+  } catch (_e) {
+    dbAvailable = false;
+  }
 });
 
 tap.after(async () => {
@@ -40,7 +47,10 @@ tap.after(async () => {
 });
 
 tap.test('database initialization', async (t) => {
-  // Test that we can query the database (schema was created)
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const client = await getClient();
   
   try {
@@ -73,6 +83,10 @@ tap.test('database initialization', async (t) => {
 });
 
 tap.test('create organisation', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const org = await createOrganisation({
     name: 'Test Org Create',
     members: [],
@@ -83,9 +97,14 @@ tap.test('create organisation', async (t) => {
   t.ok(Array.isArray(org.members), 'members should be an array');
   t.ok(org.created instanceof Date, 'should have created timestamp');
   t.ok(org.updated instanceof Date, 'should have updated timestamp');
+  await deleteOrganisation(org.id);
 });
 
 tap.test('get organisation by id', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create an organisation first
   const user1Id = '11111111-1111-1111-1111-111111111111';
   const user2Id = '22222222-2222-2222-2222-222222222222';
@@ -105,9 +124,14 @@ tap.test('get organisation by id', async (t) => {
   // Test non-existent organisation
   const nonExistent = await getOrganisation('00000000-0000-0000-0000-000000000000');
   t.equal(nonExistent, null, 'should return null for non-existent organisation');
+  await deleteOrganisation(created.id);
 });
 
 tap.test('list organisations', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create a few test organisations with unique names
   const uniqueId = Date.now().toString();
   const org1Name = `List Org Alpha ${uniqueId}`;
@@ -142,9 +166,15 @@ tap.test('list organisations', async (t) => {
   const filteredOrgs = await listOrganisations(`name:"${org1Name}"`);
   t.equal(filteredOrgs.length, 1, 'should find exactly one organisation with search query');
   t.equal(filteredOrgs[0].id, org1.id, 'should find the correct organisation');
+  await deleteOrganisation(org1.id);
+  await deleteOrganisation(org2.id);
 });
 
 tap.test('update organisation', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create an organisation
   const user1Id = '11111111-1111-1111-1111-111111111111';
   const user2Id = '22222222-2222-2222-2222-222222222222';
@@ -179,9 +209,14 @@ tap.test('update organisation', async (t) => {
     name: 'Should Not Exist',
   });
   t.equal(nonExistent, null, 'should return null for non-existent organisation');
+  await deleteOrganisation(created.id);
 });
 
 tap.test('delete organisation', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create an organisation
   const created = await createOrganisation({
     name: 'Test Org Delete',
@@ -206,6 +241,10 @@ tap.test('delete organisation', async (t) => {
 });
 
 tap.test('full CRUD workflow', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create
   const user1Id = '11111111-1111-1111-1111-111111111111';
   const org = await createOrganisation({
@@ -241,70 +280,458 @@ tap.test('full CRUD workflow', async (t) => {
 
 // getUserByEmail (integration, real DB)
 tap.test('getUserByEmail returns user when email exists', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const email = `getbyemail-${Date.now()}@example.com`;
-  const created = await createUser({ email, name: 'GetByEmail User' });
+  const created = await createUser({ email, name: 'GetByEmail User', sub: `test-sub-${email}` });
   const found = await getUserByEmail(email);
   t.ok(found, 'should find user');
   t.equal(found!.id, created.id, 'should match created user id');
   t.equal(found!.email, created.email, 'should match email');
   t.equal(found!.name, created.name, 'should match name');
+  await deleteUser(created.id);
 });
 
 tap.test('getUserByEmail returns null for non-existent email', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const found = await getUserByEmail('no-such-user-' + Date.now() + '@example.com');
   t.equal(found, null, 'should return null');
 });
 
 tap.test('getUserByEmail is case-insensitive', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const base = `case-${Date.now()}`;
   const email = `${base}@Example.COM`;
-  await createUser({ email, name: 'Case User' });
+  const created = await createUser({ email, name: 'Case User', sub: `test-sub-${email}` });
   t.ok(await getUserByEmail(email), 'same case should find');
   t.ok(await getUserByEmail(`${base}@example.com`), 'lowercase should find');
   t.ok(await getUserByEmail(`${base}@EXAMPLE.COM`), 'uppercase should find');
+  await deleteUser(created.id);
 });
 
 tap.test('getUserByEmail returns null for empty or invalid input', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   t.equal(await getUserByEmail(''), null, 'empty string returns null');
   t.equal(await getUserByEmail('   '), null, 'whitespace-only returns null');
 });
 
 // Add member by email (uses addOrganisationMemberByEmail; same behaviour as POST /organisation/:id/member)
 tap.test('add member by email: existing user added to members', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const email = `member-${Date.now()}@example.com`;
   const user = await createUser({ email, name: 'Member User' });
   const org = await createOrganisation({ name: 'Org Add Member', members: [] });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'updated', 'should return updated');
   t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'org should include user in members');
-  t.ok(result.kind === 'updated' && !(result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'pending_members should not contain email');
+  t.ok(result.kind === 'updated' && !(result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'pendingMembers should not contain email');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
 });
 
 tap.test('add member by email: existing user in pending_members is moved to members', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const email = `pending-to-member-${Date.now()}@example.com`;
-  const user = await createUser({ email, name: 'Pending To Member' });
+  const user = await createUser({ email, name: 'Pending To Member', sub: `test-sub-${email}` });
   const org = await createOrganisation({
     name: 'Org Pending To Member',
     members: [],
-    pending_members: [email.toLowerCase()],
+    pendingMembers: [email.toLowerCase()],
   });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'updated', 'should return updated');
   t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'user should be in members');
-  t.ok(result.kind === 'updated' && !(result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be removed from pending_members');
+  t.ok(result.kind === 'updated' && !(result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be removed from pendingMembers');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
 });
 
 tap.test('add member by email: unknown email added to pending_members only', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   const email = `pending-only-${Date.now()}@example.com`;
-  const org = await createOrganisation({ name: 'Org Pending Only', members: [], pending_members: [] });
+  const org = await createOrganisation({ name: 'Org Pending Only', members: [], pendingMembers: [] });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'addedToPending', 'should return addedToPending');
-  t.ok(result.kind === 'addedToPending' && (result.org.pending_members ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be in pending_members');
+  t.ok(result.kind === 'addedToPending' && (result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be in pendingMembers');
   t.same(result.kind === 'addedToPending' ? result.org.members ?? [] : [], org.members ?? [], 'members should be unchanged');
+  await deleteOrganisation(org.id);
+});
+
+// processPendingMembers tests
+tap.test('processPendingMembers: converts pending_members to members when user signs up', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `process-pending-${Date.now()}@example.com`;
+  const emailLower = email.toLowerCase();
+  
+  // Create org with pending member
+  const org = await createOrganisation({
+    name: 'Org Process Pending',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  
+  // Create user with matching email
+  const user = await createUser({ email, name: 'Process Pending User', sub: `test-sub-${email}` });
+  
+  // Process pending members
+  const addedOrgIds = await processPendingMembers(user.id, user.email);
+  
+  t.equal(addedOrgIds.length, 1, 'should return one org ID');
+  t.equal(addedOrgIds[0], org.id, 'should return correct org ID');
+  
+  // Verify org was updated
+  const updatedOrg = await getOrganisation(org.id);
+  t.ok(updatedOrg, 'org should exist');
+  t.ok(updatedOrg!.members?.includes(user.id), 'user should be in members');
+  t.ok(!(updatedOrg!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pendingMembers');
+  t.ok(updatedOrg!.memberSettings?.[user.id], 'user should have member_settings');
+  t.equal(updatedOrg!.memberSettings?.[user.id]?.role, 'standard', 'user should have standard role');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
+});
+
+tap.test('processPendingMembers: handles multiple organisations with same pending email', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `multi-org-pending-${Date.now()}@example.com`;
+  const emailLower = email.toLowerCase();
+  
+  // Create multiple orgs with same pending member
+  const org1 = await createOrganisation({
+    name: 'Org Multi 1',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  const org2 = await createOrganisation({
+    name: 'Org Multi 2',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  const org3 = await createOrganisation({
+    name: 'Org Multi 3',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  
+  // Create user
+  const user = await createUser({ email, name: 'Multi Org User', sub: `test-sub-${email}` });
+  
+  // Process pending members
+  const addedOrgIds = await processPendingMembers(user.id, user.email);
+  
+  t.equal(addedOrgIds.length, 3, 'should return three org IDs');
+  t.ok(addedOrgIds.includes(org1.id), 'should include org1');
+  t.ok(addedOrgIds.includes(org2.id), 'should include org2');
+  t.ok(addedOrgIds.includes(org3.id), 'should include org3');
+  
+  // Verify all orgs were updated
+  const updatedOrg1 = await getOrganisation(org1.id);
+  const updatedOrg2 = await getOrganisation(org2.id);
+  const updatedOrg3 = await getOrganisation(org3.id);
+  
+  t.ok(updatedOrg1!.members?.includes(user.id), 'user should be in org1 members');
+  t.ok(updatedOrg2!.members?.includes(user.id), 'user should be in org2 members');
+  t.ok(updatedOrg3!.members?.includes(user.id), 'user should be in org3 members');
+  
+  t.ok(!(updatedOrg1!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org1 pendingMembers');
+  t.ok(!(updatedOrg2!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org2 pendingMembers');
+  t.ok(!(updatedOrg3!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org3 pendingMembers');
+  await deleteOrganisation(org1.id);
+  await deleteOrganisation(org2.id);
+  await deleteOrganisation(org3.id);
+  await deleteUser(user.id);
+});
+
+tap.test('processPendingMembers: handles case-insensitive email matching', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `CaseTest-${Date.now()}@Example.COM`;
+  const emailLower = email.toLowerCase();
+  
+  // Create org with lowercase pending member
+  const org = await createOrganisation({
+    name: 'Org Case Test',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  
+  // Create user with mixed case email
+  const user = await createUser({ email, name: 'Case Test User', sub: `test-sub-${email}` });
+  
+  // Process pending members
+  const addedOrgIds = await processPendingMembers(user.id, user.email);
+  
+  t.equal(addedOrgIds.length, 1, 'should return one org ID');
+  
+  const updatedOrg = await getOrganisation(org.id);
+  t.ok(updatedOrg!.members?.includes(user.id), 'user should be in members');
+  t.ok(!(updatedOrg!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pendingMembers');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
+});
+
+tap.test('processPendingMembers: returns empty array when no pending members found', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `no-pending-${Date.now()}@example.com`;
+  
+  // Create org without pending members
+  const org = await createOrganisation({
+    name: 'Org No Pending',
+    members: [],
+    pendingMembers: [],
+  });
+  
+  // Create user
+  const user = await createUser({ email, name: 'No Pending User', sub: `test-sub-${email}` });
+  
+  // Process pending members
+  const addedOrgIds = await processPendingMembers(user.id, user.email);
+  
+  t.equal(addedOrgIds.length, 0, 'should return empty array');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
+});
+
+tap.test('processPendingMembers: handles empty or invalid input', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const result1 = await processPendingMembers('', 'test@example.com');
+  const result2 = await processPendingMembers('user-id', '');
+  const result3 = await processPendingMembers('', '');
+  
+  t.equal(result1.length, 0, 'should return empty array for empty userId');
+  t.equal(result2.length, 0, 'should return empty array for empty email');
+  t.equal(result3.length, 0, 'should return empty array for both empty');
+});
+
+tap.test('processPendingMembers: is idempotent - can be called multiple times safely', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `idempotent-${Date.now()}@example.com`;
+  const emailLower = email.toLowerCase();
+  
+  const org = await createOrganisation({
+    name: 'Org Idempotent',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  
+  const user = await createUser({ email, name: 'Idempotent User', sub: `test-sub-${email}` });
+  
+  // Call multiple times
+  const result1 = await processPendingMembers(user.id, user.email);
+  const result2 = await processPendingMembers(user.id, user.email);
+  const result3 = await processPendingMembers(user.id, user.email);
+  
+  t.equal(result1.length, 1, 'first call should return org ID');
+  t.equal(result2.length, 0, 'second call should return empty (already processed)');
+  t.equal(result3.length, 0, 'third call should return empty (already processed)');
+  
+  const updatedOrg = await getOrganisation(org.id);
+  t.ok(updatedOrg!.members?.includes(user.id), 'user should be in members');
+  t.equal(updatedOrg!.members?.filter(id => id === user.id).length, 1, 'user should appear only once in members');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
+});
+
+// reconcileOrganisationPendingMembers tests
+tap.test('reconcileOrganisationPendingMembers: converts pending_members to members for existing users', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email1 = `reconcile-1-${Date.now()}@example.com`;
+  const email2 = `reconcile-2-${Date.now()}@example.com`;
+  const email3 = `reconcile-3-${Date.now()}@example.com`;
+  const emailLower1 = email1.toLowerCase();
+  const emailLower2 = email2.toLowerCase();
+  const emailLower3 = email3.toLowerCase();
+  
+  // Create users
+  const user1 = await createUser({ email: email1, name: 'Reconcile User 1', sub: `test-sub-${email1}` });
+  const user2 = await createUser({ email: email2, name: 'Reconcile User 2', sub: `test-sub-${email2}` });
+  // user3 doesn't exist yet
+  
+  // Create org with mix of pending members (some have users, some don't)
+  const org = await createOrganisation({
+    name: 'Org Reconcile',
+    members: [],
+    pendingMembers: [emailLower1, emailLower2, emailLower3],
+  });
+  
+  // Reconcile
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.ok(reconciled.members?.includes(user1.id), 'user1 should be in members');
+  t.ok(reconciled.members?.includes(user2.id), 'user2 should be in members');
+  t.ok(!reconciled.pendingMembers?.includes(emailLower1), 'email1 should be removed from pendingMembers');
+  t.ok(!reconciled.pendingMembers?.includes(emailLower2), 'email2 should be removed from pendingMembers');
+  t.ok(reconciled.pendingMembers?.includes(emailLower3), 'email3 should remain in pendingMembers (no user yet)');
+  t.equal(reconciled.pendingMembers?.length, 1, 'should have one remaining pending member');
+  await deleteOrganisation(org.id);
+  await deleteUser(user1.id);
+  await deleteUser(user2.id);
+});
+
+tap.test('reconcileOrganisationPendingMembers: returns org unchanged when no pending members', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const org = await createOrganisation({
+    name: 'Org No Pending Reconcile',
+    members: [],
+    pendingMembers: [],
+  });
+  
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.equal(reconciled.id, org.id, 'should return same org');
+  t.same(reconciled.members, org.members, 'members should be unchanged');
+  t.same(reconciled.pendingMembers, org.pendingMembers, 'pendingMembers should be unchanged');
+  await deleteOrganisation(org.id);
+});
+
+tap.test('reconcileOrganisationPendingMembers: returns org unchanged when all pending emails have no users', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email1 = `no-user-1-${Date.now()}@example.com`;
+  const email2 = `no-user-2-${Date.now()}@example.com`;
+  const emailLower1 = email1.toLowerCase();
+  const emailLower2 = email2.toLowerCase();
+  
+  const org = await createOrganisation({
+    name: 'Org No Users',
+    members: [],
+    pendingMembers: [emailLower1, emailLower2],
+  });
+  
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.equal(reconciled.id, org.id, 'should return same org');
+  t.same(reconciled.pendingMembers, org.pendingMembers, 'pendingMembers should be unchanged');
+  t.same(reconciled.members, org.members, 'members should be unchanged');
+  await deleteOrganisation(org.id);
+});
+
+tap.test('reconcileOrganisationPendingMembers: handles case-insensitive email matching', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `CaseReconcile-${Date.now()}@Example.COM`;
+  const emailLower = email.toLowerCase();
+  
+  const user = await createUser({ email, name: 'Case Reconcile User', sub: `test-sub-${email}` });
+  
+  const org = await createOrganisation({
+    name: 'Org Case Reconcile',
+    members: [],
+    pendingMembers: [emailLower],
+  });
+  
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.ok(reconciled.members?.includes(user.id), 'user should be in members');
+  t.ok(!reconciled.pendingMembers?.includes(emailLower), 'email should be removed from pendingMembers');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
+});
+
+tap.test('reconcileOrganisationPendingMembers: preserves existing members', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const existingUserId = '11111111-1111-1111-1111-111111111111';
+  const email = `preserve-${Date.now()}@example.com`;
+  const emailLower = email.toLowerCase();
+  
+  const newUser = await createUser({ email, name: 'Preserve User', sub: `test-sub-${email}` });
+  
+  const org = await createOrganisation({
+    name: 'Org Preserve',
+    members: [existingUserId],
+    pendingMembers: [emailLower],
+  });
+  
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.ok(reconciled.members?.includes(existingUserId), 'existing member should be preserved');
+  t.ok(reconciled.members?.includes(newUser.id), 'new user should be added to members');
+  t.equal(reconciled.members?.length, 2, 'should have two members');
+  await deleteOrganisation(org.id);
+  await deleteUser(newUser.id);
+});
+
+tap.test('reconcileOrganisationPendingMembers: does not add duplicate members', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const email = `duplicate-${Date.now()}@example.com`;
+  const emailLower = email.toLowerCase();
+  
+  const user = await createUser({ email, name: 'Duplicate User', sub: `test-sub-${email}` });
+  
+  // Create org with user already in members and also in pending
+  const org = await createOrganisation({
+    name: 'Org Duplicate',
+    members: [user.id],
+    pendingMembers: [emailLower],
+  });
+  
+  const reconciled = await reconcileOrganisationPendingMembers(org);
+  
+  t.ok(reconciled.members?.includes(user.id), 'user should be in members');
+  t.equal(reconciled.members?.filter(id => id === user.id).length, 1, 'user should appear only once');
+  t.ok(!reconciled.pendingMembers?.includes(emailLower), 'email should be removed from pendingMembers');
+  await deleteOrganisation(org.id);
+  await deleteUser(user.id);
 });
 
 // Experiment tests
 tap.test('create experiment', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Experiment',
@@ -322,14 +749,10 @@ tap.test('create experiment', async (t) => {
     organisation: org.id,
     name: 'Test Experiment',
     parameters: { model: 'gpt-4', temperature: 0.7 },
-    comparison_parameters: [
-      { model: 'gpt-4o', temperature: 0.5 },
-      { model: 'gpt-4o-mini', temperature: 0.5 },
-    ],
-    summary_results: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
+    summaries: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
     results: [
       {
-        exampleId: 'example-1',
+        example: 'example-1',
         scores: { accuracy: 0.9, f1: 0.85 },
       },
     ],
@@ -340,19 +763,22 @@ tap.test('create experiment', async (t) => {
   t.equal(experiment.dataset, dataset.id, 'should have correct dataset');
   t.equal(experiment.organisation, org.id, 'should have correct organisation');
   t.same(experiment.parameters, { model: 'gpt-4', temperature: 0.7 }, 'should have correct parameters');
-  t.same(experiment.comparison_parameters, [
-    { model: 'gpt-4o', temperature: 0.5 },
-    { model: 'gpt-4o-mini', temperature: 0.5 },
-  ], 'should have correct comparison_parameters');
-  t.same(experiment.summary_results, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have correct summary_results');
+  t.same(experiment.summaries, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have correct summaries');
   t.ok(Array.isArray(experiment.results), 'results should be an array');
   t.equal(experiment.results!.length, 1, 'should have one result');
-  t.equal(experiment.results![0].exampleId, 'example-1', 'result should have correct exampleId');
+  t.equal(experiment.results![0].example, 'example-1', 'result should have correct example');
   t.ok(experiment.created instanceof Date, 'should have created timestamp');
   t.ok(experiment.updated instanceof Date, 'should have updated timestamp');
+  await deleteExperiment(experiment.id);
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('get experiment by id', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Get Experiment',
@@ -369,7 +795,7 @@ tap.test('get experiment by id', async (t) => {
     organisation: org.id,
     name: 'Get Test Experiment',
     parameters: { model: 'gpt-4' },
-    summary_results: { accuracy: { average: 0.9 } },
+    summaries: { accuracy: { average: 0.9 } },
   });
   
   // Retrieve it
@@ -379,14 +805,21 @@ tap.test('get experiment by id', async (t) => {
   t.equal(retrieved!.id, created.id, 'should have matching id');
   t.equal(retrieved!.name, 'Get Test Experiment', 'should have correct name');
   t.same(retrieved!.parameters, { model: 'gpt-4' }, 'should have correct parameters');
-  t.same(retrieved!.summary_results, { accuracy: { average: 0.9 } }, 'should have correct summary_results');
+  t.same(retrieved!.summaries, { accuracy: { average: 0.9 } }, 'should have correct summaries');
   
   // Test non-existent experiment
   const nonExistent = await getExperiment('00000000-0000-0000-0000-000000000000');
   t.equal(nonExistent, null, 'should return null for non-existent experiment');
+  await deleteExperiment(created.id);
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('list experiments', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for List Experiments',
@@ -427,9 +860,17 @@ tap.test('list experiments', async (t) => {
   t.ok(foundExp2, 'should find exp2 in list');
   t.equal(foundExp1!.name, exp1Name, 'exp1 should have correct name');
   t.equal(foundExp2!.name, exp2Name, 'exp2 should have correct name');
+  await deleteExperiment(exp1.id);
+  await deleteExperiment(exp2.id);
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('update experiment', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Update Experiment',
@@ -446,46 +887,40 @@ tap.test('update experiment', async (t) => {
     organisation: org.id,
     name: 'Update Test Experiment',
     parameters: { model: 'gpt-4' },
-    summary_results: { accuracy: { average: 0.8 } },
+    summaries: { accuracy: { average: 0.8 } },
   });
   
   const originalUpdated = created.updated;
   
-  // Update name, parameters, and summary_results
+  // Update name, parameters, and summaries
   const updated = await updateExperiment(created.id, {
     name: 'Updated Experiment Name',
     parameters: { model: 'gpt-4o', temperature: 0.9 },
-    summary_results: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
+    summaries: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
   });
   
   t.ok(updated, 'should return updated experiment');
   t.equal(updated!.id, created.id, 'should have same id');
   t.equal(updated!.name, 'Updated Experiment Name', 'should have updated name');
   t.same(updated!.parameters, { model: 'gpt-4o', temperature: 0.9 }, 'should have updated parameters');
-  t.same(updated!.summary_results, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have updated summary_results');
+  t.same(updated!.summaries, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have updated summaries');
   t.ok(updated!.updated.getTime() > originalUpdated.getTime(), 'updated timestamp should change');
-  
-  // Update comparison_parameters
-  const updatedWithComparison = await updateExperiment(created.id, {
-    comparison_parameters: [
-      { model: 'gpt-4o', temperature: 0.5 },
-      { model: 'gpt-4o-mini', temperature: 0.3 },
-    ],
-  });
-  
-  t.same(updatedWithComparison!.comparison_parameters, [
-    { model: 'gpt-4o', temperature: 0.5 },
-    { model: 'gpt-4o-mini', temperature: 0.3 },
-  ], 'should update comparison_parameters');
   
   // Test updating non-existent experiment
   const nonExistent = await updateExperiment('00000000-0000-0000-0000-000000000000', {
     name: 'Should Not Exist',
   });
   t.equal(nonExistent, null, 'should return null for non-existent experiment');
+  await deleteExperiment(created.id);
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('delete experiment', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for Delete Experiment',
@@ -518,9 +953,15 @@ tap.test('delete experiment', async (t) => {
   // Test deleting non-existent experiment
   const nonExistent = await deleteExperiment('00000000-0000-0000-0000-000000000000');
   t.equal(nonExistent, false, 'should return false when deleting non-existent experiment');
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('experiment JSON fields handling', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for JSON Experiment',
@@ -544,29 +985,23 @@ tap.test('experiment JSON fields handling', async (t) => {
     },
   };
   
-  const complexComparison = [
-    { model: 'gpt-4o', config: { temp: 0.5 } },
-    { model: 'gpt-4o-mini', config: { temp: 0.3 } },
-  ];
-  
   const created = await createExperiment({
     dataset: dataset.id,
     organisation: org.id,
     name: 'JSON Test Experiment',
     parameters: complexParams,
-    comparison_parameters: complexComparison,
-    summary_results: {
+    summaries: {
       accuracy: { average: 0.95, min: 0.8, max: 1.0, variance: 0.01 },
       f1: { average: 0.92, count: 100 },
     },
     results: [
       {
-        exampleId: 'ex1',
+        example: 'ex1',
         scores: { accuracy: 0.9, f1: 0.85 },
         errors: { metric1: 'some error' },
       },
       {
-        exampleId: 'ex2',
+        example: 'ex2',
         scores: { accuracy: 1.0, f1: 0.95 },
       },
     ],
@@ -574,29 +1009,32 @@ tap.test('experiment JSON fields handling', async (t) => {
   
   // Verify JSON fields are correctly stored and retrieved
   t.same(created.parameters, complexParams, 'complex parameters should be preserved');
-  t.same(created.comparison_parameters, complexComparison, 'complex comparison_parameters should be preserved');
   t.equal(created.results!.length, 2, 'should have 2 results');
-  t.equal(created.results![0].exampleId, 'ex1', 'first result should have correct exampleId');
+  t.equal(created.results![0].example, 'ex1', 'first result should have correct example');
   t.same(created.results![0].scores, { accuracy: 0.9, f1: 0.85 }, 'first result should have correct scores');
   t.same(created.results![0].errors, { metric1: 'some error' }, 'first result should have correct errors');
   
   // Retrieve and verify again
   const retrieved = await getExperiment(created.id);
   t.same(retrieved!.parameters, complexParams, 'retrieved parameters should match');
-  t.same(retrieved!.comparison_parameters, complexComparison, 'retrieved comparison_parameters should match');
   t.equal(retrieved!.results!.length, 2, 'retrieved should have 2 results');
   
   // Test updating with null/undefined
   const updated = await updateExperiment(created.id, {
     parameters: null,
-    comparison_parameters: undefined, // Should not update
   });
   
   t.equal(updated!.parameters, undefined, 'parameters should be null/undefined after update');
-  t.same(updated!.comparison_parameters, complexComparison, 'comparison_parameters should remain unchanged when undefined');
+  await deleteExperiment(created.id);
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 
 tap.test('experiment full CRUD workflow', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
   // Create organisation and dataset first
   const org = await createOrganisation({
     name: 'Test Org for CRUD Experiment',
@@ -614,7 +1052,7 @@ tap.test('experiment full CRUD workflow', async (t) => {
     organisation: org.id,
     name: 'CRUD Test Experiment',
     parameters: { model: 'gpt-4' },
-    summary_results: { accuracy: { average: 0.9 } },
+    summaries: { accuracy: { average: 0.9 } },
   });
   
   t.ok(experiment.id, 'should create experiment with id');
@@ -628,7 +1066,7 @@ tap.test('experiment full CRUD workflow', async (t) => {
   const updated = await updateExperiment(experiment.id, {
     name: 'CRUD Test Experiment Updated',
     parameters: { model: 'gpt-4o', temperature: 0.8 },
-    summary_results: { accuracy: { average: 0.95 } },
+    summaries: { accuracy: { average: 0.95 } },
   });
   t.equal(updated!.name, 'CRUD Test Experiment Updated', 'should update name');
   t.same(updated!.parameters, { model: 'gpt-4o', temperature: 0.8 }, 'should update parameters');
@@ -645,5 +1083,7 @@ tap.test('experiment full CRUD workflow', async (t) => {
   // Verify deletion
   const retrievedAfterDelete = await getExperiment(experiment.id);
   t.equal(retrievedAfterDelete, null, 'experiment should be deleted');
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
 });
 

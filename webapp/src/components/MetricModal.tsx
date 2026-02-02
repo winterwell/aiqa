@@ -134,10 +134,10 @@ const MetricModal: React.FC<MetricModalProps> = ({
               </FormGroup>
               <FormGroup>
                 <PropInput
-                  label="Prompt"
+                  label="Prompt Criteria"
                   required
                   item={metric}
-                  prop="prompt"
+                  prop="promptCriteria"
                   type="textarea"
                   rows={12}
                   placeholder="Enter the prompt for LLM evaluation"

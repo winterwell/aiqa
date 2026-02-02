@@ -17,6 +17,7 @@ import TraceDetailsPageHeader from '../components/TraceDetailsPageHeader';
 import TraceDetailsContent from '../components/TraceDetailsContent';
 import { useSpanData, useConversationTraceIds } from '../hooks/useSpanData';
 import { useSpanTreeState } from '../hooks/useSpanTreeState';
+import { getParentSpanId } from '../utils/span-utils';
 
 interface SpanTree {
 	span: Span;
@@ -42,10 +43,6 @@ function collectSpansFromTree(spanTree: SpanTree): Span[] {
 	return [spanTree.span, ...spanTree.children.flatMap(child => collectSpansFromTree(child))];
 }
 
-
-function getParentSpanId(span: Span): string | null {
-	return span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
-}
 
 function organiseSpansIntoTree(spans: Span[], parent: Span | null, traceIds?: string[]): SpanTree | null {
 	if ( ! parent) {

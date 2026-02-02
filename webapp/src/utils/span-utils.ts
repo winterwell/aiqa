@@ -1,15 +1,7 @@
-import { Span, getSpanId, getTraceId } from "../common/types";
+import { Span } from "../common/types";
+import { getSpanId, getTraceId } from "../common/types/Span.js";
 
-export const getSpanName = (span: Span): string => (span as any).name || '';
 
-export function getDurationUnits(durationMs: number | null | undefined): 'ms' | 's' | 'm' | 'h' | 'd' | null {
-	if (durationMs === null || durationMs === undefined) return null;
-	if (durationMs < 1000) return 'ms';
-	if (durationMs < 60000) return 's';
-	if (durationMs < 3600000) return 'm';
-	if (durationMs < 86400000) return 'h';
-	return 'd';
-}
 
 export function durationString(durationMs: number | null | undefined, units: 'ms' | 's' | 'm' | 'h' | 'd' | null = null): string {
 	if (durationMs === null || durationMs === undefined) return '';
@@ -116,11 +108,11 @@ export function prettyNumber(num: number | null | undefined | string): string {
   };
 
 export const getStartTime = (span: Span) => {
-	return asTime(span.start_time || span.startTime); // startTime is for backwards compatibility with old spans or any otel js sdk ReadableSpans
+	return asTime(span.start); 
   };
 
 export const getEndTime = (span: Span) => {
-	return asTime(span.end_time || span.endTime); // endTime is for backwards compatibility with old spans or any otel js sdk ReadableSpans
+	return asTime(span.end); 
   };
 
 export const getDurationMs = (span: Span): number | null => {
@@ -216,13 +208,9 @@ export const getCost = (span: Span): number | null => {
 };
 
 export const isRootSpan = (span: Span): boolean => {
-  const parentSpanId = span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
-  return parentSpanId === null;
+  return ! getParentSpanId(span);
 };
 
-export const getParentSpanId = (span: Span): string | null => {
-  return span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
-};
 
 interface SpanTree {
   span: Span;

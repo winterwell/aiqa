@@ -4,9 +4,9 @@
   "definitions": {
     "Model": {
       "additionalProperties": false,
-      "description": "E.g. connection details for ChatGPT 4.1, Claude 3.5 Sonnet, etc.",
       "properties": {
-        "api_key": {
+        "apiKey": {
+          "description": "the API key. This IS stored in the database as our code needs it to run LLMs for the user",
           "type": "string"
         },
         "created": {
@@ -16,11 +16,18 @@
         "description": {
           "type": "string"
         },
+        "hash": {
+          "description": "Masked api key (e.g. first 4 + **** + last 4) when returning model info",
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
+        "model": {
+          "description": "if unset, this api-key is used for all models from the provider",
+          "type": "string"
+        },
         "name": {
-          "description": "e.g. gpt-4o This is the name as used by the provider's API",
           "type": "string"
         },
         "organisation": {
@@ -50,7 +57,6 @@
         "organisation",
         "provider",
         "name",
-        "api_key",
         "created",
         "updated"
       ],

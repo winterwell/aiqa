@@ -3,6 +3,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "Span": {
+      "description": "Matches OTel ReadableSpan except: start/end (ms) replace startTime/endTime (HrTime), parent replaces parentSpanId, duration in ms; plus our fields (@timestamp, id, trace, spanId, traceFlags, traceRef, transaction, service, organisation, example, dataset, experiment, annotations, tags, inputHash, _seen).",
       "additionalProperties": true,
       "properties": {
         "@timestamp": {
@@ -16,14 +17,15 @@
           "type": "integer",
           "description": "SpanKind: INTERNAL=0, SERVER=1, CLIENT=2, PRODUCER=3, CONSUMER=4"
         },
-        "parent_span_id": {
-          "type": "string"
+        "parent": {
+          "type": "string",
+          "description": "Parent span ID"
         },
-        "start_time": {
+        "start": {
           "type": "number",
           "description": "Epoch milliseconds"
         },
-        "end_time": {
+        "end": {
           "type": "number",
           "description": "Epoch milliseconds"
         },
@@ -50,17 +52,20 @@
             "properties": {
               "context": {
                 "type": "object",
+                "description": "OTel SpanContext of the linked span",
                 "properties": {
                   "traceId": { "type": "string" },
                   "spanId": { "type": "string" },
                   "traceFlags": { "type": "integer" },
-                  "traceState": { "type": "string" }
+                  "traceState": { "type": "string" },
+                  "isRemote": { "type": "boolean", "description": "Only true if SpanContext was propagated from a remote parent" }
                 }
               },
               "attributes": {
                 "type": "object",
                 "additionalProperties": true
-              }
+              },
+              "droppedAttributesCount": { "type": "integer", "description": "Count of link attributes dropped due to collection limits" }
             }
           }
         },
@@ -68,6 +73,7 @@
           "type": "array",
           "items": {
             "type": "object",
+            "description": "OTel TimedEvent",
             "properties": {
               "name": { "type": "string" },
               "time": {
@@ -77,7 +83,8 @@
               "attributes": {
                 "type": "object",
                 "additionalProperties": true
-              }
+              },
+              "droppedAttributesCount": { "type": "integer", "description": "Count of event attributes dropped due to collection limits" }
             }
           }
         },
@@ -113,9 +120,13 @@
         "droppedLinksCount": {
           "type": "integer"
         },
-        "trace_id": {
+        "trace": {
           "type": "string",
           "description": "OpenTelemetry trace ID (32 hex characters)"
+        },
+        "id": {
+          "type": "string",
+          "description": "Span ID (OpenTelemetry span ID as hex string)"
         },
         "spanId": {
           "type": "string",
@@ -125,7 +136,7 @@
           "type": "integer",
           "description": "OpenTelemetry trace flags"
         },
-        "trace": {
+        "traceRef": {
           "type": "object",
           "properties": {
             "id": { "type": "string" }
@@ -140,25 +151,6 @@
             "duration": { "type": "number" }
           }
         },
-        "span": {
-          "type": "object",
-          "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" },
-            "duration": {
-              "type": "object",
-              "properties": {
-                "us": { "type": "integer" }
-              }
-            },
-            "parent": {
-              "type": "object",
-              "properties": {
-                "id": { "type": "string" }
-              }
-            }
-          }
-        },
         "service": {
           "type": "object",
           "properties": {
@@ -167,6 +159,10 @@
         },
         "organisation": {
           "type": "string"
+        },
+        "example": {
+          "type": "string",
+          "description": "Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example"
         },
         "dataset": {
           "oneOf": [
@@ -182,15 +178,13 @@
           ]
         },
         "experiment": {
-          "type": "string"
-        },
-        "client_span_id": {
           "type": "string",
-          "description": "Client-set span ID (overrides OpenTelemetry span ID if provided)"
+          "description": "Only set for spans in the `spans` index IF created during an experiment"
         },
-        "client_trace_id": {
-          "type": "string",
-          "description": "Client-set trace ID (overrides OpenTelemetry trace ID if provided)"
+        "annotations": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Client-set annotations for the span (for things more complex than a tag). In ES mapping use flattened type."
         },
         "tags": {
           "type": "array",
@@ -199,16 +193,21 @@
           },
           "description": "Client-set tags for the span"
         },
-        "input_hash": {
+        "inputHash": {
           "type": "string",
           "description": "Hash of the input for looking up same-input spans"
+        },
+        "_seen": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch)"
         }
       },
       "required": [
         "name",
         "kind",
-        "start_time",
-        "end_time",
+        "start",
+        "end",
         "status",
         "attributes",
         "links",
@@ -220,7 +219,9 @@
         "droppedAttributesCount",
         "droppedEventsCount",
         "droppedLinksCount",
-        "organisation"
+        "organisation",
+        "id",
+        "trace"
       ],
       "type": "object"
     }

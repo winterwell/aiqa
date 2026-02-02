@@ -152,7 +152,7 @@ The server supports automatic deletion of old spans based on organisation retent
 
 ### Running the Retention Script
 
-The retention script deletes spans older than the retention period for each organisation. Spans are deleted based on their `endTime` (or `startTime` if `endTime` is missing).
+The retention script deletes spans older than the retention period for each organisation. Spans are deleted based on their `end` (or `start` if `end` is missing).
 
 **Manual execution:**
 ```bash
@@ -184,5 +184,5 @@ Or if using pnpm:
 2. For each organisation, uses `retention_period_days` (default: 20 days)
 3. Deletes spans in Elasticsearch where:
    - The span belongs to the organisation
-   - The span's `endTime` (or `startTime` if `endTime` is missing) is older than the retention period
+   - The span's `end` (or `start` if `end` is missing) is older than the retention period
 4. Logs the number of spans deleted per organisation

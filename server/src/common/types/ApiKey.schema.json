@@ -9,6 +9,10 @@
           "format": "date-time",
           "type": "string"
         },
+        "hash": {
+          "description": "Only the hash of the API key is stored in the database. This is used to authenticate requests. Hash algorithm: sha256",
+          "type": "string"
+        },
         "id": {
           "type": "string"
         },
@@ -16,12 +20,8 @@
           "description": "The actual API key. This is NOT stored in the database. Only present temporarily in the frontend when generating a new key.",
           "type": "string"
         },
-        "key_end": {
+        "keyEnd": {
           "description": "store the last 4 characters of the API key so the user can identify it in the webapp",
-          "type": "string"
-        },
-        "key_hash": {
-          "description": "Only the hash of the API key is stored in the database. This is used to authenticate requests. Hash algorithm: sha256",
           "type": "string"
         },
         "name": {
@@ -48,7 +48,7 @@
       "required": [
         "id",
         "organisation",
-        "key_hash",
+        "hash",
         "role",
         "created",
         "updated"

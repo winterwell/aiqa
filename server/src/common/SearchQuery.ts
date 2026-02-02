@@ -101,7 +101,7 @@ SearchQuery.parse = (sq: SearchQuery) => {
 	while (i < bits.length) {
 		let bit = bits[i];
 		// Strip leading and trailing parentheses from tokens
-		// This handles cases like "(traceId:value" or "value)" or "(value)"
+		// This handles cases like "(trace:value" or "value)" or "(value)"
 		while (bit.startsWith('(')) {
 			bit = bit.slice(1);
 		}
@@ -433,8 +433,7 @@ function searchQueryToSqlWhereClause2(tree: any[]): string {
 		const v = op[Object.keys(op)[1]];
 		return op[Object.keys(op)[0]]+"="+searchQueryToSqlWhereClause2(v);
 	}	
-	let bits = tree.slice(1);	
-	console.log('bits', bits);
+	let bits = tree.slice(1);
 	let ubits = bits.map(searchQueryToSqlWhereClause2);
 	return "("+ubits.join(" "+op+" ")+")";
 }

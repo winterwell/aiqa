@@ -119,17 +119,6 @@
   opacity: 0.5;
 }
 
-.nav-link-item.active {
-  background-color: #007bff;
-  color: #ffffff;
-  font-weight: 500;
-}
-
-.nav-link-item.active .step-number {
-  background-color: #ffffff;
-  color: #007bff;
-}
-
 .step-number {
   display: inline-flex;
   align-items: center;
@@ -149,22 +138,4 @@
 
 .checkmark-icon {
   font-size: 0.9rem;
-}
-
-/* Dataset navigation animation */
-@keyframes datasetNavPulse {
-  0% {
-    background-color: transparent;
-    transform: scale(1);
-  }
-  50% {
-    background-color: rgba(0, 123, 255, 0.15);
-    transform: scale(1.02);
-  }
-  100% {
-    background-color: transparent;
-    transform: scale(1);
-  }
-}.dataset-nav-animate {
-  animation: datasetNavPulse 0.3s ease-out;
 }

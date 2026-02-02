@@ -1,5 +1,6 @@
 import { Metric } from './common/types/Metric.js';
 import Model from './common/types/Model.js';
+import { getDefaultLLMPrompt } from './common/llmPromptTemplate.js';
 import { getModel } from './db/db_sql.js';
 import { VM } from 'vm2';
 
@@ -120,7 +121,7 @@ async function scoreMetricLLM(organisationId: string, metric: Metric, output: an
 				organisation: organisationId,
 				provider: 'openai',
 				name: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-				api_key: openaiKey,
+				apiKey: openaiKey,
 				created: new Date(),
 				updated: new Date(),
 			} as Model;
@@ -130,7 +131,7 @@ async function scoreMetricLLM(organisationId: string, metric: Metric, output: an
 				organisation: organisationId,
 				provider: 'anthropic',
 				name: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
-				api_key: anthropicKey,
+				apiKey: anthropicKey,
 				created: new Date(),
 				updated: new Date(),
 			} as Model;
@@ -139,8 +140,9 @@ async function scoreMetricLLM(organisationId: string, metric: Metric, output: an
 		}
 	}
 	
-	// Build the prompt
-	let prompt = metric.parameters?.prompt || metric.prompt;
+	// Build the prompt (promptCriteria uses default template when no full prompt set)
+	let prompt = metric.parameters?.prompt || metric.prompt
+		|| (metric.promptCriteria && getDefaultLLMPrompt(metric.promptCriteria));
 	if (!prompt) {
 		// do we have good/bad targets?		
 		if (example.outputs?.good || example.outputs?.bad) {
@@ -207,7 +209,7 @@ async function callOpenAI(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'Authorization': `Bearer ${model.api_key}`,
+			'Authorization': `Bearer ${model.apiKey}`,
 		},
 		body: JSON.stringify({
 			model: model.name,
@@ -240,7 +242,7 @@ async function callAnthropic(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'x-api-key': model.api_key,
+			'x-api-key': model.apiKey,
 			'anthropic-version': '2023-06-01',
 		},
 		body: JSON.stringify({
@@ -272,7 +274,7 @@ async function callAnthropic(model: Model, prompt: string): Promise<LLMResult> {
  */
 async function callGoogle(model: Model, prompt: string): Promise<LLMResult> {
 	const modelName = model.name || 'gemini-pro';
-	const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${model.api_key}`;
+	const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${model.apiKey}`;
 	
 	const response = await fetch(url, {
 		method: 'POST',
@@ -307,13 +309,13 @@ async function callGoogle(model: Model, prompt: string): Promise<LLMResult> {
 
 /**
  * Call Azure OpenAI API
- * Note: Azure requires the deployment name in the model.name field and the endpoint in model.api_key or a separate field
+ * Note: Azure requires the deployment name in the model.name field and the endpoint in model.apiKey or a separate field
  * For now, we'll assume the API key contains the endpoint or it's configured separately
  */
 async function callAzure(model: Model, prompt: string): Promise<LLMResult> {
 	// Azure OpenAI endpoint format: https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=2024-02-15-preview
 	// For simplicity, we'll assume the endpoint is provided in an environment variable or model configuration
-	// If model.api_key contains the full endpoint URL, use it; otherwise construct from model.name
+	// If model.apiKey contains the full endpoint URL, use it; otherwise construct from model.name
 	
 	// Try to get endpoint from environment or use a default pattern
 	const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT || `https://${model.name}.openai.azure.com`;
@@ -326,7 +328,7 @@ async function callAzure(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'api-key': model.api_key,
+			'api-key': model.apiKey,
 		},
 		body: JSON.stringify({
 			messages: [

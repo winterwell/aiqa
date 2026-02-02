@@ -3,31 +3,31 @@ import { LifecycleStatus } from "./LifecycleStatus";
 type Subscription = {
   type: "trial" | "free" | "pro" | "enterprise";
   status: LifecycleStatus;
-  start_date: Date;
-  end_date: Date | null;
-  renewal_date: Date | null;
-  price_per_month: number;
+  start: Date;
+  end: Date | null;
+  renewal: Date | null;
+  pricePerMonth: number;
   currency: "USD" | "EUR" | "GBP";
 }
 
 export default interface OrganisationAccount {
   id: string;
   organisation: string; // Organisation ID (foreign key)
-  
+
   subscription: Subscription;
   /** Stripe customer ID */
-  stripe_customer_id?: string;
+  stripeCustomerId?: string;
   /** Stripe subscription ID */
-  stripe_subscription_id?: string;
+  stripeSubscriptionId?: string;
   /** default: 1000 */
-  rate_limit_per_hour?: number;
+  rateLimitPerHour?: number;
   /** default: 20 */
-  retention_period_days?: number;
-  max_members?: number;
-  max_datasets?: number;
-  experiment_retention_days?: number;
-  max_examples_per_dataset?: number;
-  
+  retentionPeriodDays?: number;
+  maxMembers?: number;
+  maxDatasets?: number;
+  experimentRetentionDays?: number;
+  maxExamplesPerDataset?: number;
+
   created: Date;
   updated: Date;
 }

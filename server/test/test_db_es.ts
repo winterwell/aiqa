@@ -33,12 +33,12 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   
   const spans: Span[] = [
     {
-      traceId: 'tr1',
-      spanId: 'sp1',
+      id: 'sp1',
+      trace: 'tr1',
       name: 'Test operation one',
       kind: 1, // SpanKind.INTERNAL
-      startTime: startTime1,
-      endTime: endTime1,
+      start: startTime1,
+      end: endTime1,
       duration: endTime1 - startTime1,
       ended: true,
       status: {
@@ -61,14 +61,15 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       droppedEventsCount: 0,
       droppedLinksCount: 0,
       organisation: orgId,
+      starred: false,
     },
     {
-      traceId: 'tr1',
-      spanId: 'sp2',
+      id: 'sp2',
+      trace: 'tr1',
       name: 'Another operation',
       kind: 1, // SpanKind.INTERNAL
-      startTime: startTime2,
-      endTime: endTime2,
+      start: startTime2,
+      end: endTime2,
       duration: endTime2 - startTime2,
       ended: true,
       status: {
@@ -91,6 +92,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
       droppedEventsCount: 0,
       droppedLinksCount: 0,
       organisation: orgId,
+      starred: false,
     }
   ];
 
@@ -99,17 +101,17 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   // Query all
   let result = await searchSpans(null, orgId, 10, 0);
   t.ok(result.total >= 2, 'Should return at least 2 spans for the org');
-  t.same(result.hits.find(s => s.spanId === 'sp1')?.name, 'Test operation one');
+  t.same(result.hits.find(s => s.id === 'sp1')?.name, 'Test operation one');
 
   // Query with SearchQuery string for status code
   result = await searchSpans('status.code:2', orgId, 10, 0);
   t.equal(result.total, 1, 'Should find 1 ERROR span');
-  t.equal(result.hits[0].spanId, 'sp2', 'Found the correct ERROR span');
+  t.equal(result.hits[0].id, 'sp2', 'Found the correct ERROR span');
 
   // Query by attributes.input.foo (attributes is mapped as flattened)
   result = await searchSpans('attributes.input.foo:bar', orgId, 10, 0);
   t.equal(result.total, 1, 'Should find span with attributes.input.foo=bar');
-  t.equal(result.hits[0].spanId, 'sp1');
+  t.equal(result.hits[0].id, 'sp1');
 
   // Complex OR query
   const sq = new SearchQuery('status.code:2 OR attributes.input.foo:bar');

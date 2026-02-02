@@ -1,17 +1,11 @@
 import type { Example, Span } from '../common/types';
-import { getTraceId as getSpanTraceId } from '../common/types';
+import { getTraceId } from '../common/types/Span.js';
 import { SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
 
-/**
- * Get the first span from an Example, or return the example itself if it has span-like fields.
- */
+/** Get the first span from an Example. Canonical shape only (fail-fast). */
 export function getFirstSpan(example: Example): Span | null {
   if (example.spans && example.spans.length > 0) {
     return example.spans[0] as Span;
-  }
-  // If no spans array, check if example itself has span-like fields (for backward compatibility)
-  if ((example as any).name || (example as any).spanId) {
-    return example as any as Span;
   }
   return null;
 }
@@ -23,12 +17,10 @@ export function getFirstSpan(example: Example): Span | null {
 export function getExampleTraceId(example: Example): string | null {
   const span = getFirstSpan(example);
   if (span) {
-    const traceId = getSpanTraceId(span);
+    const traceId = getTraceId(span);
     if (traceId) return traceId;
-    // Fallback to other possible trace ID locations
-    return (span as any).trace?.id || (span as any).client_trace_id || (span as any).trace_id || example.trace_id || null;
   }
-  return example.trace_id || null;
+  return example.trace ?? null;
 }
 
 /**
@@ -91,7 +83,7 @@ export function getExampleMetricDisplayText(example: Example, metricId: string):
   }
   const metric = example.metrics.find(m => m.id === metricId);
   if (!metric) return '';
-  if (metric.type === 'llm' && metric.prompt) return metric.prompt;
+  if (metric.type === 'llm') return metric.promptCriteria || metric.prompt || '';
   if (metric.type === 'javascript' && metric.code) return metric.code;
   return '';
 }

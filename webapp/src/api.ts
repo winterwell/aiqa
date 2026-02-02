@@ -253,9 +253,15 @@ export async function updateSpan(spanId: string, updates: { starred?: boolean; t
 	});
 }
 
-export async function deleteSpans(options: { spanIds: string[] } | { trace_ids: string[] }) {
-	return fetchWithAuth('/span', {
-		method: 'DELETE',
+export async function deleteSpans(
+	organisationId: string,
+	options: { spanIds: string[] } | { traceIds: string[] }
+) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	// POST so body is always parsed (DELETE body parsing can be unreliable)
+	return fetchWithAuth(`/span/delete?${params.toString()}`, {
+		method: 'POST',
 		body: JSON.stringify(options),
 	});
 }
@@ -290,7 +296,7 @@ export async function createExampleFromSpans(args: {
 	const traceId = getTraceId(spans[0]);
 	// Spans will be cleaned server-side
 	return _createExample(organisationId, datasetId, {
-		trace_id: traceId,
+		trace: traceId,
 		spans: spans,
 	});
 }
@@ -431,7 +437,7 @@ async function hashApiKey(key: string): Promise<string> {
 export async function createApiKey(apiKey: {
 	organisation: string;
 	name?: string;
-	key_hash: string;
+	hash: string;
 	key_end?: string;
 	rate_limit_per_hour?: number;
 	retention_period_days?: number;

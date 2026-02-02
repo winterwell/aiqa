@@ -16,7 +16,7 @@
  *   3. For each organisation, gets its OrganisationAccount (with subscription info)
  *   4. Uses retention_period_days from account, falling back to subscription defaults
  *   5. Deletes spans older than the retention period
- *   6. Uses endTime (or startTime if endTime is missing) to determine span age
+ *   6. Uses end (or start if end is missing) to determine span age
  */
 
 import dotenv from 'dotenv';

@@ -8,7 +8,7 @@
         "id": {
           "type": "string"
         },
-        "trace_id": {
+        "trace": {
           "type": "string"
         },
         "dataset": {
@@ -26,98 +26,21 @@
             "type": "string"
           }
         },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Client-set annotations for the Example (for things more complex than a tag)"
+        },
         "spans": {
           "type": "array",
           "items": {
             "type": "object",
-            "additionalProperties": true,
-            "properties": {
-              "@timestamp": {
-                "type": "string",
-                "format": "date-time"
-              },
-              "name": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "integer"
-              },
-              "parent_span_id": {
-                "type": "string"
-              },
-              "start_time": {
-                "type": "number",
-                "description": "Epoch milliseconds"
-              },
-              "end_time": {
-                "type": "number",
-                "description": "Epoch milliseconds"
-              },
-              "status": {
-                "type": "object",
-                "properties": {
-                  "code": {
-                    "type": "integer"
-                  },
-                  "message": {
-                    "type": "string"
-                  }
-                }
-              },
-              "attributes": {
-                "type": "object",
-                "additionalProperties": true
-              },
-              "links": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "context": {
-                      "type": "object"
-                    },
-                    "attributes": {
-                      "type": "object",
-                      "additionalProperties": true
-                    }
-                  }
-                }
-              },
-              "events": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "name": {
-                      "type": "string"
-                    },
-                    "time": {
-                      "type": "number",
-                      "description": "Epoch milliseconds"
-                    },
-                    "attributes": {
-                      "type": "object",
-                      "additionalProperties": true
-                    }
-                  }
-                }
-              },
-              "duration": {
-                "type": "number",
-                "description": "Duration in milliseconds"
-              },
-              "trace_id": {
-                "type": "string"
-              },
-              "spanId": {
-                "type": "string"
-              }
-            }
-          }
+            "additionalProperties": true
+          },
+          "description": "Stripped-down spans (name, id, attributes e.g. input, parent) for example input; not full Span shape"
         },
         "input": {
-          "type": "object",
-          "additionalProperties": true
+          "description": "Alternative to spans; any value"
         },
         "outputs": {
           "type": "object",
@@ -127,6 +50,12 @@
             "bad": {}
           }
         },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Metric"
+          }
+        },
         "created": {
           "type": "string",
           "format": "date-time"
@@ -134,12 +63,6 @@
         "updated": {
           "type": "string",
           "format": "date-time"
-        },
-        "metrics": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Metric"
-          }
         }
       },
       "required": [
@@ -154,30 +77,48 @@
     "Metric": {
       "additionalProperties": false,
       "properties": {
-        "description": {
+        "id": {
           "type": "string"
         },
         "name": {
           "type": "string"
         },
-        "parameters": {
-          "type": "object"
-        },
-        "type": {
-          "enum": [
-            "javascript",
-            "llm"
-          ],
+        "description": {
           "type": "string"
         },
         "unit": {
           "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["javascript", "llm", "number", "contains", "equals", "not_contains", "not_equals", "similar", "system"]
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "google", "azure", "bedrock", "other"]
+        },
+        "model": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "promptCriteria": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "value": {
+          "description": "For type contains|equals|not_contains|not_equals",
+          "oneOf": [{ "type": "string" }, { "type": "number" }]
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
         }
       },
-      "required": [
-        "name",
-        "type"
-      ],
+      "required": ["id", "type"],
       "type": "object"
     }
   }

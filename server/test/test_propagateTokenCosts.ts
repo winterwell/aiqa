@@ -28,14 +28,17 @@ function createTestSpan(
     if (tokenUsage.cost !== undefined) attrs['gen_ai.cost.usd'] = tokenUsage.cost;
   }
   
+  const now = Date.now();
   return {
     id,
     name,
-    traceId: 'test-trace',
+    trace: 'test-trace',
     organisation,
     kind: 1,
-    startTime: Date.now(),
-    endTime: Date.now() + 100,
+    start: now,
+    end: now + 100,
+    duration: 100,
+    ended: true,
     status: { code: 1 },
     attributes: attrs,
     links: [],
@@ -46,8 +49,8 @@ function createTestSpan(
     droppedEventsCount: 0,
     droppedLinksCount: 0,
     starred: false,
-    ...(parentId && { parent_span_id: parentId }),
-  } as Span;
+    ...(parentId && { parent: parentId }),
+  };
 }
 
 tap.test('getTokenUsage - extracts token usage from span attributes', t => {

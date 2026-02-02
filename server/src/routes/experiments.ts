@@ -163,8 +163,8 @@ function recalculateSummaryResults(results: Array<{ scores: Record<string, numbe
  * Updates summary results with new scores using rolling updates.
  * Uses Welford's online algorithm for variance calculation.
  */
-function updateSummaryResults(summaryResults: Record<string, MetricStats> | undefined, scores: Record<string, number>): Record<string, MetricStats> {
-	const updated = summaryResults ? { ...summaryResults } : {};
+function updateSummaryResults(summaries: Record<string, MetricStats> | undefined, scores: Record<string, number>): Record<string, MetricStats> {
+	const updated = summaries ? { ...summaries } : {};
 
 	for (const [metricName, value] of Object.entries(scores)) {
 		// Skip non-numeric values
@@ -437,8 +437,8 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         const initialDelayMs = 100;
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-          // Find root span for this trace (parent_span_id:unset means it's a root span)
-          const traceQuery = new SearchQuery(`trace_id:${body.traceId} parent_span_id:unset`);
+          // Find root span for this trace (parent:unset means it's a root span)
+          const traceQuery = new SearchQuery(`trace:${body.traceId} parent:unset`);
           spanResult = await searchSpans(traceQuery, organisation, 1, 0);
           
           if (spanResult.hits.length > 0) {
@@ -494,7 +494,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
     // Update experiment results - ensure it's always an array
     const results = Array.isArray(experiment.results) ? experiment.results : [];
-    const existingResultIndex = results.findIndex(r => r.exampleId === exampleId);
+    const existingResultIndex = results.findIndex(r => r.example === exampleId);
     const isUpdate = existingResultIndex >= 0;
     
     if (isUpdate) {
@@ -511,7 +511,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     } else {
       // Add new result
       const newResult: any = {
-        exampleId,
+        example: exampleId,
         scores: computedScores,
       };
       if (Object.keys(computedErrors).length > 0) {
@@ -522,14 +522,14 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
     // Update summary results
     // For new results, use rolling update. For updates, recalculate from all results to ensure accuracy.
-    const updatedSummaryResults = isUpdate 
+    const updatedSummaries = isUpdate 
       ? recalculateSummaryResults(results)
-      : updateSummaryResults(experiment.summary_results, computedScores);
+      : updateSummaryResults(experiment.summaries, computedScores);
 
     // Update experiment with new results and summary
     const updatedExperiment = await updateExperiment(experimentId, { 
       results,
-      summary_results: updatedSummaryResults,
+      summaries: updatedSummaries,
     });
     if (!updatedExperiment) {
       reply.code(500).send({ error: 'Failed to update experiment' });
@@ -540,7 +540,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       success: true,
       scores: computedScores,
       errors: Object.keys(computedErrors).length > 0 ? computedErrors : undefined,
-      exampleId,
+      example: exampleId,
     };
   });
 }

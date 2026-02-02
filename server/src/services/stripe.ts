@@ -121,7 +121,7 @@ export async function createOrUpdateSubscription(
 ): Promise<{ customerId: string; subscriptionId: string }> {
 	// Free plans don't require Stripe
 	if (planType === 'free') {
-		return { customerId: account.stripe_customer_id || '', subscriptionId: '' };
+		return { customerId: account.stripeCustomerId || '', subscriptionId: '' };
 	}
 
 	if (!stripe) {
@@ -130,12 +130,12 @@ export async function createOrUpdateSubscription(
 
 	// Enterprise plans don't use Stripe subscriptions (manually managed)
 	if (planType === 'enterprise') {
-		const customerId = account.stripe_customer_id || await getOrCreateStripeCustomer(organisationId, userEmail);
+		const customerId = account.stripeCustomerId || await getOrCreateStripeCustomer(organisationId, userEmail);
 		return { customerId, subscriptionId: '' };
 	}
 
-	const customerId = account.stripe_customer_id || await getOrCreateStripeCustomer(organisationId, userEmail);
-	let subscriptionId = account.stripe_subscription_id;
+	const customerId = account.stripeCustomerId || await getOrCreateStripeCustomer(organisationId, userEmail);
+	let subscriptionId = account.stripeSubscriptionId;
 
 	// Pro plan requires Stripe subscription
 	const priceId = STRIPE_PRICE_IDS[planType];

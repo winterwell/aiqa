@@ -179,10 +179,10 @@ function buildFilterClauses(filters?: Record<string, string>): any[] {
 }
 
 /**
- * Get sort field based on index name (examples use 'created', spans use 'start_time').
+ * Get sort field based on index name (examples use 'created', spans use 'start').
  */
 function getSortField(indexName: string): string {
-  return indexName.includes('examples') ? 'created' : 'start_time';
+  return indexName.includes('examples') ? 'created' : 'start';
 }
 
 
@@ -306,6 +306,9 @@ export async function searchEntities<T>(
 			console.warn(`Error parsing output for hit ${hit.id}: ${e}`);
 		}
 	}
+	// Unwrap { value } stored for ES flattened (when client sent primitive input/output)
+	if (isValueWrapper(hit.attributes?.input)) hit.attributes.input = hit.attributes.input.value;
+	if (isValueWrapper(hit.attributes?.output)) hit.attributes.output = hit.attributes.output.value;
 	return hit;
   });
 
@@ -319,4 +322,9 @@ export async function searchEntities<T>(
  */
 function isJsonString(str?: string): boolean {
   return str && typeof str === 'string' && (str[0] == '{' || str[0] == '[');
+}
+
+/** True if obj is a plain object with exactly one key "value" (wrapper used for ES flattened). */
+function isValueWrapper(obj: any): boolean {
+  return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === 1 && 'value' in obj;
 }
