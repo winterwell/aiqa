@@ -101,16 +101,16 @@ export function prettyNumber(num: number | null | undefined | string): string {
 
 export const getSpanId = (span: Span) => {
     // Check all possible locations for span ID, in order of preference:
-    // 1. clientSpanId (client-set, takes precedence)
+    // 1. client_span_id (client-set, takes precedence)
     // 2. id (standard server field)
     // 3. spanId (direct OpenTelemetry property)
     // 4. span.id (nested property)
-    // 5. client_span_id (alternative naming)
-    return (span as any).clientSpanId 
+    // 5. clientSpanId (legacy fallback)
+    return span.client_span_id 
         || (span as any).id 
         || (span as any).spanId 
         || (span as any).span?.id 
-        || (span as any).client_span_id 
+        || (span as any).clientSpanId 
         || 'N/A';
   };
 
@@ -131,11 +131,11 @@ export const getSpanId = (span: Span) => {
   };
 
 export const getStartTime = (span: Span) => {
-	return asTime(span.startTime);
+	return asTime(span.start_time);
   };
 
 export const getEndTime = (span: Span) => {
-	return asTime(span.endTime);
+	return asTime(span.end_time);
   };
 
 export const getDurationMs = (span: Span): number | null => {
@@ -146,7 +146,7 @@ export const getDurationMs = (span: Span): number | null => {
   };
 
 export const getTraceId = (span: Span): string => {
-  return (span as any).client_trace_id || (span as any).traceId || (span as any).spanContext?.()?.traceId || '';
+  return span.client_trace_id || span.trace_id || (span as any).spanContext?.()?.traceId || '';
 };
 
 /**
@@ -235,12 +235,12 @@ export const getCost = (span: Span): number | null => {
 };
 
 export const isRootSpan = (span: Span): boolean => {
-  const parentSpanId = (span as any).parentSpanId || (span as any).span?.parent?.id || null;
+  const parentSpanId = span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
   return parentSpanId === null;
 };
 
 export const getParentSpanId = (span: Span): string | null => {
-  return (span as any).parentSpanId || (span as any).span?.parent?.id || null;
+  return span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
 };
 
 interface SpanTree {

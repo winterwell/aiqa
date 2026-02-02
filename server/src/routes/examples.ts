@@ -8,7 +8,7 @@ import { checkAccessDeveloper, parseSearchQuery, send404 } from './route_helpers
 /**
  * Clean spans for use in examples by:
  * 1. Removing resource attributes from span.attributes (they belong in resource.attributes)
- * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, id, parentSpanId
+ * 2. Stripping spans to minimal fields needed for experiments: name, attributes.input, id, parent_span_id
  * 
  * Note: Supports objects and arrays in attributes (e.g., attributes.input can be an object)
  */
@@ -51,18 +51,18 @@ function cleanSpanForExample(span: any): any {
 	}
 	
 	// Get id from various possible locations (id is standard, spanId is legacy fallback)
-	const id = span.id || span.spanId || span.clientSpanId || span.span?.id || span.client_span_id;
+	const id = span.id || span.spanId || span.client_span_id || span.span?.id || (span as any).clientSpanId;
 	
-	// Get parentSpanId from various possible locations
-	const parentSpanId = span.parentSpanId || span.span?.parent?.id;
+	// Get parent_span_id from various possible locations
+	const parentSpanId = span.parent_span_id || (span as any).parentSpanId || span.span?.parent?.id;
 	
-	// Strip span to minimal fields: name, attributes (with input), id, parentSpanId
+	// Strip span to minimal fields: name, attributes (with input), id, parent_span_id
 	return {
 		id: id,
 		name: span.name || '',
 		attributes: cleanedAttrs,
-    ...(span.clientSpanId && { clientSpanId: span.clientSpanId }),
-		...(parentSpanId && { parentSpanId }),
+    ...(span.client_span_id && { client_span_id: span.client_span_id }),
+		...(parentSpanId && { parent_span_id: parentSpanId }),
 	};
 }
 
@@ -94,16 +94,16 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       return;
     }
     
-    // Check for duplicates: same traceId + dataset combination
-    if (example.traceId) {
-      // Build a search query for traceId AND dataset
-      let searchQuery = SearchQuery.setProp(null, 'traceId', example.traceId);
+    // Check for duplicates: same trace_id + dataset combination
+    if (example.trace_id) {
+      // Build a search query for trace_id AND dataset
+      let searchQuery = SearchQuery.setProp(null, 'trace_id', example.trace_id);
       searchQuery = SearchQuery.setProp(searchQuery, 'dataset', example.dataset);
       
       const existing = await searchExamples(searchQuery, organisation, example.dataset, 1, 0);
       if (existing.total > 0) {
         reply.code(409).send({ 
-          error: `Example with traceId "${example.traceId}" and dataset "${example.dataset}" already exists` 
+          error: `Example with trace_id "${example.trace_id}" and dataset "${example.dataset}" already exists` 
         });
         return;
       }
@@ -133,7 +133,7 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       const spanIds: string[] = [];
       for (const span of example.spans) {
         // Get id from various possible locations (id is standard, spanId is legacy fallback)
-        const spanId = span.id || span.spanId || span.clientSpanId || span.span?.id || span.client_span_id;
+        const spanId = span.id || span.spanId || span.client_span_id || span.span?.id || (span as any).clientSpanId;
         if (spanId) {
           spanIds.push(spanId);
         }

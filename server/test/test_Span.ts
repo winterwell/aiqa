@@ -138,7 +138,7 @@ tap.test('create a new span and retrieve it by id', async (t) => {
     traceId,
     spanId,
     traceFlags: 1,
-    parentSpanId: undefined,
+    parent_span_id: undefined,
     instrumentationLibrary: {
       name: 'test',
     },
@@ -176,7 +176,7 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   t.ok(getResult.hits, 'should have hits array');
   t.ok(Array.isArray(getResult.hits), 'hits should be an array');
   t.equal(getResult.hits.length, 1, 'should find exactly one span');
-  t.equal(getResult.hits[0].clientSpanId, clientSpanId, 'should match the created span id');
+  t.equal(getResult.hits[0].client_span_id, clientSpanId, 'should match the created span id');
   t.equal(getResult.hits[0].organisation, testOrgId, 'should have correct organisation');
   t.equal(getResult.hits[0].name, 'test-span', 'should have correct name');
 });

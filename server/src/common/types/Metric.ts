@@ -15,6 +15,8 @@ export interface Metric {
   model?: string;
   /** for LLM-as-judge */
   prompt?: string;
+  /** Use instead of prompt. For LLM-as-judg with the standard prompt template - this sets the core of "what criteria should the LLM judge be looking for?" */
+  prompt_criteria?: string;
   code?: string;
   parameters?: Record<string, any>;
 }

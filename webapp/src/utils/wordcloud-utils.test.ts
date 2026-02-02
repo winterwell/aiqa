@@ -5,10 +5,10 @@ import { Span } from '../common/types';
 function mockSpan(attributes: Record<string, unknown>): Span {
   return {
     id: '1',
-    traceId: 't1',
+    trace_id: 't1',
     name: 'test',
-    startTime: 0,
-    endTime: 0,
+    start_time: 0,
+    end_time: 0,
     attributes: attributes as any,
     organisation: 'org',
     starred: false,

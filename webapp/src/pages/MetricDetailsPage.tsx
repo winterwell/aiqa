@@ -107,7 +107,7 @@ const MetricDetailsPage: React.FC = () => {
       const example = examplesData.find((e: any) => e?.id === trace.exampleId);
       return {
         ...trace,
-        traceId: example?.traceId || '',
+        traceId: example?.trace_id || '',
       };
     });
   }, [tracesWithMetric, examplesData]);

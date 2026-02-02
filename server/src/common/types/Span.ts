@@ -4,30 +4,32 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
  * Span type extending OpenTelemetry's ReadableSpan interface.
  * Represents a completed span that can be read and exported.
  */
-export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'> {
+export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime' | 'parentSpanId'> {
 	/** Span ID (OpenTelemetry span ID as hex string) */
 	id: string;
 	/** Trace ID */
-	traceId: string;
+	trace_id: string;
+  /** Parent span ID */
+  parent_span_id?: string;
   organisation: string;
   /** Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example */
   example?: string;
   /** Only set for spans in the `spans` index IF created during an experiment */
   experiment?: string;
   /** Client-set span ID (goes alongside OpenTelemetry span ID if provided) */
-  clientSpanId?: string;
+  client_span_id?: string;
   /** Client-set trace ID (goes alongside OpenTelemetry trace ID if provided) */
-  clientTraceId?: string;
+  client_trace_id?: string;
   /** Client-set tags for the span */
   tags?: string[];
   /** Hash of the input for looking up same-input spans */
-  inputHash?: string;
+  input_hash?: string;
   /** If true, the span is starred by a user */
   starred: boolean;
   /** Start time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
-  startTime: number;
+  start_time: number;
   /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
-  endTime: number;
+  end_time: number;
   /** For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch) */
   _seen?: number[];
 }
@@ -47,14 +49,14 @@ export const getSpanId = (span: Span) => {
   };
 
   export  const getTraceId = (span: Span) => {
-    // Check direct traceId property first, then OpenTelemetry spanContext() method
+    // Check direct trace_id property first, then OpenTelemetry spanContext() method
     if (!span) return undefined;
-    return span.traceId || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.traceId : undefined);
+    return span.trace_id || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.traceId : undefined);
   };
 
   export  const getStartTime = (span: Span) => {
-    if (!span.startTime) return null;
-    return new Date(span.startTime);
+    if (!span.start_time) return null;
+    return new Date(span.start_time);
   };
 
   /**
@@ -63,7 +65,7 @@ export const getSpanId = (span: Span) => {
    * @returns milliseconds or null
    */
   export const getDuration = (span: Span) => {
-    if (!span.startTime || !span.endTime) return null;
-    return span.endTime - span.startTime;
+    if (!span.start_time || !span.end_time) return null;
+    return span.end_time - span.start_time;
   };
 

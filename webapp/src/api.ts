@@ -1,4 +1,5 @@
 import Span from "./common/types/Span.js";
+import { getTraceId } from "./utils/span-utils.js";
 
 export const API_BASE_URL = import.meta.env.VITE_AIQA_SERVER_URL || 'http://localhost:4318';
 
@@ -227,8 +228,8 @@ export async function searchSpans(args: {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);
 	if (isRoot) {
-		if (!query) query = 'parentSpanId:unset';
-		else query = `(${query}) AND parentSpanId:unset`;
+		if (!query) query = 'parent_span_id:unset';
+		else query = `(${query}) AND parent_span_id:unset`;
 	}
 	if (query) params.append('q', query);
 	params.append('limit', limit.toString());
@@ -279,10 +280,10 @@ export async function createExampleFromSpans(args: {
 	spans:Span[]
 }) {
 	const {organisationId, datasetId, spans} = args;
-	const traceId = spans[0].traceId;
+	const traceId = getTraceId(spans[0]);
 	// Spans will be cleaned server-side
 	return _createExample(organisationId, datasetId, {
-		traceId: traceId,
+		trace_id: traceId,
 		spans: spans,
 	});
 }

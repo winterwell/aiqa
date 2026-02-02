@@ -48,7 +48,7 @@ function buildEsQuery_oneBit(bit: any): any {
           const actualValue = rangeMatch[2];
           
           // Fields that are stored as milliseconds in Elasticsearch
-          const dateTimeFields = ['startTime', 'endTime', 'duration'];
+          const dateTimeFields = ['start_time', 'end_time', 'duration'];
           const isDateTimeField = dateTimeFields.includes(key);
           
           let rangeValue: number | string;

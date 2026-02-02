@@ -87,9 +87,9 @@ function convertOtlpSpansToInternalScopeSpan(
     internalSpans.push({
       name: otlpSpan.name || '',
       kind: otlpSpan.kind ?? 0,
-      parentSpanId,
-      startTime,
-      endTime,
+      parent_span_id: parentSpanId,
+      start_time: startTime,
+      end_time: endTime,
       status: {
         code: statusCode,
         message: status.message || undefined,
@@ -98,7 +98,7 @@ function convertOtlpSpansToInternalScopeSpan(
       links,
       events,
       resource: { attributes: resourceAttrs },
-      traceId,
+      trace_id: traceId,
       id,
       traceFlags: otlpSpan.flags ?? 0,
       duration,
@@ -413,18 +413,18 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
 
     // feedback:positive / feedback:negative in query → resolve to attribute.feedback (trace IDs from feedback spans), then filter root spans
-    let resolvedQ = (query?.trim() || 'parentSpanId:unset');
+    let resolvedQ = (query?.trim() || 'parent_span_id:unset');
     const feedbackValue = SearchQuery.propFromString(resolvedQ, 'feedback');
     if (feedbackValue === 'positive' || feedbackValue === 'negative') {
       const thumbsUp = feedbackValue === 'positive';
       resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
       const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.thumbs_up:${thumbsUp}`;
-      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['traceId'], undefined);
-      const traceIds = feedbackResult.hits.map((s: Span) => s.traceId).filter(Boolean) as string[];
+      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace_id'], undefined);
+      const traceIds = feedbackResult.hits.map((s: Span) => s.trace_id).filter(Boolean) as string[];
       if (traceIds.length === 0) {
         return { hits: [], total: 0, limit, offset };
       }
-      const traceIdClause = traceIds.map((id: string) => `traceId:${id}`).join(' OR ');
+      const traceIdClause = traceIds.map((id: string) => `trace_id:${id}`).join(' OR ');
       resolvedQ = resolvedQ ? `(${traceIdClause}) AND (${resolvedQ})` : `(${traceIdClause})`;
     }
 

@@ -36,9 +36,9 @@ const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | 
 
 // Attributes we need for the traces list page
 const REQUIRED_ATTRIBUTES = [
-  'traceId',
-  'startTime',
-  'endTime',
+  'trace_id',
+  'start_time',
+  'end_time',
   'name',
   'attributes',
   'tags',
@@ -179,12 +179,12 @@ const TracesListPage: React.FC = () => {
     
     if (sinceParam) {
       const sinceValue = sinceParam.startsWith('-') ? getRelativeTime(sinceParam) : sinceParam;
-      parts.push(`startTime:>=${sinceValue}`);
+      parts.push(`start_time:>=${sinceValue}`);
     }
     
     if (dateFilterType === 'custom' && untilParam) {
       const untilValue = untilParam.startsWith('-') ? getRelativeTime(untilParam) : untilParam;
-      parts.push(`startTime:<=${untilValue}`);
+      parts.push(`start_time:<=${untilValue}`);
     }
     
     return parts.length > 0 ? parts.join(' AND ') : '';
@@ -231,7 +231,7 @@ const TracesListPage: React.FC = () => {
       const spans = await queryClient.fetchQuery({
         queryKey: cacheKey,
         queryFn: async () => {
-          const traceIdQuery = batch.map(id => `traceId:${id}`).join(' OR ');
+          const traceIdQuery = batch.map(id => `trace_id:${id}`).join(' OR ');
           const feedbackResult = await searchSpans({
             organisationId: organisationId!,
             query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
@@ -333,7 +333,7 @@ const TracesListPage: React.FC = () => {
 		  },
 	
 		{
-        id: 'traceId',
+        id: 'trace_id',
         header: 'Trace ID',
         cell: ({ row }) => {
           const traceId = getTraceId(row.original);
@@ -661,7 +661,7 @@ const TracesListPage: React.FC = () => {
             columns={columns}
             pageSize={50}
             enableInMemoryFiltering={true}
-            initialSorting={[{ id: 'startTime', desc: true }]}
+            initialSorting={[{ id: 'start_time', desc: true }]}
             queryKeyPrefix={['traces', organisationId, searchQuery, dateFilterType, sinceParam, untilParam]}
             onRowClick={(span) => {
               const traceId = getTraceId(span);

@@ -26,9 +26,9 @@ export function getExampleTraceId(example: Example): string | null {
     const traceId = getSpanTraceId(span);
     if (traceId) return traceId;
     // Fallback to other possible trace ID locations
-    return (span as any).trace?.id || (span as any).client_trace_id || (span as any).traceId || example.traceId || null;
+    return (span as any).trace?.id || (span as any).client_trace_id || (span as any).trace_id || example.trace_id || null;
   }
-  return example.traceId || null;
+  return example.trace_id || null;
 }
 
 /**

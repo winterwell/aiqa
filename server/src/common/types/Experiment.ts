@@ -3,7 +3,7 @@
 /** The Result from one example, with the scores for each metric */
 export interface Result {
 	exampleId: string;
-  traceId?: string;
+  trace_id?: string;
 	scores: {
 		[metricName: string]: number;
 	},

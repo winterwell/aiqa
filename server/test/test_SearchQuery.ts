@@ -482,15 +482,15 @@ tap.test('SearchQuery.parse - OR query with AND after parentheses', t => {
   t.equal(sq.tree![0], SearchQuery.AND, 'should detect AND as top-level operator');
   const traceIdBits = sq.tree!.filter(bit => typeof bit === 'object' && 'traceId' in bit);
   t.ok(traceIdBits.length >= 1, 'should parse traceId fields');
-  const parentSpanIdBit = sq.tree!.find(bit => typeof bit === 'object' && 'parentSpanId' in bit);
-  t.ok(parentSpanIdBit, 'should parse parentSpanId field');
+  const parentSpanIdBit = sq.tree!.find(bit => typeof bit === 'object' && 'parent_span_id' in bit);
+  t.ok(parentSpanIdBit, 'should parse parent_span_id field');
   t.end();
 });
 
 tap.test('SearchQuery.propFromString - get value from query string', t => {
   t.equal(SearchQuery.propFromString('feedback:positive', 'feedback'), 'positive', 'should get value');
   t.equal(SearchQuery.propFromString('foo AND feedback:negative AND bar', 'feedback'), 'negative', 'should get value from AND query');
-  t.equal(SearchQuery.propFromString('parentSpanId:unset', 'feedback'), null, 'should return null when key absent');
+  t.equal(SearchQuery.propFromString('parent_span_id:unset', 'feedback'), null, 'should return null when key absent');
   t.equal(SearchQuery.propFromString('', 'feedback'), null, 'should return null for empty string');
   t.end();
 });
@@ -498,7 +498,7 @@ tap.test('SearchQuery.propFromString - get value from query string', t => {
 tap.test('SearchQuery.setOrRemoveInString - set and remove key:value', t => {
   t.equal(SearchQuery.setOrRemoveInString('foo', 'feedback', 'positive'), 'foo AND feedback:positive', 'should add key:value');
   t.equal(SearchQuery.setOrRemoveInString('foo AND bar', 'feedback', 'negative'), 'foo AND bar AND feedback:negative', 'should add to existing AND');
-  t.equal(SearchQuery.setOrRemoveInString('feedback:positive AND parentSpanId:unset', 'feedback', null), 'parentSpanId:unset', 'should remove key');
+  t.equal(SearchQuery.setOrRemoveInString('feedback:positive AND parent_span_id:unset', 'feedback', null), 'parent_span_id:unset', 'should remove key');
   t.equal(SearchQuery.setOrRemoveInString('feedback:positive', 'feedback', null), '', 'should return empty when only key removed');
   t.equal(SearchQuery.setOrRemoveInString('a AND feedback:positive AND b', 'feedback', null), 'a AND b', 'should remove key from middle');
   t.end();

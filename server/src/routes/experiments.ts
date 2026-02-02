@@ -437,8 +437,8 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         const initialDelayMs = 100;
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-          // Find root span for this trace (parentSpanId:unset means it's a root span)
-          const traceQuery = new SearchQuery(`traceId:${body.traceId} parentSpanId:unset`);
+          // Find root span for this trace (parent_span_id:unset means it's a root span)
+          const traceQuery = new SearchQuery(`trace_id:${body.traceId} parent_span_id:unset`);
           spanResult = await searchSpans(traceQuery, organisation, 1, 0);
           
           if (spanResult.hits.length > 0) {

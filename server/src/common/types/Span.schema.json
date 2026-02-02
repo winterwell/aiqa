@@ -16,14 +16,14 @@
           "type": "integer",
           "description": "SpanKind: INTERNAL=0, SERVER=1, CLIENT=2, PRODUCER=3, CONSUMER=4"
         },
-        "parentSpanId": {
+        "parent_span_id": {
           "type": "string"
         },
-        "startTime": {
+        "start_time": {
           "type": "number",
           "description": "Epoch milliseconds"
         },
-        "endTime": {
+        "end_time": {
           "type": "number",
           "description": "Epoch milliseconds"
         },
@@ -113,7 +113,7 @@
         "droppedLinksCount": {
           "type": "integer"
         },
-        "traceId": {
+        "trace_id": {
           "type": "string",
           "description": "OpenTelemetry trace ID (32 hex characters)"
         },
@@ -184,11 +184,11 @@
         "experiment": {
           "type": "string"
         },
-        "clientSpanId": {
+        "client_span_id": {
           "type": "string",
           "description": "Client-set span ID (overrides OpenTelemetry span ID if provided)"
         },
-        "clientTraceId": {
+        "client_trace_id": {
           "type": "string",
           "description": "Client-set trace ID (overrides OpenTelemetry trace ID if provided)"
         },
@@ -199,7 +199,7 @@
           },
           "description": "Client-set tags for the span"
         },
-        "inputHash": {
+        "input_hash": {
           "type": "string",
           "description": "Hash of the input for looking up same-input spans"
         }
@@ -207,8 +207,8 @@
       "required": [
         "name",
         "kind",
-        "startTime",
-        "endTime",
+        "start_time",
+        "end_time",
         "status",
         "attributes",
         "links",

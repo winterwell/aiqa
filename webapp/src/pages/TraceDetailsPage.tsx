@@ -44,7 +44,7 @@ function collectSpansFromTree(spanTree: SpanTree): Span[] {
 
 
 function getParentSpanId(span: Span): string | null {
-	return (span as any).parentSpanId || (span as any).span?.parent?.id || null;
+	return span.parent_span_id || (span as any).parentSpanId || (span as any).span?.parent?.id || null;
 }
 
 function organiseSpansIntoTree(spans: Span[], parent: Span | null, traceIds?: string[]): SpanTree | null {

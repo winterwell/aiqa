@@ -62,9 +62,9 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
       continue;
     }
     
-    // Special handling for time fields (startTime, endTime, duration)
+    // Special handling for time fields (start_time, end_time, duration)
     // These are stored as milliseconds (long)
-    if ((fieldName === 'startTime' || fieldName === 'endTime' || fieldName === 'duration') &&
+    if ((fieldName === 'start_time' || fieldName === 'end_time' || fieldName === 'duration') &&
         prop.type === 'number') {
       mappings[fieldName] = { type: 'long' };
       continue;
@@ -677,7 +677,7 @@ export async function updateSpan(
       return currentSpan as Span;
     }
 
-    // Transform the update document if needed (for fields like startTime, endTime)
+    // Transform the update document if needed (for fields like start_time, end_time)
     // For starred, we can update directly
     const transformedUpdate = { ...updateDoc };
     
@@ -909,7 +909,7 @@ export async function deleteIndex(indexName: string): Promise<void> {
 
 /**
  * Delete old spans for an organisation based on retention period.
- * Deletes spans where endTime (or startTime if endTime is missing) is older than the cutoff date.
+ * Deletes spans where end_time (or start_time if end_time is missing) is older than the cutoff date.
  * @param organisationId - Organisation ID
  * @param retentionDays - Number of days to retain (spans older than this will be deleted)
  * @returns Number of deleted spans
@@ -928,7 +928,7 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
 
   // Delete spans where:
   // - organisation matches
-  // - (endTime < cutoffTime OR (endTime missing AND startTime < cutoffTime))
+  // - (end_time < cutoffTime OR (end_time missing AND start_time < cutoffTime))
   // Use deleteByQuery for efficient bulk deletion
   const query = {
     bool: {
@@ -936,13 +936,13 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
         { term: { organisation: organisationId } }
       ],
       should: [
-        // Spans with endTime older than cutoff
-        { range: { endTime: { lt: cutoffTime } } },
-        // Spans without endTime but with startTime older than cutoff
+        // Spans with end_time older than cutoff
+        { range: { end_time: { lt: cutoffTime } } },
+        // Spans without end_time but with start_time older than cutoff
         {
           bool: {
-            must_not: { exists: { field: 'endTime' } },
-            must: { range: { startTime: { lt: cutoffTime } } }
+            must_not: { exists: { field: 'end_time' } },
+            must: { range: { start_time: { lt: cutoffTime } } }
           }
         }
       ],

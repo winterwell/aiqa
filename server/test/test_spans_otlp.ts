@@ -400,7 +400,7 @@ tap.test('OTLP HTTP + JSON: successful trace export', async (t) => {
   const searchQuery = new SearchQuery(`traceId:${traceId}`);
   const searchResult = await searchSpans(searchQuery, testOrgId!, 10, 0);
   t.equal(searchResult.hits.length, 1, 'should find the stored span');
-  t.equal(searchResult.hits[0].traceId, traceId, 'should have correct traceId');
+  t.equal(searchResult.hits[0].trace_id, traceId, 'should have correct trace_id');
   t.equal(searchResult.hits[0].organisation, testOrgId, 'should have correct organisation');
 });
 
@@ -510,7 +510,7 @@ tap.test('OTLP HTTP + Protobuf: successful trace export', async (t) => {
   const searchQuery = new SearchQuery(`traceId:${traceId}`);
   const searchResult = await searchSpans(searchQuery, testOrgId!, 10, 0);
   t.equal(searchResult.hits.length, 1, 'should find the stored span');
-  t.equal(searchResult.hits[0].traceId, traceId, 'should have correct traceId');
+  t.equal(searchResult.hits[0].trace_id, traceId, 'should have correct trace_id');
 });
 
 tap.test('OTLP HTTP + Protobuf: invalid protobuf data', async (t) => {
@@ -635,7 +635,7 @@ tap.test('OTLP gRPC + Protobuf: successful trace export', async (t) => {
     const searchQuery = new SearchQuery(`traceId:${traceId}`);
     const searchResult = await searchSpans(searchQuery, testOrgId!, 10, 0);
     t.equal(searchResult.hits.length, 1, 'should find the stored span');
-    t.equal(searchResult.hits[0].traceId, traceId, 'should have correct traceId');
+    t.equal(searchResult.hits[0].trace_id, traceId, 'should have correct trace_id');
     t.equal(searchResult.hits[0].organisation, testOrgId, 'should have correct organisation');
     
   } catch (error) {
@@ -831,15 +831,15 @@ tap.test('OTLP: verify spans are stored correctly', async (t) => {
   t.equal(searchResult.hits.length, 1, 'should find exactly one span');
   
   const span = searchResult.hits[0];
-  t.equal(span.traceId, traceId, 'should have correct traceId');
+  t.equal(span.trace_id, traceId, 'should have correct trace_id');
   t.equal(span.spanId, spanId, 'should have correct spanId');
   t.equal(span.name, 'test-span', 'should have correct name');
   t.equal(span.organisation, testOrgId, 'should have correct organisation');
   t.ok(span.attributes, 'should have attributes');
   t.equal(span.attributes['service.name'], 'test-service', 'should have resource attributes merged');
   t.equal(span.attributes['test.attribute'], 'test-value', 'should have span attributes');
-  t.ok(span.startTime, 'should have startTime');
-  t.ok(span.endTime, 'should have endTime');
+  t.ok(span.start_time, 'should have start_time');
+  t.ok(span.end_time, 'should have end_time');
   t.ok(span.duration, 'should have duration');
 });
 
@@ -994,10 +994,10 @@ tap.test('OTLP: test all transport/format combinations', async (t) => {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Verify span was stored
-    const searchQuery = new SearchQuery(`traceId:${testCase.traceId}`);
+    const searchQuery = new SearchQuery(`trace_id:${testCase.traceId}`);
     const searchResult = await searchSpans(searchQuery, testOrgId!, 10, 0);
     t.equal(searchResult.hits.length, 1, `${testCase.name}: should find the stored span`);
-    t.equal(searchResult.hits[0].traceId, testCase.traceId, `${testCase.name}: should have correct traceId`);
+    t.equal(searchResult.hits[0].trace_id, testCase.traceId, `${testCase.name}: should have correct trace_id`);
     t.equal(searchResult.hits[0].organisation, testOrgId, `${testCase.name}: should have correct organisation`);
   }
 });

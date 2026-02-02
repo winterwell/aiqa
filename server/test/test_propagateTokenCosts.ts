@@ -46,7 +46,7 @@ function createTestSpan(
     droppedEventsCount: 0,
     droppedLinksCount: 0,
     starred: false,
-    ...(parentId && { parentSpanId: parentId }),
+    ...(parentId && { parent_span_id: parentId }),
   } as Span;
 }
 

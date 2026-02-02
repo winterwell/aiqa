@@ -8,7 +8,7 @@
         "id": {
           "type": "string"
         },
-        "traceId": {
+        "trace_id": {
           "type": "string"
         },
         "dataset": {
@@ -42,14 +42,14 @@
               "kind": {
                 "type": "integer"
               },
-              "parentSpanId": {
+              "parent_span_id": {
                 "type": "string"
               },
-              "startTime": {
+              "start_time": {
                 "type": "number",
                 "description": "Epoch milliseconds"
               },
-              "endTime": {
+              "end_time": {
                 "type": "number",
                 "description": "Epoch milliseconds"
               },
@@ -106,7 +106,7 @@
                 "type": "number",
                 "description": "Duration in milliseconds"
               },
-              "traceId": {
+              "trace_id": {
                 "type": "string"
               },
               "spanId": {
