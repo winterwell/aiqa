@@ -1,0 +1,26 @@
+/* Bulk actions toolbar slide animation */
+.bulk-actions-toolbar-row {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.bulk-actions-toolbar-row.open {
+  max-height: 100px; /* Adjust based on your toolbar height */
+  padding: 0.5rem !important;
+  border-top: 2px solid #dee2e6 !important;
+}
+.bulk-actions-toolbar-row td {
+  padding: 0;
+}
+.bulk-actions-toolbar-content {
+  opacity: 0;
+  transition: opacity 0.2s ease-out 0.1s;
+}
+
+.bulk-actions-toolbar-row.open .bulk-actions-toolbar-content {
+  opacity: 1;
+  padding: 0.1rem;
+}

@@ -1,18 +1,19 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Container, Row, Col, FormGroup, Label, Input, Form } from 'reactstrap';
+import { Container, Row, Col, FormGroup, Label, Input, Form, Button } from 'reactstrap';
 import { ColumnDef } from '@tanstack/react-table';
 import { useQueryClient } from '@tanstack/react-query';
-import { searchSpans } from '../api';
-import { Span } from '../common/types';
+import { searchSpans, deleteSpans } from '../api';
+import { Span, getSpanId, getTraceId } from '../common/types';
 import { propFromString, setPropInString } from '../common/SearchQuery';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
-import { getTraceId, getStartTime, getDurationMs, getTotalTokenCount, getCost, getSpanId, durationString, formatCost, prettyNumber } from '../utils/span-utils';
-import StarButton from '../components/generic/StarButton';
+import { getStartTime, getDurationMs, getTotalTokenCount, getCost, durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import Page from '../components/generic/Page';
 import Tags from '../components/generic/Tags';
 import { updateSpan } from '../api';
+import { TrashIcon } from '@phosphor-icons/react';
+import ConfirmDialog from '../components/generic/ConfirmDialog';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
@@ -88,6 +89,9 @@ const TracesListPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [feedbackMap, setFeedbackMap] = useState<Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>>(new Map());
   const [enrichedSpans, setEnrichedSpans] = useState<Map<string, Span>>(new Map());
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [selectedRows, setSelectedRows] = useState<Span[]>([]);
   
   // Get date filter from URL params, default to '1d'
   const dateFilterType = (searchParams.get('dateFilter') || '1d') as DateFilterType;
@@ -272,34 +276,6 @@ const TracesListPage: React.FC = () => {
   // Table columns
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
-		{
-			id: 'starred',
-			header: '',
-			accessorFn: (row) => {
-			  // Sort: false (0) comes before true (1)
-			  return row.starred ? 1 : 0;
-			},
-			cell: ({ row }) => {
-			  return (
-				<StarButton 
-				  span={row.original} 
-				  size="sm"
-				  onUpdate={(updatedSpan) => {
-					// Update the span in the enriched spans map
-					const traceId = getTraceId(updatedSpan);
-					if (traceId) {
-					  setEnrichedSpans(prev => {
-						const next = new Map(prev);
-						next.set(traceId, updatedSpan);
-						return next;
-					  });
-					}
-				  }}
-				/>
-			  );
-			},
-			enableSorting: true,
-		},
 		{
 			id: 'startTime',
 			header: 'Start Time',
@@ -522,7 +498,55 @@ const TracesListPage: React.FC = () => {
       },
     ],
     [organisationId, feedbackMap, feedbackInSearch, searchParams]
-  );
+  ); // end columns
+
+  const handleBulkDelete = (selectedRowIds: string[], selectedRows: Span[]) => {
+    setSelectedRowIds(selectedRowIds);
+    setSelectedRows(selectedRows);
+    setDeleteModalOpen(true);
+  }
+  const handleBulkDeleteConfirmed = async () => {
+    console.log('handleBulkDeleteConfirmed:', selectedRowIds, selectedRows);
+    if (selectedRows.length === 0) {
+      console.warn('No rows selected for deletion');
+      setDeleteModalOpen(false);
+      return;
+    }
+
+    // Build set of trace_ids and orphan span.ids
+    const traceIds = new Set<string>();
+    const orphanSpanIds = new Set<string>();
+    for (const span of selectedRows) {
+      const traceId = getTraceId(span);
+      if (traceId) {
+        traceIds.add(traceId);
+      } else {
+        // If for some reason traceId is empty, fallback to spanId
+        const spanId = getSpanId(span);
+        if (spanId) orphanSpanIds.add(spanId);
+      }
+    }
+
+    try {
+      if (traceIds.size > 0) {
+        await deleteSpans({ trace_ids: Array.from(traceIds) });
+      }
+      if (orphanSpanIds.size > 0) {
+        await deleteSpans({ spanIds: Array.from(orphanSpanIds) });
+      }
+      // Invalidate queries to refresh the table data
+      // Invalidate both the table-data queries and trace-related queries
+      queryClient.invalidateQueries({ queryKey: ['table-data', 'traces', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['traces', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['feedback-spans', organisationId] });
+      setDeleteModalOpen(false);
+      setSelectedRowIds([]);
+      setSelectedRows([]);
+    } catch (err) {
+      console.error('Failed to delete spans:', err);
+      // Keep modal open on error so user can retry
+    }
+  }; // end handleBulkDeleteConfirmed
 
   // Handle custom date changes
   const handleCustomSinceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -663,12 +687,42 @@ const TracesListPage: React.FC = () => {
             enableInMemoryFiltering={true}
             initialSorting={[{ id: 'start_time', desc: true }]}
             queryKeyPrefix={['traces', organisationId, searchQuery, dateFilterType, sinceParam, untilParam]}
+            getRowId={(span) => {
+              // Use trace_id as the stable row ID, fallback to span ID if no trace_id
+              const traceId = getTraceId(span);
+              if (traceId) return traceId;
+              const spanId = getSpanId(span);
+              return spanId || `span-${Math.random()}`; // Fallback for edge cases
+            }}
             onRowClick={(span) => {
               const traceId = getTraceId(span);
               if (traceId) {
                 navigate(`/organisation/${organisationId}/traces/${traceId}`);
               }
             }}
+            enableRowSelection={true}
+            onSelectionChange={(selectedRowIds, selectedRows) => {
+              console.log('selectedRowIds:', selectedRowIds);
+              console.log('selectedRows:', selectedRows);
+            }}
+            bulkActionsToolbar={(selectedRowIds, selectedRows) => {
+              return (
+                <div>
+                  <Button color="danger" size="xs" onClick={() => handleBulkDelete(selectedRowIds, selectedRows)} title="Delete selected traces">
+                    <TrashIcon size={16} />
+                  </Button>
+                </div>
+              );
+            }}
+          />
+          <ConfirmDialog
+            isOpen={deleteModalOpen}
+            toggle={() => setDeleteModalOpen(false)}
+            header="Delete selected traces"
+            body="Are you sure you want to delete these traces?"
+            onConfirm={handleBulkDeleteConfirmed}
+            confirmButtonText="Delete"
+            confirmButtonColor="danger"
           />
         </Col>
       </Row>

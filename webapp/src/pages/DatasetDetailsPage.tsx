@@ -7,7 +7,8 @@ import { getDataset, listExperiments, searchExamples, updateDataset, createExamp
 import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
 import { Metric } from '../common/types/Metric';
-import { getSpanId, getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
+import { getSpanId } from '../common/types';
+import { getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
@@ -100,10 +101,13 @@ const DatasetDetailsPage: React.FC = () => {
       {
         id: 'name',
         header: 'Name',
-        cell: ({ row }) => {
-          const span = getFirstSpan(row.original);
-          return span ? (span as any).name || 'N/A' : 'N/A';
-        },
+        accessorFn: (example: Example) => {
+          if (example.name) return example.name;
+          if (example.input) return truncate(example.input, 100);
+          const span = getFirstSpan(example);
+          if (span?.name) return truncate(span.name, 100);
+          return;
+         },
       },
       // One column per dataset metric
       ...(dataset?.metrics ? asArray(dataset.metrics).map((metric: Metric) => ({

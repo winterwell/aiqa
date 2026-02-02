@@ -179,10 +179,10 @@ function buildFilterClauses(filters?: Record<string, string>): any[] {
 }
 
 /**
- * Get sort field based on index name (examples use 'created', spans use '@timestamp').
+ * Get sort field based on index name (examples use 'created', spans use 'start_time').
  */
 function getSortField(indexName: string): string {
-  return indexName.includes('examples') ? 'created' : '@timestamp';
+  return indexName.includes('examples') ? 'created' : 'start_time';
 }
 
 

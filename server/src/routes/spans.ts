@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { bulkInsertSpans, searchSpans, updateSpan } from '../db/db_es.js';
+import { bulkInsertSpans, searchSpans, updateSpan, deleteSpans } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
@@ -481,6 +481,56 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       }
 
       return updatedSpan;
+    } catch (error: any) {
+      if (isConnectionError(error)) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /**
+   * Delete spans by IDs or by trace_ids.
+   * 
+   * Body: Either { spanIds: string[] } or { trace_ids: string[] }
+   * 
+   * Security: Authenticated users only. Organisation membership verified by authenticate middleware.
+   * Deletions are scoped to the authenticated user's organisation.
+   */
+  fastify.delete('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    const organisation = request.organisation!;
+    const body = request.body as { spanIds?: string[]; trace_ids?: string[] };
+
+    // Validate request body
+    if (!body.spanIds && !body.trace_ids) {
+      reply.code(400).send({ error: 'Either spanIds or trace_ids must be provided' });
+      return;
+    }
+
+    if (body.spanIds && body.trace_ids) {
+      reply.code(400).send({ error: 'Cannot specify both spanIds and trace_ids' });
+      return;
+    }
+
+    if (body.spanIds && (!Array.isArray(body.spanIds) || body.spanIds.length === 0)) {
+      reply.code(400).send({ error: 'spanIds must be a non-empty array' });
+      return;
+    }
+
+    if (body.trace_ids && (!Array.isArray(body.trace_ids) || body.trace_ids.length === 0)) {
+      reply.code(400).send({ error: 'trace_ids must be a non-empty array' });
+      return;
+    }
+
+    try {
+      const options = body.spanIds 
+        ? { spanIds: body.spanIds }
+        : { trace_ids: body.trace_ids! };
+      
+      const deletedCount = await deleteSpans(options, organisation);
+      return { success: true, deleted: deletedCount };
     } catch (error: any) {
       if (isConnectionError(error)) {
         reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });

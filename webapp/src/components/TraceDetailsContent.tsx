@@ -1,9 +1,9 @@
 import React from 'react';
 import { Row, Col, Input } from 'reactstrap';
 import { Span } from '../common/types';
-import { getSpanId, getDurationMs, durationString, getSpanName } from '../utils/span-utils';
+import { getSpanId } from '../common/types';
+import { getDurationMs, durationString, getSpanName } from '../utils/span-utils';
 import ExpandCollapseControl from './generic/ExpandCollapseControl';
-import StarButton from './generic/StarButton';
 import CopyButton from './generic/CopyButton';
 import { truncate } from '../common/utils/miscutils';
 import ChatMessage from '../common/types/ChatMessage';
@@ -241,7 +241,6 @@ function SpanTreeItem({ span, children, treeState, config }: { span: Span; child
   <div><small>Span ID: {spanId}</small></div>
   <div><small>Duration: <span>{durationString(getDurationMs(span), config.durationUnit)}</span></small></div>
   <div style={{ position: 'absolute', right: '20px', top: '10px', display: 'flex', gap: '5px', alignItems: 'center' }}>
-    <StarButton span={span} size="sm" onUpdate={config.onSpanUpdate} />
     <CopyButton content={span} logToConsole size="xs" />
   </div>
 </div>

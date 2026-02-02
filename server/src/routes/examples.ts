@@ -79,6 +79,10 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     const example = request.body as Example;
     // user can specify an id if they wish -- check it is a valid UUID. Or we will create one for them.
     // Important: ES must use the id as the document _id.
+    // Strip empty id strings (defensive: clients may send empty strings instead of omitting the field)
+    if (example.id === "") {
+      delete example.id;
+    }
     if (example.id) {
       // Validate UUID format (RFC 4122)
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,6 +131,7 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
 
     const exampleIdObjects = (await bulkInsertExamples([exampleWithOrg]));
     const exampleId = exampleIdObjects[0].id;
+    exampleWithOrg.id = exampleId;
     
     // Extract span IDs from original spans (before cleaning)
     if (Array.isArray(example.spans) && example.spans.length > 0) {
@@ -150,8 +155,8 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       }
     }
     
-    return { success: true, count: 1 };
-  });
+    return exampleWithOrg;
+  }); // end create example
 
   /** Get a set of examples eg to run an experiment, or for the webapp to display a list */
   // Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in Elasticsearch (searchExamples).

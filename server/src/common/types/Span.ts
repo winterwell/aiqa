@@ -5,10 +5,10 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
  * Represents a completed span that can be read and exported.
  */
 export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime' | 'parentSpanId'> {
-	/** Span ID (OpenTelemetry span ID as hex string) */
-	id: string;
-	/** Trace ID */
-	trace_id: string;
+  /** Span ID (OpenTelemetry span ID as hex string) */
+  id: string;
+  /** Trace ID */
+  trace_id: string;
   /** Parent span ID */
   parent_span_id?: string;
   organisation: string;
@@ -34,38 +34,21 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   _seen?: number[];
 }
 
-export function getSpanInput(span:Span) {
-	return span.attributes?.input;
+export function getSpanInput(span: Span) {
+  return span.attributes?.input;
 }
-export function getSpanOutput(span:Span) {
-	return span.attributes?.output;
+export function getSpanOutput(span: Span) {
+  return span.attributes?.output;
 }
 
+export const getSpanId = (span: Span): string | undefined => {
+  // Check id first (standard), then spanId (legacy fallback), then OpenTelemetry spanContext() method
+  if (!span) return undefined;
+  return (span as any)?.id || (span as any)?.spanId || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.spanId : undefined);
+};
 
-export const getSpanId = (span: Span) => {
-    // Check id first (standard), then spanId (legacy fallback), then OpenTelemetry spanContext() method
-    if (!span) return undefined;
-    return (span as any)?.id || (span as any)?.spanId || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.spanId : undefined);
-  };
-
-  export  const getTraceId = (span: Span) => {
-    // Check direct trace_id property first, then OpenTelemetry spanContext() method
-    if (!span) return undefined;
-    return span.trace_id || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.traceId : undefined);
-  };
-
-  export  const getStartTime = (span: Span) => {
-    if (!span.start_time) return null;
-    return new Date(span.start_time);
-  };
-
-  /**
-   * 
-   * @param span 
-   * @returns milliseconds or null
-   */
-  export const getDuration = (span: Span) => {
-    if (!span.start_time || !span.end_time) return null;
-    return span.end_time - span.start_time;
-  };
+export const getTraceId = (span: Span): string => {
+  // Check client_trace_id first (client-provided), then trace_id (standard), then OpenTelemetry spanContext() method
+  return span.client_trace_id || span.trace_id || (span.spanContext && typeof span.spanContext === 'function' ? span.spanContext()?.traceId : undefined) || '';
+};
 

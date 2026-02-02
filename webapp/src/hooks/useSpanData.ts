@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchSpans } from '../api';
 import { Span } from '../common/types';
-import { getTraceId } from '../utils/span-utils';
+import { getTraceId } from '../common/types';
 
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 const BATCH_SIZE = 10;

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { updateSpan } from '../../api';
 import { useToast } from '../../utils/toast';
 import { Span } from '../../common/types';
-import { getSpanId } from '../../utils/span-utils';
+import { getSpanId } from '../../common/types';
 
 interface StarButtonProps {
 	span: Span;

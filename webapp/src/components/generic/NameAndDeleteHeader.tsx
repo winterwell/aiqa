@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
+import { Button } from 'reactstrap';
 import PropInput from './PropInput';
+import ConfirmDialog from './ConfirmDialog';
 
 interface NameAndDeleteHeaderProps {
   /** Label before the name input, e.g. "Dataset" or "Experiment" */
@@ -27,20 +28,8 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
   deleteItemTypeLabel,
 }) => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const itemType = deleteItemTypeLabel ?? label;
   const itemTypeLower = itemType.toLowerCase();
-
-  const onConfirmDelete = async () => {
-    if (!handleDelete) return;
-    setIsDeleting(true);
-    try {
-      await handleDelete();
-      setDeleteModalOpen(false);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   return (
     <>
@@ -57,23 +46,20 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
       </span>
 
       {handleDelete != null && (
-        <Modal isOpen={deleteModalOpen} toggle={() => setDeleteModalOpen(false)}>
-          <ModalHeader toggle={() => setDeleteModalOpen(false)}>
-            Delete {itemType}
-          </ModalHeader>
-          <ModalBody>
-            <p>Are you sure you want to delete this {itemTypeLower}?</p>
-            <p className="text-danger">This action cannot be undone.</p>
-          </ModalBody>
-          <ModalFooter>
-            <Button color="danger" onClick={onConfirmDelete} disabled={isDeleting}>
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
-            <Button color="secondary" onClick={() => setDeleteModalOpen(false)}>
-              Cancel
-            </Button>
-          </ModalFooter>
-        </Modal>
+        <ConfirmDialog
+          isOpen={deleteModalOpen}
+          toggle={() => setDeleteModalOpen(false)}
+          header={`Delete ${itemType}`}
+          body={
+            <>
+              <p>Are you sure you want to delete this {itemTypeLower}?</p>
+              <p className="text-danger">This action cannot be undone.</p>
+            </>
+          }
+          onConfirm={handleDelete}
+          confirmButtonText="Delete"
+          confirmButtonColor="danger"
+        />
       )}
     </>
   );

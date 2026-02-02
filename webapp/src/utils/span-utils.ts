@@ -1,4 +1,4 @@
-import { Span } from "../common/types";
+import { Span, getSpanId, getTraceId } from "../common/types";
 
 export const getSpanName = (span: Span): string => (span as any).name || '';
 
@@ -99,21 +99,6 @@ export function prettyNumber(num: number | null | undefined | string): string {
 }
 
 
-export const getSpanId = (span: Span) => {
-    // Check all possible locations for span ID, in order of preference:
-    // 1. client_span_id (client-set, takes precedence)
-    // 2. id (standard server field)
-    // 3. spanId (direct OpenTelemetry property)
-    // 4. span.id (nested property)
-    // 5. clientSpanId (legacy fallback)
-    return span.client_span_id 
-        || (span as any).id 
-        || (span as any).spanId 
-        || (span as any).span?.id 
-        || (span as any).clientSpanId 
-        || 'N/A';
-  };
-
   const asTime = (time: number | Date | [number, number] | null | undefined): Date | null => {
 	if ( ! time) return null;
 	if (typeof time === 'number') {
@@ -131,11 +116,11 @@ export const getSpanId = (span: Span) => {
   };
 
 export const getStartTime = (span: Span) => {
-	return asTime(span.start_time);
+	return asTime(span.start_time || span.startTime); // startTime is for backwards compatibility with old spans or any otel js sdk ReadableSpans
   };
 
 export const getEndTime = (span: Span) => {
-	return asTime(span.end_time);
+	return asTime(span.end_time || span.endTime); // endTime is for backwards compatibility with old spans or any otel js sdk ReadableSpans
   };
 
 export const getDurationMs = (span: Span): number | null => {
@@ -144,10 +129,6 @@ export const getDurationMs = (span: Span): number | null => {
     if ( ! start || ! end) return null;
     return end.getTime() - start.getTime();
   };
-
-export const getTraceId = (span: Span): string => {
-  return span.client_trace_id || span.trace_id || (span as any).spanContext?.()?.traceId || '';
-};
 
 /**
  * Safely convert a value to a number, handling both string and number types.

@@ -1,5 +1,5 @@
 import type { Example, Span } from '../common/types';
-import { getTraceId as getSpanTraceId } from './span-utils';
+import { getTraceId as getSpanTraceId } from '../common/types';
 import { SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
 
 /**

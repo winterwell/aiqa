@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpanId, getSpanName } from '../utils/span-utils';
+import { getSpanId } from '../common/types';
+import { getSpanName } from '../utils/span-utils';
 import { Span } from '../common/types';
 
 interface SpanTree {

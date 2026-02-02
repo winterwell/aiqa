@@ -1,5 +1,5 @@
 import Span from "./common/types/Span.js";
-import { getTraceId } from "./utils/span-utils.js";
+import { getTraceId } from "./common/types/Span.js";
 
 export const API_BASE_URL = import.meta.env.VITE_AIQA_SERVER_URL || 'http://localhost:4318';
 
@@ -250,6 +250,13 @@ export async function updateSpan(spanId: string, updates: { starred?: boolean; t
 	return fetchWithAuth(`/span/${encodeURIComponent(spanId)}`, {
 		method: 'PUT',
 		body: JSON.stringify(updates),
+	});
+}
+
+export async function deleteSpans(options: { spanIds: string[] } | { trace_ids: string[] }) {
+	return fetchWithAuth('/span', {
+		method: 'DELETE',
+		body: JSON.stringify(options),
 	});
 }
 

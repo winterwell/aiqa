@@ -11,11 +11,37 @@ import {
   Header,
   Row,
   Cell,
+  RowSelectionState,
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download } from '@phosphor-icons/react';
 import Spinner from './Spinner';
+import './TableUsingAPI.css';
+
+// Select all checkbox header component
+function SelectAllCheckbox({ table }: { table: any }) {
+  const checkboxRef = React.useRef<HTMLInputElement>(null);
+  const isAllSelected = table.getIsAllRowsSelected();
+  const isSomeSelected = table.getIsSomeRowsSelected();
+  
+  React.useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = isSomeSelected && !isAllSelected;
+    }
+  }, [isAllSelected, isSomeSelected]);
+  
+  return (
+    <input
+      ref={checkboxRef}
+      type="checkbox"
+      className="form-check-input"
+      checked={isAllSelected}
+      onChange={table.getToggleAllRowsSelectedHandler()}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+}
 
 // Extend ColumnDef to support custom CSV value extraction
 export type ExtendedColumnDef<T> = ColumnDef<T> & {
@@ -56,6 +82,24 @@ export interface TableUsingAPIProps<T> {
    * Should be unique per page/context where the table is used.
    */
   queryKeyPrefix?: string | string[];
+  /**
+   * Enable row selection with checkboxes. When enabled, adds a selection column with a "select all" checkbox in the header.
+   */
+  enableRowSelection?: boolean;
+  /**
+   * Callback fired when row selection changes. Receives the selected row IDs and the selected row data.
+   */
+  onSelectionChange?: (selectedRowIds: string[], selectedRows: T[]) => void;
+  /**
+   * React node to render as bulk actions toolbar. Shown below the header when rows are selected.
+   * Receives selected row IDs and selected row data as props.
+   */
+  bulkActionsToolbar?: (selectedRowIds: string[], selectedRows: T[]) => React.ReactNode;
+  /**
+   * Function to get a unique row ID. If not provided, uses array index (not recommended for selection).
+   * Should return a stable identifier for each row.
+   */
+  getRowId?: (row: T) => string;
 }
 
 function TableUsingAPI<T extends Record<string, any>>({
@@ -71,12 +115,17 @@ function TableUsingAPI<T extends Record<string, any>>({
   refetchInterval,
   onRowClick,
   queryKeyPrefix,
+  enableRowSelection = false,
+  onSelectionChange,
+  bulkActionsToolbar,
+  getRowId,
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [globalFilter, setGlobalFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [inputValue, setInputValue] = useState('');
   const [serverQuery, setServerQuery] = useState('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   // Load data from server when debounced query changes
   // Use useQuery to cache
   const queryClient = useQueryClient();
@@ -200,18 +249,43 @@ function TableUsingAPI<T extends Record<string, any>>({
     URL.revokeObjectURL(url);
   };
 
+  // Create selection column if enabled
+  const selectionColumn: ColumnDef<T> = useMemo(() => ({
+    id: 'select',
+    header: ({ table }) => <SelectAllCheckbox table={table} />,
+    cell: ({ row }) => (
+      <Input
+        type="checkbox"
+        checked={row.getIsSelected()}
+        disabled={!row.getCanSelect()}
+        onChange={row.getToggleSelectedHandler()}
+        onClick={(e) => e.stopPropagation()}
+      />
+    ),
+    enableSorting: false,
+  }), []);
+
+  // Combine columns with selection column if enabled
+  const tableColumns = useMemo(() => {
+    return enableRowSelection ? [selectionColumn, ...columns] : columns;
+  }, [enableRowSelection, selectionColumn, columns]);
+
   // Configure table with sorting and filtering
   const table = useReactTable({
     data: hits,
-    columns,
+    columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: enableInMemoryFiltering ? getFilteredRowModel() : undefined,
+    enableRowSelection: enableRowSelection,
+    getRowId: getRowId,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
     state: {
       sorting,
       globalFilter: enableInMemoryFiltering ? globalFilter : '',
+      rowSelection: enableRowSelection ? rowSelection : {},
     },
     globalFilterFn: (row, columnId, filterValue: string) => {
       // Simple global filter that searches all string values
@@ -223,6 +297,16 @@ function TableUsingAPI<T extends Record<string, any>>({
     },
   });
 
+  // Handle selection changes - use table's selected row model for accurate data
+  useEffect(() => {
+    if (enableRowSelection && onSelectionChange) {
+      const selectedRowModel = table.getSelectedRowModel();
+      const selectedRowIds = selectedRowModel.rows.map(row => row.id);
+      const selectedRows = selectedRowModel.rows.map(row => row.original);
+      onSelectionChange(selectedRowIds, selectedRows);
+    }
+  }, [rowSelection, enableRowSelection, onSelectionChange, table]);
+
   // Get all rows from table
   const allRows = table.getRowModel().rows;
   
@@ -232,6 +316,12 @@ function TableUsingAPI<T extends Record<string, any>>({
   
   const totalRows = allRows.length;
   const totalPages = Math.ceil(totalRows / pageSize);
+
+  // Get selected rows for bulk actions toolbar
+  const selectedRowModel = enableRowSelection ? table.getSelectedRowModel() : null;
+  const selectedRowIds = selectedRowModel?.rows.map(row => row.id) || [];
+  const selectedRows = selectedRowModel?.rows.map(row => row.original) || [];
+  const hasSelectedRows = enableRowSelection && (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected());
   
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
@@ -298,10 +388,19 @@ function TableUsingAPI<T extends Record<string, any>>({
               Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, totalRows)} of {totalRows} items
             </p>
             <Table hover responsive>
-				<TableHeader headers={table.getHeaderGroups()} flexRender={flexRender} />
+				<TableHeader 
+                  headers={table.getHeaderGroups()} 
+                  flexRender={flexRender} 
+                  enableRowSelection={enableRowSelection} 
+                  table={table}
+                  bulkActionsToolbar={bulkActionsToolbar}
+                  hasSelectedRows={hasSelectedRows}
+                  selectedRowIds={selectedRowIds}
+                  selectedRows={selectedRows}
+                />
                 <TableBody
                   paginatedRows={paginatedRows}
-                  columns={columns}
+                  columns={tableColumns}
                   totalRows={totalRows}
                   flexRender={flexRender}
                   onRowClick={onRowClick}
@@ -315,33 +414,60 @@ function TableUsingAPI<T extends Record<string, any>>({
   );
 }
 
-function TableHeader<T>({ headers, flexRender }: { headers: HeaderGroup<T>[], flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode }) {
+interface TableHeaderProps<T> {
+  headers: HeaderGroup<T>[];
+  flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode;
+  enableRowSelection?: boolean;
+  table?: any;
+  bulkActionsToolbar?: (selectedRowIds: string[], selectedRows: T[]) => React.ReactNode;
+  hasSelectedRows?: boolean;
+  selectedRowIds?: string[];
+  selectedRows?: T[];
+}
+
+function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkActionsToolbar, hasSelectedRows, selectedRowIds, selectedRows }: TableHeaderProps<T>) {
+	const totalColumns = headers[0]?.headers.length || 0;
+	const showToolbar = bulkActionsToolbar && hasSelectedRows && selectedRowIds && selectedRows;
 	return ( <thead>
 		{headers.map((headerGroup) => (
-		  <tr key={headerGroup.id}>
-			{headerGroup.headers.map((header) => (
-			  <th
-				key={header.id}
-				style={{
-				  cursor: header.column.getCanSort() ? 'pointer' : 'default',
-				  userSelect: 'none',
-				}}
-				onClick={header.column.getToggleSortingHandler()}
-			  >
-				<div className="d-flex align-items-center">
-				  {flexRender(header.column.columnDef.header, header.getContext())}
-				  {header.column.getCanSort() && (
-					<span className="ms-2">
-					  {{
-						asc: ' ↑',
-						desc: ' ↓',
-					  }[header.column.getIsSorted() as string] ?? ' ⇅'}
-					</span>
-				  )}
-				</div>
-			  </th>
-			))}
-		  </tr>
+		  <React.Fragment key={headerGroup.id}>
+			<tr>
+			  {headerGroup.headers.map((header) => {
+				const isSelectColumn = enableRowSelection && header.id === 'select';
+				return (
+				  <th
+					key={header.id}
+					style={{
+					  cursor: header.column.getCanSort() ? 'pointer' : 'default',
+					  userSelect: 'none',
+					}}
+					onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
+				  >
+					<div className="d-flex align-items-center">
+					  {flexRender(header.column.columnDef.header, header.getContext())}
+					  {header.column.getCanSort() && !isSelectColumn && (
+						<span className="ms-2">
+						  {{
+							asc: ' ↑',
+							desc: ' ↓',
+						  }[header.column.getIsSorted() as string] ?? ' ⇅'}
+						</span>
+					  )}
+					</div>
+				  </th>
+				);
+			  })}
+			</tr>
+			{bulkActionsToolbar ? (
+			  <tr className={`bulk-actions-toolbar-row ${showToolbar ? 'open' : ''}`}>
+				<td colSpan={totalColumns} style={{ backgroundColor: '#f8f9fa' }}>
+				  <div className="d-flex align-items-center bulk-actions-toolbar-content" style={{ gap: '0.5rem' }}>
+					{showToolbar ? bulkActionsToolbar(selectedRowIds!, selectedRows!) : null}
+				  </div>
+				</td>
+			  </tr>
+			) : null}
+		  </React.Fragment>
 		))}
 	  </thead>
 	);
@@ -359,9 +485,13 @@ function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClic
 					style={onRowClick ? { cursor: 'pointer' } : undefined}
 				  >
 					{cells.map((cell) => {
+					  const isSelectColumn = cell.column.id === 'select';
 					  const rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
 					  return (
-						<td key={cell.id}>
+						<td 
+						  key={cell.id}
+						  onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
+						>
 						  {rendered}
 						</td>
 					  );

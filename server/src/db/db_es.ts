@@ -855,6 +855,115 @@ export async function deleteExample(
 }
 
 /**
+ * Delete spans by IDs or by trace_ids.
+ * @param options - Either { spanIds: string[] } or { trace_ids: string[] }
+ * @param organisationId - Organisation ID to verify ownership
+ * @returns Number of deleted spans
+ */
+export async function deleteSpans(
+  options: { spanIds: string[] } | { trace_ids: string[] },
+  organisationId: string
+): Promise<number> {
+  if (!client) {
+    throw new Error('Elasticsearch client not initialized.');
+  }
+
+  if (!organisationId) {
+    throw new Error('organisationId is required for deleteSpans');
+  }
+
+  try {
+    if ('spanIds' in options) {
+      // Delete by span IDs using bulk delete
+      const spanIds = options.spanIds;
+      if (spanIds.length === 0) {
+        return 0;
+      }
+
+      // Verify ownership before deleting
+      const verifiedSpanIds: string[] = [];
+      for (const spanId of spanIds) {
+        try {
+          const getResponse = await client.get({
+            index: SPAN_INDEX_ALIAS,
+            id: spanId,
+          });
+          const span = getResponse._source as any;
+          if (span.organisation === organisationId) {
+            verifiedSpanIds.push(spanId);
+          }
+        } catch (error: any) {
+          if (error.statusCode !== 404) {
+            throw error;
+          }
+          // Span not found - skip
+        }
+      }
+
+      if (verifiedSpanIds.length === 0) {
+        return 0;
+      }
+
+      // Delete only verified spans
+      const body = verifiedSpanIds.flatMap(spanId => [
+        { delete: { _index: SPAN_INDEX_ALIAS, _id: spanId } }
+      ]);
+
+      const response = await client.bulk({
+        body,
+        refresh: 'wait_for',
+      });
+
+      // Count successful deletions
+      let successCount = 0;
+      for (const item of response.items) {
+        const deleteResult = item.delete;
+        if (deleteResult?.status === 200 || deleteResult?.status === 201) {
+          successCount++;
+        }
+      }
+
+      return successCount;
+    } else {
+      // Delete by trace_ids using deleteByQuery
+      const traceIds = options.trace_ids;
+      if (traceIds.length === 0) {
+        return 0;
+      }
+      
+      // Build must clauses - only include organisation if provided
+      const mustClauses: any[] = [
+        { terms: { trace_id: traceIds } }
+      ];
+      
+      if (organisationId) {
+        mustClauses.unshift({ term: { organisation: organisationId } });
+      }
+      
+      const query = {
+        bool: {
+          must: mustClauses
+        }
+      };
+
+      const response = await client.deleteByQuery({
+        index: SPAN_INDEX_ALIAS,
+        body: {
+          query
+        },
+        refresh: true,
+        conflicts: 'proceed'
+      });
+
+      return response.deleted || 0;
+    }
+  } catch (error: any) {
+    console.error(`Error deleting spans:`, error.message);
+    throw error;
+  }
+}
+
+/**
  * Quick but not foolproof check if a string is a JSON object or array.
  */
 function isJsonString(str?: string): boolean {
