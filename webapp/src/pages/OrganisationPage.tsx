@@ -128,14 +128,14 @@ const OrganisationPage: React.FC = () => {
               <ListGroup flush>
                 <ListGroupItem>
                   <strong>Rate Limit:</strong>{' '}
-                  {organisation.rate_limit_per_hour
-                    ? `${organisation.rate_limit_per_hour} per hour`
+                  {organisationAccount?.rateLimitPerHour != null
+                    ? `${organisationAccount.rateLimitPerHour} per hour`
                     : 'Not set'}
                 </ListGroupItem>
                 <ListGroupItem>
                   <strong>Retention Period:</strong>{' '}
-                  {organisation.retention_period_days
-                    ? `${organisation.retention_period_days} days`
+                  {organisationAccount?.retentionPeriodDays != null
+                    ? `${organisationAccount.retentionPeriodDays} days`
                     : 'Not set'}
                 </ListGroupItem>
                 <ListGroupItem>
@@ -170,7 +170,7 @@ function MembersCard({ organisation }: { organisation: Organisation}) {
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
 // Fetch user details for member IDs
 const memberIds = organisation?.members || [];
-const pendingMemberEmails = organisation?.pending_members || [];
+const pendingMemberEmails = organisation?.pending || [];
 const { data: memberUsers, isLoading: isLoadingMembers } = useQuery({
   queryKey: ['users-by-ids', memberIds.join(',')],
   queryFn: async () => {
@@ -205,7 +205,7 @@ const { data: memberUsers, isLoading: isLoadingMembers } = useQuery({
               ) : (
                 <><ListGroup flush>
                   {memberUsers.map((member: { id: string; email?: string; name?: string }) => {
-                    const memberSettings = organisation.member_settings?.[member.id];
+                    const memberSettings = organisation.memberSettings?.[member.id];
                     return (
                       <ListGroupItem key={member.id}>
                         <div>

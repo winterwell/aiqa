@@ -333,17 +333,17 @@ tap.test('add member by email: existing user added to members', async (t) => {
     return;
   }
   const email = `member-${Date.now()}@example.com`;
-  const user = await createUser({ email, name: 'Member User' });
+  const user = await createUser({ email, name: 'Member User', sub: `test-sub-${email}` });
   const org = await createOrganisation({ name: 'Org Add Member', members: [] });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'updated', 'should return updated');
   t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'org should include user in members');
-  t.ok(result.kind === 'updated' && !(result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'pendingMembers should not contain email');
+  t.ok(result.kind === 'updated' && !(result.org.pending ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'pending should not contain email');
   await deleteOrganisation(org.id);
   await deleteUser(user.id);
 });
 
-tap.test('add member by email: existing user in pending_members is moved to members', async (t) => {
+tap.test('add member by email: existing user in pending is moved to members', async (t) => {
   if (!dbAvailable) {
     t.skip('Database not available');
     return;
@@ -353,32 +353,32 @@ tap.test('add member by email: existing user in pending_members is moved to memb
   const org = await createOrganisation({
     name: 'Org Pending To Member',
     members: [],
-    pendingMembers: [email.toLowerCase()],
+    pending: [email.toLowerCase()],
   });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'updated', 'should return updated');
   t.ok(result.kind === 'updated' && result.org.members?.includes(user.id), 'user should be in members');
-  t.ok(result.kind === 'updated' && !(result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be removed from pendingMembers');
+  t.ok(result.kind === 'updated' && !(result.org.pending ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be removed from pending');
   await deleteOrganisation(org.id);
   await deleteUser(user.id);
 });
 
-tap.test('add member by email: unknown email added to pending_members only', async (t) => {
+tap.test('add member by email: unknown email added to pending only', async (t) => {
   if (!dbAvailable) {
     t.skip('Database not available');
     return;
   }
   const email = `pending-only-${Date.now()}@example.com`;
-  const org = await createOrganisation({ name: 'Org Pending Only', members: [], pendingMembers: [] });
+  const org = await createOrganisation({ name: 'Org Pending Only', members: [], pending: [] });
   const result = await addOrganisationMemberByEmail(org.id, email);
   t.equal(result.kind, 'addedToPending', 'should return addedToPending');
-  t.ok(result.kind === 'addedToPending' && (result.org.pendingMembers ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be in pendingMembers');
+  t.ok(result.kind === 'addedToPending' && (result.org.pending ?? []).some((e: string) => e.toLowerCase() === email.toLowerCase()), 'email should be in pending');
   t.same(result.kind === 'addedToPending' ? result.org.members ?? [] : [], org.members ?? [], 'members should be unchanged');
   await deleteOrganisation(org.id);
 });
 
 // processPendingMembers tests
-tap.test('processPendingMembers: converts pending_members to members when user signs up', async (t) => {
+tap.test('processPendingMembers: converts pending to members when user signs up', async (t) => {
   if (!dbAvailable) {
     t.skip('Database not available');
     return;
@@ -390,7 +390,7 @@ tap.test('processPendingMembers: converts pending_members to members when user s
   const org = await createOrganisation({
     name: 'Org Process Pending',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   // Create user with matching email
@@ -406,7 +406,7 @@ tap.test('processPendingMembers: converts pending_members to members when user s
   const updatedOrg = await getOrganisation(org.id);
   t.ok(updatedOrg, 'org should exist');
   t.ok(updatedOrg!.members?.includes(user.id), 'user should be in members');
-  t.ok(!(updatedOrg!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pendingMembers');
+  t.ok(!(updatedOrg!.pending ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pending');
   t.ok(updatedOrg!.memberSettings?.[user.id], 'user should have member_settings');
   t.equal(updatedOrg!.memberSettings?.[user.id]?.role, 'standard', 'user should have standard role');
   await deleteOrganisation(org.id);
@@ -425,17 +425,17 @@ tap.test('processPendingMembers: handles multiple organisations with same pendin
   const org1 = await createOrganisation({
     name: 'Org Multi 1',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   const org2 = await createOrganisation({
     name: 'Org Multi 2',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   const org3 = await createOrganisation({
     name: 'Org Multi 3',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   // Create user
@@ -458,9 +458,9 @@ tap.test('processPendingMembers: handles multiple organisations with same pendin
   t.ok(updatedOrg2!.members?.includes(user.id), 'user should be in org2 members');
   t.ok(updatedOrg3!.members?.includes(user.id), 'user should be in org3 members');
   
-  t.ok(!(updatedOrg1!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org1 pendingMembers');
-  t.ok(!(updatedOrg2!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org2 pendingMembers');
-  t.ok(!(updatedOrg3!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org3 pendingMembers');
+  t.ok(!(updatedOrg1!.pending ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org1 pending');
+  t.ok(!(updatedOrg2!.pending ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org2 pending');
+  t.ok(!(updatedOrg3!.pending ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from org3 pending');
   await deleteOrganisation(org1.id);
   await deleteOrganisation(org2.id);
   await deleteOrganisation(org3.id);
@@ -479,7 +479,7 @@ tap.test('processPendingMembers: handles case-insensitive email matching', async
   const org = await createOrganisation({
     name: 'Org Case Test',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   // Create user with mixed case email
@@ -492,7 +492,7 @@ tap.test('processPendingMembers: handles case-insensitive email matching', async
   
   const updatedOrg = await getOrganisation(org.id);
   t.ok(updatedOrg!.members?.includes(user.id), 'user should be in members');
-  t.ok(!(updatedOrg!.pendingMembers ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pendingMembers');
+  t.ok(!(updatedOrg!.pending ?? []).some((e: string) => e.toLowerCase() === emailLower), 'email should be removed from pending');
   await deleteOrganisation(org.id);
   await deleteUser(user.id);
 });
@@ -508,7 +508,7 @@ tap.test('processPendingMembers: returns empty array when no pending members fou
   const org = await createOrganisation({
     name: 'Org No Pending',
     members: [],
-    pendingMembers: [],
+    pending: [],
   });
   
   // Create user
@@ -547,7 +547,7 @@ tap.test('processPendingMembers: is idempotent - can be called multiple times sa
   const org = await createOrganisation({
     name: 'Org Idempotent',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   const user = await createUser({ email, name: 'Idempotent User', sub: `test-sub-${email}` });
@@ -569,7 +569,7 @@ tap.test('processPendingMembers: is idempotent - can be called multiple times sa
 });
 
 // reconcileOrganisationPendingMembers tests
-tap.test('reconcileOrganisationPendingMembers: converts pending_members to members for existing users', async (t) => {
+tap.test('reconcileOrganisationPendingMembers: converts pending to members for existing users', async (t) => {
   if (!dbAvailable) {
     t.skip('Database not available');
     return;
@@ -590,7 +590,7 @@ tap.test('reconcileOrganisationPendingMembers: converts pending_members to membe
   const org = await createOrganisation({
     name: 'Org Reconcile',
     members: [],
-    pendingMembers: [emailLower1, emailLower2, emailLower3],
+    pending: [emailLower1, emailLower2, emailLower3],
   });
   
   // Reconcile
@@ -598,10 +598,10 @@ tap.test('reconcileOrganisationPendingMembers: converts pending_members to membe
   
   t.ok(reconciled.members?.includes(user1.id), 'user1 should be in members');
   t.ok(reconciled.members?.includes(user2.id), 'user2 should be in members');
-  t.ok(!reconciled.pendingMembers?.includes(emailLower1), 'email1 should be removed from pendingMembers');
-  t.ok(!reconciled.pendingMembers?.includes(emailLower2), 'email2 should be removed from pendingMembers');
-  t.ok(reconciled.pendingMembers?.includes(emailLower3), 'email3 should remain in pendingMembers (no user yet)');
-  t.equal(reconciled.pendingMembers?.length, 1, 'should have one remaining pending member');
+  t.ok(!reconciled.pending?.includes(emailLower1), 'email1 should be removed from pending');
+  t.ok(!reconciled.pending?.includes(emailLower2), 'email2 should be removed from pending');
+  t.ok(reconciled.pending?.includes(emailLower3), 'email3 should remain in pending (no user yet)');
+  t.equal(reconciled.pending?.length, 1, 'should have one remaining pending member');
   await deleteOrganisation(org.id);
   await deleteUser(user1.id);
   await deleteUser(user2.id);
@@ -615,14 +615,14 @@ tap.test('reconcileOrganisationPendingMembers: returns org unchanged when no pen
   const org = await createOrganisation({
     name: 'Org No Pending Reconcile',
     members: [],
-    pendingMembers: [],
+    pending: [],
   });
   
   const reconciled = await reconcileOrganisationPendingMembers(org);
   
   t.equal(reconciled.id, org.id, 'should return same org');
   t.same(reconciled.members, org.members, 'members should be unchanged');
-  t.same(reconciled.pendingMembers, org.pendingMembers, 'pendingMembers should be unchanged');
+  t.same(reconciled.pending, org.pending, 'pending should be unchanged');
   await deleteOrganisation(org.id);
 });
 
@@ -639,13 +639,13 @@ tap.test('reconcileOrganisationPendingMembers: returns org unchanged when all pe
   const org = await createOrganisation({
     name: 'Org No Users',
     members: [],
-    pendingMembers: [emailLower1, emailLower2],
+    pending: [emailLower1, emailLower2],
   });
   
   const reconciled = await reconcileOrganisationPendingMembers(org);
   
   t.equal(reconciled.id, org.id, 'should return same org');
-  t.same(reconciled.pendingMembers, org.pendingMembers, 'pendingMembers should be unchanged');
+  t.same(reconciled.pending, org.pending, 'pending should be unchanged');
   t.same(reconciled.members, org.members, 'members should be unchanged');
   await deleteOrganisation(org.id);
 });
@@ -663,13 +663,13 @@ tap.test('reconcileOrganisationPendingMembers: handles case-insensitive email ma
   const org = await createOrganisation({
     name: 'Org Case Reconcile',
     members: [],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   const reconciled = await reconcileOrganisationPendingMembers(org);
   
   t.ok(reconciled.members?.includes(user.id), 'user should be in members');
-  t.ok(!reconciled.pendingMembers?.includes(emailLower), 'email should be removed from pendingMembers');
+  t.ok(!reconciled.pending?.includes(emailLower), 'email should be removed from pending');
   await deleteOrganisation(org.id);
   await deleteUser(user.id);
 });
@@ -688,7 +688,7 @@ tap.test('reconcileOrganisationPendingMembers: preserves existing members', asyn
   const org = await createOrganisation({
     name: 'Org Preserve',
     members: [existingUserId],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   const reconciled = await reconcileOrganisationPendingMembers(org);
@@ -714,14 +714,14 @@ tap.test('reconcileOrganisationPendingMembers: does not add duplicate members', 
   const org = await createOrganisation({
     name: 'Org Duplicate',
     members: [user.id],
-    pendingMembers: [emailLower],
+    pending: [emailLower],
   });
   
   const reconciled = await reconcileOrganisationPendingMembers(org);
   
   t.ok(reconciled.members?.includes(user.id), 'user should be in members');
   t.equal(reconciled.members?.filter(id => id === user.id).length, 1, 'user should appear only once');
-  t.ok(!reconciled.pendingMembers?.includes(emailLower), 'email should be removed from pendingMembers');
+  t.ok(!reconciled.pending?.includes(emailLower), 'email should be removed from pending');
   await deleteOrganisation(org.id);
   await deleteUser(user.id);
 });

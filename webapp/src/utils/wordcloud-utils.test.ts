@@ -12,7 +12,7 @@ function mockSpan(attributes: Record<string, unknown>): Span {
     attributes: attributes as any,
     organisation: 'org',
     starred: false,
-  } as Span;
+  } as unknown as Span;
 }
 
 describe('wordcloud-utils', () => {

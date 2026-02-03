@@ -14,7 +14,7 @@ import {
   Badge,
 } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getOrganisation, updateOrganisationAccount } from '../api';
+import { getOrganisation, getOrganisationAccount, updateOrganisationAccount } from '../api';
 import { useToast } from '../utils/toast';
 import PropInput from '../components/generic/PropInput';
 import { useRerender } from 'rerenderer';
@@ -43,32 +43,38 @@ const AdminPage: React.FC = () => {
     maxExamplesPerDataset: '',
   });
 
-  const { data: organisation, isLoading, error } = useQuery({
+  const { data: organisation, isLoading: isLoadingOrg, error } = useQuery({
     queryKey: ['organisation', organisationId],
     queryFn: () => getOrganisation(organisationId!),
     enabled: !!organisationId,
   });
 
+  const { data: account, isLoading: isLoadingAccount } = useQuery({
+    queryKey: ['organisationAccount', organisationId],
+    queryFn: () => getOrganisationAccount(organisationId!),
+    enabled: !!organisationId,
+  });
+
   useEffect(() => {
-    if (organisation) {
+    if (account) {
       formDataRef.current = {
-        subscriptionType: organisation.subscription?.type || '',
-        rateLimit: organisation.rate_limit_per_hour?.toString() || '',
-        retentionPeriod: organisation.retention_period_days?.toString() || '',
-        maxMembers: organisation.max_members?.toString() || '',
-        maxDatasets: organisation.max_datasets?.toString() || '',
-        experimentRetentionDays: organisation.experiment_retention_days?.toString() || '',
-        maxExamplesPerDataset: organisation.max_examples_per_dataset?.toString() || '',
+        subscriptionType: account.subscription?.type || '',
+        rateLimit: account.rateLimitPerHour?.toString() || '',
+        retentionPeriod: account.retentionPeriodDays?.toString() || '',
+        maxMembers: account.maxMembers?.toString() || '',
+        maxDatasets: account.maxDatasets?.toString() || '',
+        experimentRetentionDays: account.experimentRetentionDays?.toString() || '',
+        maxExamplesPerDataset: account.maxExamplesPerDataset?.toString() || '',
       };
       rerender();
     }
-  }, [organisation, rerender]);
+  }, [account, rerender]);
 
   const updateMutation = useMutation({
-    mutationFn: (updates: Parameters<typeof updateOrganisationAccount>[1]) =>
-      updateOrganisationAccount(organisationId!, updates),
+    mutationFn: ({ accountId, updates }: { accountId: string; updates: Parameters<typeof updateOrganisationAccount>[1] }) =>
+      updateOrganisationAccount(accountId, updates),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organisation', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['organisationAccount', organisationId] });
       showToast('Organisation updated successfully', 'success');
     },
     onError: (error: Error) => {
@@ -77,6 +83,7 @@ const AdminPage: React.FC = () => {
   });
 
   const handleUpdateSubscription = () => {
+    if (!account) return;
     const subscriptionType = formDataRef.current.subscriptionType;
     if (!subscriptionType) {
       showToast('Please select a subscription type', 'error');
@@ -84,14 +91,15 @@ const AdminPage: React.FC = () => {
     }
 
     const subscriptionUpdate: any = {
-      ...organisation?.subscription,
+      ...account.subscription,
       type: subscriptionType as 'free' | 'trial' | 'pro' | 'enterprise',
     };
 
-    updateMutation.mutate({ subscription: subscriptionUpdate });
+    updateMutation.mutate({ accountId: account.id, updates: { subscription: subscriptionUpdate } });
   };
 
   const handleUpdateRateLimit = () => {
+    if (!account) return;
     const value = formDataRef.current.rateLimit.trim();
     if (!value) {
       showToast('Please enter a rate limit', 'error');
@@ -104,10 +112,11 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    updateMutation.mutate({ rate_limit_per_hour: numValue });
+    updateMutation.mutate({ accountId: account.id, updates: { rateLimitPerHour: numValue } });
   };
 
   const handleUpdateRetentionPeriod = () => {
+    if (!account) return;
     const value = formDataRef.current.retentionPeriod.trim();
     if (!value) {
       showToast('Please enter a retention period', 'error');
@@ -120,31 +129,32 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    updateMutation.mutate({ retention_period_days: numValue });
+    updateMutation.mutate({ accountId: account.id, updates: { retentionPeriodDays: numValue } });
   };
 
   const handleUpdateAllThresholds = () => {
+    if (!account) return;
     const updates: any = {};
     const formData = formDataRef.current;
 
     if (formData.maxMembers.trim()) {
       const value = parseInt(formData.maxMembers, 10);
-      if (!isNaN(value) && value >= 0) updates.max_members = value;
+      if (!isNaN(value) && value >= 0) updates.maxMembers = value;
     }
 
     if (formData.maxDatasets.trim()) {
       const value = parseInt(formData.maxDatasets, 10);
-      if (!isNaN(value) && value >= 0) updates.max_datasets = value;
+      if (!isNaN(value) && value >= 0) updates.maxDatasets = value;
     }
 
     if (formData.experimentRetentionDays.trim()) {
       const value = parseInt(formData.experimentRetentionDays, 10);
-      if (!isNaN(value) && value >= 0) updates.experiment_retention_days = value;
+      if (!isNaN(value) && value >= 0) updates.experimentRetentionDays = value;
     }
 
     if (formData.maxExamplesPerDataset.trim()) {
       const value = parseInt(formData.maxExamplesPerDataset, 10);
-      if (!isNaN(value) && value >= 0) updates.max_examples_per_dataset = value;
+      if (!isNaN(value) && value >= 0) updates.maxExamplesPerDataset = value;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -152,11 +162,12 @@ const AdminPage: React.FC = () => {
       return;
     }
 
-    updateMutation.mutate(updates);
+    updateMutation.mutate({ accountId: account.id, updates });
   };
 
   const formData = formDataRef.current;
 
+  const isLoading = isLoadingOrg || isLoadingAccount;
   if (isLoading) {
     return (
       <Container>
@@ -169,7 +180,7 @@ const AdminPage: React.FC = () => {
     );
   }
 
-  if (error || !organisation) {
+  if (error || !organisation || !account) {
     return (
       <Container>
         <Alert color="danger">
@@ -180,9 +191,9 @@ const AdminPage: React.FC = () => {
     );
   }
 
-  const currentSubscriptionType = organisation.subscription?.type || 'Not set';
-  const currentRateLimit = organisation.rate_limit_per_hour ?? 'Not set';
-  const currentRetentionPeriod = organisation.retention_period_days ?? 'Not set';
+  const currentSubscriptionType = account.subscription?.type || 'Not set';
+  const currentRateLimit = account.rateLimitPerHour ?? 'Not set';
+  const currentRetentionPeriod = account.retentionPeriodDays ?? 'Not set';
 
   return (
     <Container className="mt-4">

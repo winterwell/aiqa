@@ -68,11 +68,11 @@ const MetricDetailsPage: React.FC = () => {
       experiment.results.forEach(result => {
         const metricValue = result.scores?.[metricName];
         if (metricValue !== undefined && metricValue !== null) {
-          const key = result.exampleId;
+          const key = result.example;
           if (!traces.has(key)) {
             traces.set(key, {
               traceId: '', // Will be filled from example
-              exampleId: result.exampleId,
+              exampleId: result.example,
               metricValue,
               experimentId: experiment.id,
               experimentName: experiment.name,

@@ -10,7 +10,7 @@ import A from '../components/generic/A';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
-  const summary = exp.summary_results || {};
+  const summary = exp.summaries || {};
   const v = summary[metricId];
   if (v == null || typeof v !== 'object') return typeof v === 'number' && isFinite(v) ? v : null;
   const n = v.mean ?? v.avg ?? v.average ?? v.median;
@@ -18,7 +18,7 @@ function getMetricMean(exp: Experiment, metricId: string): number | null {
 }
 
 function getOverallScore(exp: Experiment): number | null {
-  const summary = exp.summary_results || {};
+  const summary = exp.summaries || {};
   const overallScore = summary['Overall Score'];
   return overallScore?.mean ?? overallScore?.avg ?? overallScore?.average ?? null;
 }
@@ -95,9 +95,9 @@ const ExperimentsListPage: React.FC = () => {
     {
       id: 'exampleCount',
       header: 'Examples',
-      accessorFn: (row) => row.summary_results?.duration?.count ?? 0,
+      accessorFn: (row) => row.summaries?.duration?.count ?? 0,
       csvValue: (row) => {
-        return row.summary_results?.duration?.count ?? 0;
+        return row.summaries?.duration?.count ?? 0;
       },
     },
     {

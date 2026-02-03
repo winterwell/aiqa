@@ -7,8 +7,8 @@ export default interface Model {
 	name: string;
 	/** the API key. This IS stored in the database as our code needs it to run LLMs for the user */
 	apiKey?: string;
-	/** Masked api key (e.g. first 4 + **** + last 4) when returning model info */
-	hash?: string;
+	/** Display suffix for masked key (e.g. last 4 chars); some APIs return as keyEnd */
+	keyEnd?: string;
 	version?: string;
 	description?: string;
 	created: Date;

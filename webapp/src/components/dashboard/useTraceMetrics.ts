@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Span } from '../../common/types';
-import { getTraceId } from '../../common/types';
+import { getTraceId } from '../../common/types/Span.js';
 import { getStartTime, getDurationMs, getTotalTokenCount, getCost, isRootSpan, organizeSpansByTraceId, calculateTokensForTree, calculateCostForTree } from '../../utils/span-utils';
 
 interface FeedbackInfo {

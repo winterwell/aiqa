@@ -44,7 +44,7 @@ function processOneMetricData(metric: Metric, experiments: Experiment[], dataset
 			}
 		}
 
-		const summaryResults = exp.summary_results || {};
+		const summaryResults = exp.summaries || {};
 		// Use metric.id for lookup (metric.name is just for display)
 		let metricValue: any = summaryResults[metric.id];
 		
@@ -183,9 +183,9 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 			}
 		});
 		
-		// Also add Overall Score if it exists in any experiment's summary_results
+		// Also add Overall Score if it exists in any experiment's summaries
 		const hasOverallScore = experiments.some(exp => {
-			const summary = exp.summary_results || {};
+			const summary = exp.summaries || {};
 			const overallScore = summary['Overall Score'];
 			return overallScore && (overallScore.mean !== undefined || overallScore.avg !== undefined || overallScore.average !== undefined);
 		});

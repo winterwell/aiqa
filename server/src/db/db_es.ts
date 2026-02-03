@@ -834,10 +834,11 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
 
 /**
  * Close Elasticsearch client. Call during graceful shutdown.
+ * Releases the connection pool so the process can exit (avoids tap/timeout in tests).
  */
 export async function closeClient(): Promise<void> {
   if (client) {
-    // Elasticsearch client doesn't have a close method, but we can reset it
+    await client.close();
     client = null;
   }
 }

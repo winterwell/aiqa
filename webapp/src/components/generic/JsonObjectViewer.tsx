@@ -36,8 +36,8 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const $copyButton = <CopyButton content={json} logToConsole />
 	let content = getMessageContent(json);
 	let role = json.role || json.Role;
-	// HACK sniff tool use from e.g. Bedrock which uses role:user
-	if (content?.ToolUseId) {
+	// HACK sniff tool use from e.g. Bedrock which uses role:user (content can be object when unwrapped)
+	if (content != null && typeof content === 'object' && 'ToolUseId' in (content as object)) {
 		role = 'tool';
 	}
 	const otherKVs = { ...json };

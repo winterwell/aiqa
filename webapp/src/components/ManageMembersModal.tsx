@@ -73,7 +73,7 @@ export default function ManageMembersModal({
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
       const currentMembers = organisation.members || [];
-      const currentMemberSettings = organisation.member_settings || {};
+      const currentMemberSettings = organisation.memberSettings || {};
 
       if (!currentMembers.includes(userId)) {
         return organisation; // Not a member
@@ -90,7 +90,7 @@ export default function ManageMembersModal({
 
       return updateOrganisation(organisation.id, {
         members: updatedMembers,
-        member_settings: updatedMemberSettings,
+        memberSettings: updatedMemberSettings,
       });
     },
     onSuccess: invalidateOrganisation,
@@ -99,20 +99,20 @@ export default function ManageMembersModal({
   const removePendingMemberMutation = useMutation({
     mutationFn: async (email: string) => {
       const emailLower = email.trim().toLowerCase();
-      const currentPendingMembers = organisation.pending_members || [];
+      const currentPendingMembers = organisation.pending || [];
       const updatedPendingMembers = currentPendingMembers.filter(
         e => e.toLowerCase() !== emailLower
       );
 
       return updateOrganisation(organisation.id, {
-        pending_members: updatedPendingMembers,
+        pending: updatedPendingMembers,
       });
     },
     onSuccess: invalidateOrganisation,
   });
 
   const members = memberUsers || memberIds.map((id) => ({ id }));
-  const pendingMembers = organisation.pending_members || [];
+  const pending = organisation.pending || [];
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +187,7 @@ export default function ManageMembersModal({
           ) : (
             <ListGroup>
               {members.map((member: User) => {
-                const memberSettings = organisation.member_settings?.[member.id];
+                const memberSettings = organisation.memberSettings?.[member.id];
                 return (
                   <ListGroupItem
                     key={member.id}
@@ -230,14 +230,14 @@ export default function ManageMembersModal({
           )}
         </div>
 
-        {pendingMembers.length > 0 && (
+        {pending.length > 0 && (
           <div className="mt-4">
-            <h6>Pending Invitations ({pendingMembers.length})</h6>
+            <h6>Pending Invitations ({pending.length})</h6>
             <Alert color="info" className="py-2 mb-3">
               These users will be automatically added when they sign up.
             </Alert>
             <ListGroup>
-              {pendingMembers.map((email: string) => (
+              {pending.map((email: string) => (
                 <ListGroupItem
                   key={email}
                   className="d-flex justify-content-between align-items-center"

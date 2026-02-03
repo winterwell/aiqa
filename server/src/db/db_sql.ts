@@ -201,392 +201,9 @@ export async function createTables(): Promise<void> {
 
 
 async function applyMigrations(): Promise<void> {
-	// Add sub column to users table if it doesn't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'users' AND column_name = 'sub'
-		  ) THEN
-			ALTER TABLE users ADD COLUMN sub VARCHAR(255);
-			CREATE INDEX IF NOT EXISTS idx_users_sub ON users(sub);
-		  END IF;
-		END $$;
-	  `);
 	
-		// Allow NULL emails in users table (migration)
-		await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'users' 
-			AND column_name = 'email' 
-			AND is_nullable = 'NO'
-		  ) THEN
-			ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
-		  END IF;
-		END $$;
-	  `);
-	
-	// Add hash column to api_keys (migration: was key_hash, renamed to hash)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'key_hash'
-		  ) THEN
-			ALTER TABLE api_keys RENAME COLUMN key_hash TO hash;
-		  ELSIF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'hash'
-		  ) THEN
-			ALTER TABLE api_keys ADD COLUMN hash VARCHAR(255);
-		  END IF;
-		END $$;
-	  `);
-	
-	// Allow NULL in key column (migration: key is never stored, only hash is)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' 
-			AND column_name = 'key' 
-			AND is_nullable = 'NO'
-		  ) THEN
-			ALTER TABLE api_keys ALTER COLUMN key DROP NOT NULL;
-		  END IF;
-		END $$;
-	  `);
-	
-	// Add name column to api_keys table if it doesn't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'name'
-		  ) THEN
-			ALTER TABLE api_keys ADD COLUMN name VARCHAR(255);
-		  END IF;
-		END $$;
-	  `);
-	
-	// Allow NULL in name column (migration: name is optional for api_keys)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' 
-			AND column_name = 'name' 
-			AND is_nullable = 'NO'
-		  ) THEN
-			ALTER TABLE api_keys ALTER COLUMN name DROP NOT NULL;
-		  END IF;
-		END $$;
-	  `);
-	  // add results (json string) column to experiments table if it doesn't exist (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'results'
-		  ) THEN
-			ALTER TABLE experiments ADD COLUMN results JSONB;
-		  END IF;
-		END $$;
-	  `);
-	  // add summary_results (json string) column to experiments table if it doesn't exist (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'summary_results'
-		  ) THEN
-			ALTER TABLE experiments ADD COLUMN summary_results JSONB;
-		  END IF;
-		END $$;
-	  `);
-	  // rename summary_results -> summaries (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'summary_results'
-		  ) AND NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'summaries'
-		  ) THEN
-			ALTER TABLE experiments RENAME COLUMN summary_results TO summaries;
-		  END IF;
-		END $$;
-	  `);
-	  // add name column to experiments table if it doesn't exist (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'name'
-		  ) THEN
-			ALTER TABLE experiments ADD COLUMN name VARCHAR(255);
-		  END IF;
-		END $$;
-	  `);
-	  // Allow NULL in experiments.name (migration: name is optional)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' 
-			AND column_name = 'name' 
-			AND is_nullable = 'NO'
-		  ) THEN
-			ALTER TABLE experiments ALTER COLUMN name DROP NOT NULL;
-		  END IF;
-		END $$;
-	  `);
-	  // add parameters (json object) column to experiments table if it doesn't exist (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'parameters'
-		  ) THEN
-			ALTER TABLE experiments ADD COLUMN parameters JSONB;
-		  END IF;
-		END $$;
-	  `);
-	  // add comparison_parameters (json array) column to experiments table if it doesn't exist (migration)
-	  await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'experiments' AND column_name = 'comparison_parameters'
-		  ) THEN
-			ALTER TABLE experiments ADD COLUMN comparison_parameters JSONB;
-		  END IF;
-		END $$;
-	  `);
-	    // add subscription (json object) column to organisations table if it doesn't exist (migration)
-		await doQuery(`
-			DO $$ 
-			BEGIN
-			  IF NOT EXISTS (
-				SELECT 1 FROM information_schema.columns 
-				WHERE table_name = 'organisations' AND column_name = 'subscription'
-			  ) THEN
-				ALTER TABLE organisations ADD COLUMN subscription JSONB;
-			  END IF;
-			END $$;
-		  `);
-	// add   max_members?: number;
-//   max_datasets?: number;
-//   experiment_retention_days?: number;
-//   max_examples_per_dataset?: number;
-//  to organisations table if they don't exist (migration)
-// Check and add each column individually, with error handling for column limit issues
-await doQuery(`
-	DO $$ 
-	BEGIN
-	  IF NOT EXISTS (
-		SELECT 1 FROM information_schema.columns 
-		WHERE table_name = 'organisations' AND column_name = 'max_members'
-	  ) THEN
-		BEGIN
-		  ALTER TABLE organisations ADD COLUMN max_members INT;
-		EXCEPTION WHEN OTHERS THEN
-		  -- Ignore errors (e.g., table has too many columns)
-		  NULL;
-		END;
-	  END IF;
-	END $$;
-  `);
-await doQuery(`
-	DO $$ 
-	BEGIN
-	  IF NOT EXISTS (
-		SELECT 1 FROM information_schema.columns 
-		WHERE table_name = 'organisations' AND column_name = 'max_datasets'
-	  ) THEN
-		BEGIN
-		  ALTER TABLE organisations ADD COLUMN max_datasets INT;
-		EXCEPTION WHEN OTHERS THEN
-		  NULL;
-		END;
-	  END IF;
-	END $$;
-  `);
-await doQuery(`
-	DO $$ 
-	BEGIN
-	  IF NOT EXISTS (
-		SELECT 1 FROM information_schema.columns 
-		WHERE table_name = 'organisations' AND column_name = 'experiment_retention_days'
-	  ) THEN
-		BEGIN
-		  ALTER TABLE organisations ADD COLUMN experiment_retention_days INT;
-		EXCEPTION WHEN OTHERS THEN
-		  NULL;
-		END;
-	  END IF;
-	END $$;
-  `);
-await doQuery(`
-	DO $$ 
-	BEGIN
-	  IF NOT EXISTS (
-		SELECT 1 FROM information_schema.columns 
-		WHERE table_name = 'organisations' AND column_name = 'max_examples_per_dataset'
-	  ) THEN
-		BEGIN
-		  ALTER TABLE organisations ADD COLUMN max_examples_per_dataset INT;
-		EXCEPTION WHEN OTHERS THEN
-		  NULL;
-		END;
-	  END IF;
-	END $$;
-  `);
 
-	// Add role column to api_keys table if it doesn't exist (migration)
-	// First, drop read/write columns if they exist (from previous migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'read'
-		  ) THEN
-			ALTER TABLE api_keys DROP COLUMN IF EXISTS read;
-			ALTER TABLE api_keys DROP COLUMN IF EXISTS write;
-		  END IF;
-		END $$;
-	  `);
-	
-	// Add role column
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'role'
-		  ) THEN
-			ALTER TABLE api_keys ADD COLUMN role VARCHAR(20) DEFAULT 'developer';
-			-- default all old keys to developer
-			UPDATE api_keys SET role = 'developer' WHERE role IS NULL;
-		  END IF;
-		END $$;
-	  `);
-
-	// Add member_settings (JSONB) column to organisations table if it doesn't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'organisations' AND column_name = 'member_settings'
-		  ) THEN
-			ALTER TABLE organisations ADD COLUMN member_settings JSONB;
-		  END IF;
-		END $$;
-	  `);
-
-	// Add key_end column to api_keys table if it doesn't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'api_keys' AND column_name = 'key_end'
-		  ) THEN
-			ALTER TABLE api_keys ADD COLUMN key_end VARCHAR(4);
-		  END IF;
-		END $$;
-	  `);
-
-	// Add unique constraint on users.sub to prevent duplicate users with same sub
-	// Use a unique index with WHERE clause to allow NULL values but enforce uniqueness for non-NULL subs
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM pg_indexes 
-			WHERE tablename = 'users' AND indexname = 'idx_users_sub_unique'
-		  ) THEN
-			-- Check for existing duplicates first
-			IF EXISTS (
-			  SELECT sub, COUNT(*) as cnt 
-			  FROM users 
-			  WHERE sub IS NOT NULL 
-			  GROUP BY sub 
-			  HAVING COUNT(*) > 1
-			) THEN
-			  RAISE WARNING 'Duplicate users with same sub exist. Unique index not created. Please clean up duplicates first.';
-			ELSE
-			  CREATE UNIQUE INDEX idx_users_sub_unique ON users(sub) WHERE sub IS NOT NULL;
-			END IF;
-		  END IF;
-		END $$;
-	  `);
-
-	// Migration: Drop subscription/limits columns from organisations table (moved to organisation_accounts)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'organisations' AND column_name = 'subscription'
-		  ) THEN
-			ALTER TABLE organisations DROP COLUMN IF EXISTS subscription;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS rate_limit_per_hour;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS retention_period_days;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS max_members;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS max_datasets;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS experiment_retention_days;
-			ALTER TABLE organisations DROP COLUMN IF EXISTS max_examples_per_dataset;
-		  END IF;
-		END $$;
-	  `);
-
-	// Add Stripe fields to organisation_accounts table if they don't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'organisation_accounts' AND column_name = 'stripe_customer_id'
-		  ) THEN
-			ALTER TABLE organisation_accounts ADD COLUMN stripe_customer_id VARCHAR(255);
-			ALTER TABLE organisation_accounts ADD COLUMN stripe_subscription_id VARCHAR(255);
-		  END IF;
-		END $$;
-	  `);
-
-	// Add pending_members column to organisations table if it doesn't exist (migration)
-	await doQuery(`
-		DO $$ 
-		BEGIN
-		  IF NOT EXISTS (
-			SELECT 1 FROM information_schema.columns 
-			WHERE table_name = 'organisations' AND column_name = 'pending_members'
-		  ) THEN
-			ALTER TABLE organisations ADD COLUMN pending_members TEXT[] DEFAULT '{}';
-		  END IF;
-		END $$;
-	  `);
-
-}
+} // end applyMigrations
 
 /**
  * Close the connection pool and release all connections. Call during graceful shutdown.
@@ -725,11 +342,10 @@ async function deleteEntity(tableName: string, id: string): Promise<boolean> {
 
 // Helper function to transform Organisation (snake_case columns -> camelCase)
 function transformOrganisation(row: any): Organisation {
-	const { member_settings, pending_members, ...rest } = row;
+	const { member_settings, ...rest } = row;
 	return {
 		...rest,
 		memberSettings: member_settings != null ? (typeof member_settings === 'string' ? JSON.parse(member_settings) : member_settings) : {},
-		pendingMembers: pending_members ?? rest.pendingMembers,
 	};
 }
 
@@ -933,15 +549,15 @@ export async function deleteApiKey(id: string): Promise<boolean> {
 
 // Organisation Member operations
 
-/** State shape for add-member logic (members, pendingMembers, memberSettings). Matches Organisation fields. */
+/** State shape for add-member logic (members, pending, memberSettings). Matches Organisation fields. */
 type MemberState = {
 	members: string[];
 	memberSettings: NonNullable<Organisation['memberSettings']>;
-	pendingMembers: string[];
+	pending: string[];
 };
 
 /**
- * Pure helper: add userId to members (if not present), optionally remove email from pending_members,
+ * Pure helper: add userId to members (if not present), optionally remove email from pending,
  * and ensure member_settings[userId] exists with role 'standard'. Used by add-by-email, processPendingMembers, reconcile.
  */
 function applyMemberAdd(
@@ -954,14 +570,14 @@ function applyMemberAdd(
 		: [...state.members, userId];
 	const memberSettings = { ...state.memberSettings };
 	if (!memberSettings[userId]) memberSettings[userId] = { role: 'standard' as const };
-	const pendingMembers = emailToRemove
-		? state.pendingMembers.filter((e) => e.toLowerCase() !== emailToRemove.toLowerCase())
-		: state.pendingMembers;
-	return { members, memberSettings, pendingMembers };
+	const pending = emailToRemove
+		? state.pending.filter((e) => e.toLowerCase() !== emailToRemove.toLowerCase())
+		: state.pending;
+	return { members, memberSettings, pending };
 }
 
 /**
- * Returns patch object to add userId to org (and optionally remove email from pending_members).
+ * Returns patch object to add userId to org (and optionally remove email from pending).
  * Idempotent: safe to call when user is already a member.
  */
 function addMemberToOrganisationPatch(
@@ -972,7 +588,7 @@ function addMemberToOrganisationPatch(
 	const state: MemberState = {
 		members: org.members || [],
 		memberSettings: org.memberSettings || {},
-		pendingMembers: org.pendingMembers || [],
+		pending: org.pending || [],
 	};
 	return applyMemberAdd(state, userId, removePendingEmail);
 }
@@ -1008,7 +624,7 @@ export async function removeOrganisationMember(organisationId: string, userId: s
 
 /**
  * Add member by email: if user exists (case-insensitive), add to members and remove from pending;
- * otherwise add email to pending_members only.
+ * otherwise add email to pending only.
  * @returns Discriminated result for the route to map to responses.
  */
 export async function addOrganisationMemberByEmail(
@@ -1034,11 +650,11 @@ export async function addOrganisationMemberByEmail(
 		return { kind: 'updated', org: updated ?? org };
 	}
 
-	if ((org.pendingMembers || []).some((e) => e.toLowerCase() === emailLower)) {
+	if ((org.pending || []).some((e) => e.toLowerCase() === emailLower)) {
 		return { kind: 'alreadyPending' };
 	}
 	const updated = await updateOrganisation(organisationId, {
-		pendingMembers: [...(org.pendingMembers || []), emailLower],
+		pending: [...(org.pending || []), emailLower],
 	});
 	return { kind: 'addedToPending', org: updated ?? org };
 }
@@ -1061,8 +677,8 @@ export async function getOrganisationMembers(organisationId: string): Promise<Us
 
 /**
  * Process pending members for a newly created user.
- * Finds all organisations where the user's email is in pending_members,
- * adds the user to those organisations, and removes the email from pending_members.
+ * Finds all organisations where the user's email is in pending,
+ * adds the user to those organisations, and removes the email from pending.
  * @param userId - The ID of the newly created user
  * @param userEmail - The email of the newly created user
  * @returns Array of organisation IDs the user was added to
@@ -1074,14 +690,14 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 
 	const emailLower = userEmail.toLowerCase();
 
-	// Find all organisations with this email in pending_members using SQL query (more efficient than loading all)
+	// Find all organisations with this email in pending using SQL query (more efficient than loading all)
 	// Handle NULL/empty arrays by checking array is not null and contains the email
 	// Assume: email normalisation (eg lowercase) is already done 
 	const result = await doQuery<Organisation>(
-		`SELECT * FROM organisations WHERE pending_members IS NOT NULL AND $1 = ANY(pending_members)`,
+		`SELECT * FROM organisations WHERE pending IS NOT NULL AND $1 = ANY(pending)`,
 		[emailLower]
 	);
-	// Note: column name is snake_case in DB; transformOrganisation maps to pendingMembers
+	// Note: column name is snake_case in DB; transformOrganisation maps to pending
 	const orgsWithPendingEmail = result.rows.map(transformOrganisation);
 
 	const addedOrgIds: string[] = [];
@@ -1105,18 +721,18 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 }
 
 /**
- * Reconcile pending_members with actual users: any email in pending_members that has a user
+ * Reconcile pending with actual users: any email in pending that has a user
  * is moved to members and removed from pending. Fixes the case where a user signed up after
  * being invited but processPendingMembers did not run (e.g. race or different auth path).
  */
 export async function reconcileOrganisationPendingMembers(org: Organisation): Promise<Organisation> {
-	const pending = org.pendingMembers || [];
+	const pending = org.pending || [];
 	if (pending.length === 0) return org;
 
 	let state: MemberState = {
 		members: org.members || [],
 		memberSettings: org.memberSettings || {},
-		pendingMembers: [...pending],
+		pending: [...pending],
 	};
 	let changed = false;
 
@@ -1214,7 +830,7 @@ function transformExperiment(row: any): Experiment {
 		results = [];
 	}
 	
-	const summariesCol = row.summaries ?? row.summary_results;
+	const summariesCol = row.summaries;
 	const { comparison_parameters: _dropped, ...rest } = row;
 	return {
 		...rest,

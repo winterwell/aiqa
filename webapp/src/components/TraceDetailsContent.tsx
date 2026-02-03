@@ -1,8 +1,8 @@
 import React from 'react';
 import { Row, Col, Input } from 'reactstrap';
 import { Span } from '../common/types';
-import { getSpanId } from '../common/types';
-import { getDurationMs, durationString, getSpanName } from '../utils/span-utils';
+import { getSpanId } from '../common/types/Span.js';
+import { getDurationMs, durationString } from '../utils/span-utils';
 import ExpandCollapseControl from './generic/ExpandCollapseControl';
 import CopyButton from './generic/CopyButton';
 import { truncate } from '../common/utils/miscutils';
@@ -94,7 +94,7 @@ function getSpanSummary(span: Span, children: SpanTree[]): string | ChatMessage 
 
 // Helper function for filter matching
 function treeMatchesFilter(tree: SpanTree, filterLower: string): boolean {
-  const name = getSpanName(tree.span);
+  const name = tree.span?.name || "";
   if (name.toLowerCase().includes(filterLower)) return true;
   return tree.children.some(child => treeMatchesFilter(child, filterLower));
 }
@@ -159,8 +159,7 @@ function SpanTreeViewer({
   let filteredChildren = children;
   
   if (hasFilter) {
-    const spanNameLower = getSpanName(span).toLowerCase();
-    const matchesFilter = spanNameLower.includes(filterLower);
+    const matchesFilter = span.name?.toLowerCase().includes(filterLower);
     const hasMatchingDescendant = children.some(child => treeMatchesFilter(child, filterLower));
     
     // Only show this node if it matches or has a matching descendant
@@ -221,7 +220,6 @@ function SpanTreeItem({ span, children, treeState, config }: { span: Span; child
     e.stopPropagation();
     treeState.onSelectSpan(spanId);
   };
-  const spanName = getSpanName(span);
   const spanSummary = getSpanSummary(span, children);
  
   return (<div 
@@ -236,7 +234,7 @@ function SpanTreeItem({ span, children, treeState, config }: { span: Span; child
   }}
   onClick={handleSelect}
 >									
-  {spanName && <div>{spanName}</div>}
+  {span.name && <div>{span.name}</div>}
   <SpanSummary spanSummary={spanSummary} />
   <div><small>Span ID: {spanId}</small></div>
   <div><small>Duration: <span>{durationString(getDurationMs(span), config.durationUnit)}</span></small></div>
@@ -301,7 +299,7 @@ export default function TraceDetailsContent({
           )}
         </Col>
         <Col md={8} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
-          <h3>Span Details: {selectedSpan ? getSpanName(selectedSpan) : treeState.selectedSpanId}</h3>
+          <h3>Span Details: {selectedSpan?.name || treeState.selectedSpanId}</h3>
           {selectedSpan ? (
             <SpanDetails span={selectedSpan} organisationId={organisationId} datasets={datasets} />
           ) : (

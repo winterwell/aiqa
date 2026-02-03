@@ -1,3 +1,6 @@
+
+// DEPRECATED prefer using the type files directly rather than this middleman file
+
 export type { default as Organisation } from './Organisation.js';
 export type { default as OrganisationAccount } from './OrganisationAccount.js';
 export type { default as User } from './User.js';
@@ -7,4 +10,6 @@ export type { default as Dataset } from './Dataset.js';
 export type { default as Span } from './Span.js';
 export type { default as Example } from './Example.js';
 export type { default as Experiment } from './Experiment.js';
+
+export { getSpanId, getTraceId, getParentSpanId } from './Span.js';
 

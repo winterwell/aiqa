@@ -113,9 +113,9 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		return processMetricData(metrics, experiment);
 	}, [metrics, experiment]);
 
-	// Extract Overall Score from summary_results
+	// Extract Overall Score from summaries
 	const overallScoreStats = useMemo(() => {
-		const summary = experiment.summary_results || {};
+		const summary = experiment.summaries || {};
 		const overallScore = summary['Overall Score'];
 		if (!overallScore || typeof overallScore !== 'object') {
 			return null;
@@ -132,7 +132,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 		}
 		
 		return { mean, min, max, count };
-	}, [experiment.summary_results]);
+	}, [experiment.summaries]);
 
 	if (isLoading) {
 		return (

@@ -34,9 +34,10 @@ tap.before(async () => {
   await createTables();
   await createIndices();
 
-  // Create test server
+  // Create test server (forceCloseConnections so teardown completes without waiting for keep-alive)
   fastify = Fastify({
     logger: false,
+    forceCloseConnections: true,
   });
 
           // Import route handlers
@@ -107,15 +108,26 @@ tap.before(async () => {
   testApiKey = apiKey;
 });
 
+const TEARDOWN_STEP_MS = 2000;
+
 tap.after(async () => {
   if (fastify) {
-    await fastify.close();
+    const server = fastify.server as import('http').Server & { closeAllConnections?: () => void };
+    if (typeof server?.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
+    await Promise.race([
+      new Promise<void>((resolve) => server.close(() => resolve())),
+      new Promise<void>((_, rej) => setTimeout(() => rej(new Error('server.close timeout')), TEARDOWN_STEP_MS)),
+    ]).catch(() => {});
   }
-  await closePool();
-  await closeClient();
+  await Promise.race([closePool(), new Promise<void>((_, rej) => setTimeout(() => rej(new Error('closePool timeout')), TEARDOWN_STEP_MS))]).catch(() => {});
+  await Promise.race([closeClient(), new Promise<void>((_, rej) => setTimeout(() => rej(new Error('closeClient timeout')), TEARDOWN_STEP_MS))]).catch(() => {});
+  // Tap runs this file in a subprocess and waits for exit; open handles (e.g. fetch keep-alive) can prevent exit
+  setImmediate(() => process.exit(0));
 });
 
-tap.test('create a new span and retrieve it by id', async (t) => {
+tap.test('create a new span and retrieve it by id', { timeout: 10000 }, async (t) => {
   if (!elasticsearchAvailable) {
     t.skip('Elasticsearch not available');
     return;
@@ -156,13 +168,16 @@ tap.test('create a new span and retrieve it by id', async (t) => {
     starred: false,
   };
 
-  // Create span via POST /span
+  // Connection: close so teardown can finish (avoid keep-alive holding server open)
+  const headers = {
+    'Content-Type': 'application/json',
+    'Authorization': `ApiKey ${testApiKey}`,
+    'Connection': 'close',
+  };
+
   const createResponse = await fetch(`${serverUrl}/span`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `ApiKey ${testApiKey}`,
-    },
+    headers: { ...headers },
     body: JSON.stringify(span),
   });
 
@@ -171,15 +186,13 @@ tap.test('create a new span and retrieve it by id', async (t) => {
   t.equal(createResult.success, true, 'should return success');
   t.equal(createResult.count, 1, 'should create one span');
 
-  // Wait a bit for Elasticsearch to index
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // ES visibility: with REFRESH_AFTER_INDEX (npm test) doc is visible immediately; otherwise wait_for ~1s
+  const indexWaitMs = process.env.REFRESH_AFTER_INDEX === 'true' ? 200 : 1100;
+  await new Promise(resolve => setTimeout(resolve, indexWaitMs));
 
-  // Retrieve span by id via GET /span/:id (get-by-id returns exactly one span)
   const getResponse = await fetch(`${serverUrl}/span/${encodeURIComponent(spanId)}`, {
     method: 'GET',
-    headers: {
-      'Authorization': `ApiKey ${testApiKey}`,
-    },
+    headers: { 'Authorization': `ApiKey ${testApiKey}`, 'Connection': 'close' },
   });
 
   t.equal(getResponse.status, 200, 'should retrieve span successfully');

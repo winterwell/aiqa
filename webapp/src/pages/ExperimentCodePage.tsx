@@ -154,7 +154,7 @@ const ExperimentCodePage: React.FC = () => {
                       <br />
                       <code>POST /experiment</code>
                       <br />
-                      <small className="text-muted">Body: {'{'}organisation, dataset, summary_results{'}'}</small>
+                      <small className="text-muted">Body: {'{'}organisation, dataset, summaries{'}'}</small>
                     </li>
                     <li>
                       This will create a new experiment here.

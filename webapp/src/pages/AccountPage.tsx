@@ -217,9 +217,9 @@ const AccountPage: React.FC = () => {
 									</Badge>
 								</h6>
 								<p className="text-muted">{getSubscriptionDescription(subscriptionPackage)}</p>
-								{account.subscription?.price_per_month !== undefined && account.subscription.price_per_month > 0 && (
+								{account.subscription?.pricePerMonth !== undefined && account.subscription.pricePerMonth > 0 && (
 									<p className="text-muted">
-										Price: ${account.subscription.price_per_month.toFixed(2)}/{account.subscription.currency || 'USD'} per month
+										Price: ${account.subscription.pricePerMonth.toFixed(2)}/{account.subscription.currency || 'USD'} per month
 									</p>
 								)}
 							</div>
@@ -255,7 +255,7 @@ const AccountPage: React.FC = () => {
 								<ListGroupItem>
 									<strong>Rate Limit:</strong>{' '}
 									{(() => {
-										const currentValue = account.rate_limit_per_hour;
+										const currentValue = account.rateLimitPerHour;
 										const defaultValue = getSubscriptionDefault('rate_limit_per_hour');
 										const displayValue = currentValue ?? defaultValue;
 										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
@@ -279,7 +279,7 @@ const AccountPage: React.FC = () => {
 								<ListGroupItem>
 									<strong>Retention Period:</strong>{' '}
 									{(() => {
-										const currentValue = account.retention_period_days;
+										const currentValue = account.retentionPeriodDays;
 										const defaultValue = getSubscriptionDefault('retention_period_days');
 										const displayValue = currentValue ?? defaultValue;
 										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;

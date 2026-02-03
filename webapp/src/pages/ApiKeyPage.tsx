@@ -46,7 +46,7 @@ const ApiKeyPage: React.FC = () => {
         organisation: organisationId!,
         name: name || undefined,
         hash,
-        key_end: keyEnd,
+        keyEnd,
         role: 'developer',
       });
     },

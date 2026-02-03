@@ -139,7 +139,7 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     
     // Extract span IDs from original spans (before cleaning)
     if (Array.isArray(example.spans) && example.spans.length > 0) {
-      const spanIds = example.spans.map((s: any) => s.id).filter(Boolean) as string[];
+      const spanIds = example.spans.map(getSpanId).filter(Boolean) as string[];
       
       // Update each span with example.id
       for (const spanId of spanIds) {

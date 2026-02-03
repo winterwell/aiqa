@@ -13,7 +13,7 @@ export default interface Organisation {
   /** User ids of members of the organisation. Must contain the current user's id. */
   members: string[];
   /** Email addresses of users invited but not yet registered. Auto-added to members when they sign up. */
-  pendingMembers?: string[];
+  pending?: string[];
   /** user id to user-specific settings for the organisation */
   memberSettings?: Record<string, MemberSettings>;
   created: Date;

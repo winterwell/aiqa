@@ -67,8 +67,8 @@ export async function createOrganisation(org: { name: string; members: string[] 
 export async function updateOrganisation(id: string, updates: Partial<{
 	name?: string;
 	members?: string[];
-	pending_members?: string[];
-	member_settings?: Record<string, { role: 'admin' | 'standard' }>;
+	pending?: string[];
+	memberSettings?: Record<string, { role: 'admin' | 'standard' }>;
 }>) {
 	return fetchWithAuth(`/organisation/${id}`, {
 		method: 'PUT',
@@ -93,20 +93,20 @@ export async function updateOrganisationAccount(id: string, updates: Partial<{
 	subscription?: {
 		type?: 'free' | 'trial' | 'pro' | 'enterprise';
 		status?: string;
-		start_date?: Date | string;
-		end_date?: Date | string | null;
-		renewal_date?: Date | string | null;
-		price_per_month?: number;
+		start?: Date | string;
+		end?: Date | string | null;
+		renewal?: Date | string | null;
+		pricePerMonth?: number;
 		currency?: 'USD' | 'EUR' | 'GBP';
 	};
-	stripe_customer_id?: string;
-	stripe_subscription_id?: string;
-	rate_limit_per_hour?: number;
-	retention_period_days?: number;
-	max_members?: number;
-	max_datasets?: number;
-	experiment_retention_days?: number;
-	max_examples_per_dataset?: number;
+	stripeCustomerId?: string;
+	stripeSubscriptionId?: string;
+	rateLimitPerHour?: number;
+	retentionPeriodDays?: number;
+	maxMembers?: number;
+	maxDatasets?: number;
+	experimentRetentionDays?: number;
+	maxExamplesPerDataset?: number;
 }>) {
 	return fetchWithAuth(`/organisation-account/${id}`, {
 		method: 'PUT',
@@ -193,8 +193,8 @@ export async function listExperiments(organisationId: string, query?: string) {
 
 export async function createExperiment(experiment: {
 	organisation: string;
-	dataset_id: string;
-	summary_results?: any;
+	dataset: string;
+	summaries?: any;
 }) {
 	return fetchWithAuth('/experiment', {
 		method: 'POST',
@@ -438,9 +438,7 @@ export async function createApiKey(apiKey: {
 	organisation: string;
 	name?: string;
 	hash: string;
-	key_end?: string;
-	rate_limit_per_hour?: number;
-	retention_period_days?: number;
+	keyEnd?: string;
 	role?: 'trace' | 'developer' | 'admin';
 }) {
 	return fetchWithAuth('/api-key', {
@@ -451,8 +449,6 @@ export async function createApiKey(apiKey: {
 
 export async function updateApiKey(id: string, updates: {
 	name?: string;
-	rate_limit_per_hour?: number;
-	retention_period_days?: number;
 	role?: 'trace' | 'developer' | 'admin';
 }) {
 	return fetchWithAuth(`/api-key/${id}`, {

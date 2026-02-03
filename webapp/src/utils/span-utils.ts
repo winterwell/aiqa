@@ -1,5 +1,15 @@
 import { Span } from "../common/types";
-import { getSpanId, getTraceId } from "../common/types/Span.js";
+import { getSpanId, getTraceId, getParentSpanId } from "../common/types/Span.js";
+
+/** Pick display unit for a duration in ms. */
+function getDurationUnits(durationMs: number): 'ms' | 's' | 'm' | 'h' | 'd' {
+	if (durationMs >= 86400000) return 'd';
+	if (durationMs >= 3600000) return 'h';
+	if (durationMs >= 60000) return 'm';
+	if (durationMs >= 1000) return 's';
+	return 'ms';
+}
+export { getDurationUnits };
 
 
 

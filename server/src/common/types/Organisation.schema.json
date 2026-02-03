@@ -43,7 +43,7 @@
         "name": {
           "type": "string"
         },
-        "pendingMembers": {
+        "pending": {
           "description": "Email addresses of users invited but not yet registered. Auto-added to members when they sign up.",
           "items": {
             "type": "string"

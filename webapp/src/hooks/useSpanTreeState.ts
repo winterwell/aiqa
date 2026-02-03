@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSpanId } from '../common/types';
-import { getSpanName } from '../utils/span-utils';
+import { getSpanId } from '../common/types/Span.js';
 import { Span } from '../common/types';
 
 interface SpanTree {
@@ -74,7 +73,7 @@ export function useSpanTreeState(spanTree: SpanTree | null) {
       const spanId = getSpanId(tree.span);
       const currentPath = [...pathFromRoot, spanId];
 
-      const spanName = getSpanName(tree.span).toLowerCase();
+      const spanName = tree.span?.name?.toLowerCase() || "";
       const matches = spanName.includes(filterLower);
 
       // Check if any descendant matches

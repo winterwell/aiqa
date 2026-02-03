@@ -4,7 +4,8 @@ import { Container, Row, Col, FormGroup, Label, Input, Form, Button } from 'reac
 import { ColumnDef } from '@tanstack/react-table';
 import { useQueryClient } from '@tanstack/react-query';
 import { searchSpans, deleteSpans } from '../api';
-import { Span, getSpanId, getTraceId } from '../common/types';
+import { Span } from '../common/types';
+import { getSpanId, getTraceId } from '../common/types/Span.js';
 import { propFromString, setPropInString } from '../common/SearchQuery';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';

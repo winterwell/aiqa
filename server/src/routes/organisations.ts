@@ -166,7 +166,7 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
     return organisation;
   });
 
-  // Add member by email: if user exists (case-insensitive), add to members; else add to pending_members.
+  // Add member by email: if user exists (case-insensitive), add to members; else add to pending.
   fastify.post('/organisation/:organisationId/member', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { organisationId } = request.params as { organisationId: string };

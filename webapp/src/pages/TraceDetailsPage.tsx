@@ -1,24 +1,22 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Row, Col, Input, Button, FormGroup, Label } from 'reactstrap';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createExampleFromSpans, listDatasets, createDataset } from '../api';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { Button, FormGroup, Input, Label } from 'reactstrap';
+import { createExampleFromSpans, createDataset, listDatasets } from '../api';
 import { Span } from '../common/types';
-import { getSpanId, getTraceId } from '../common/types';
+import { getSpanId, getTraceId, getParentSpanId } from '../common/types/Span.js';
 import { getStartTime, getEndTime, getDurationMs, getDurationUnits, getTotalTokenCount, getCost, prettyNumber } from '../utils/span-utils';
-import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
-import CopyButton from '../components/generic/CopyButton';
-import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
 import { useToast } from '../utils/toast';
-import { durationString } from '../utils/span-utils';
-import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import LoadingSpinner from '../components/generic/LoadingSpinner';
 import TraceDetailsPageHeader from '../components/TraceDetailsPageHeader';
 import TraceDetailsContent from '../components/TraceDetailsContent';
+import JsonObjectViewer from '../components/generic/JsonObjectViewer';
+import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import { useSpanData, useConversationTraceIds } from '../hooks/useSpanData';
 import { useSpanTreeState } from '../hooks/useSpanTreeState';
-import { getParentSpanId } from '../utils/span-utils';
-
+import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
+import CopyButton from '../components/generic/CopyButton';
+	
 interface SpanTree {
 	span: Span;
 	children: SpanTree[];
@@ -33,7 +31,6 @@ const textBoxStyle: React.CSSProperties = {
 };
 
 // Helper functions
-const getSpanName = (span: Span): string => (span as any).name || '';
 const convertToText = (value: any): string | null => {
 	if (value === undefined || value === null) return null;
 	return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -500,7 +497,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
 			<div style={{ marginBottom: '15px' }}>
 				<div><strong>Span ID:</strong> {spanId}</div>
-				<div><strong>Name:</strong> {getSpanName(span) || 'Unnamed Span'}</div>
+				{span.name && <div><strong>Name:</strong> {span.name}</div>}
 				{span.example && <div><strong>Example:</strong> {span.example}</div>}
 				{span.experiment && <div><strong>Experiment:</strong> {span.experiment}</div>}
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
