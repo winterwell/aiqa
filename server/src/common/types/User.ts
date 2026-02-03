@@ -6,5 +6,6 @@ export default interface User {
   sub: string;
   created: Date;
   updated: Date;
+  isSuperAdmin?: boolean;
 }
 
