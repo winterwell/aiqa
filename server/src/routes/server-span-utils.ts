@@ -8,6 +8,7 @@ import {
   GEN_AI_USAGE_TOTAL_TOKENS,
   GEN_AI_USAGE_CACHED_INPUT_TOKENS,
   GEN_AI_COST_USD,
+  GEN_AI_ERRORS,
 } from '../common/constants_otel.js';
 
 /**
@@ -42,9 +43,10 @@ export interface TokenStats {
   cachedInputTokens: number;
   totalTokens: number;
   cost: number;
+  errors: number;
 }
 
-const ZERO_STATS: TokenStats = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0, cost: 0 };
+const ZERO_STATS: TokenStats = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0, cost: 0, errors: 0 };
 
 function addTokenStats(a: TokenStats, b: TokenStats): TokenStats {
   return {
@@ -53,24 +55,41 @@ function addTokenStats(a: TokenStats, b: TokenStats): TokenStats {
     cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
     totalTokens: a.totalTokens + b.totalTokens,
     cost: a.cost + b.cost,
+    errors: a.errors + b.errors,
   };
 }
 
 function hasUsage(s: TokenStats): boolean {
-  return s.inputTokens > 0 || s.outputTokens > 0 || s.cachedInputTokens > 0 || s.totalTokens > 0 || s.cost > 0;
+  return s.inputTokens > 0 || s.outputTokens > 0 || s.cachedInputTokens > 0 || s.totalTokens > 0 || s.cost > 0 || s.errors > 0;
+}
+
+/**
+ * Get the span's own error status (not including propagated errors from children).
+ */
+function getOwnErrorStatus(span: Span): number {
+  const spanAny = span as any;
+  const statusCode = spanAny?.status?.code ?? 0;
+  return statusCode === 2 ? 1 : 0; // STATUS_CODE_ERROR = 2
 }
 
 /**
  * Get token usage values from a span's attributes.
+ * For spans in batch: recalculates from status (ignores stored errors).
+ * For loaded parents: uses stored errors if available.
  */
 export function getTokenUsage(span: Span): TokenStats {
   const attrs = span.attributes || {};
+  // If errors are stored in attributes (from propagation), use that; otherwise use own error status
+  const storedErrors = toNumber(attrs[GEN_AI_ERRORS]);
+  const ownError = getOwnErrorStatus(span);
+  const errors = storedErrors !== undefined ? storedErrors : ownError;
   return {
     inputTokens: toNumber(attrs[GEN_AI_USAGE_INPUT_TOKENS], 0),
     outputTokens: toNumber(attrs[GEN_AI_USAGE_OUTPUT_TOKENS], 0),
     cachedInputTokens: toNumber(attrs[GEN_AI_USAGE_CACHED_INPUT_TOKENS], 0),
     totalTokens: toNumber(attrs[GEN_AI_USAGE_TOTAL_TOKENS], 0),
     cost: toNumber(attrs[GEN_AI_COST_USD], 0),
+    errors,
   };
 }
 
@@ -89,13 +108,24 @@ export function setTokenUsageOnSpan(span: Span, usage: TokenStats): void {
   attrs[GEN_AI_USAGE_CACHED_INPUT_TOKENS] = usage.cachedInputTokens;
   attrs[GEN_AI_USAGE_TOTAL_TOKENS] = usage.totalTokens;
   attrs[GEN_AI_COST_USD] = usage.cost;
+  attrs[GEN_AI_ERRORS] = usage.errors;
 }
 
 /**
  * Add token usage values to a span's attributes (aggregates with existing).
+ * For errors, uses max logic to avoid double counting.
  */
 export function addTokenUsageToSpan(span: Span, usage: TokenStats): void {
-  setTokenUsageOnSpan(span, addTokenStats(getTokenUsage(span), usage));
+  const existing = getTokenUsage(span);
+  const ownError = getOwnErrorStatus(span);
+  // For errors: max(own error, existing stored errors, new children errors)
+  // This ensures we don't double count and always count own error if present
+  const errors = Math.max(ownError, existing.errors, usage.errors);
+  const combined: TokenStats = {
+    ...addTokenStats(existing, usage),
+    errors,
+  };
+  setTokenUsageOnSpan(span, combined);
 }
 
 /**
@@ -214,11 +244,20 @@ export async function propagateTokenCostsToRootSpan(
     }
     processedSpans.add(spanId);
 
-    const ownUsage = getTokenUsage(span);
+    const inBatch = spanIdsInBatch.has(spanId);
+    
+    // For spans in batch, get own usage from status (ignore stored); for loaded parents, use stored
+    const ownError = getOwnErrorStatus(span);
+    const ownUsageBase = getTokenUsage(span);
+    // For spans in batch, recalculate own usage from status, ignoring stored values
+    const ownUsage: TokenStats = inBatch ? {
+      ...ownUsageBase,
+      errors: ownError, // Use own error status, not stored
+    } : ownUsageBase;
+    
     const children = childrenMap.get(spanId) || [];
     let childStatsTotal: TokenStats = ZERO_STATS;
     let childStatsNew: TokenStats = ZERO_STATS;
-    const inBatch = spanIdsInBatch.has(spanId);
     const mutableSpan = span as any;
     const seenSet = new Set(mutableSpan._seen ?? []);
 
@@ -239,11 +278,17 @@ export async function propagateTokenCostsToRootSpan(
       mutableSpan._seen = Array.from(seenSet);
     }
 
-    const combined = addTokenStats(ownUsage, childStatsTotal);
+    // For errors: max(sum errors in children, 1 if it has an error status itself) to avoid double counting
+    const errors = Math.max(ownError, childStatsTotal.errors);
+    const combined: TokenStats = {
+      ...addTokenStats(ownUsage, childStatsTotal),
+      errors,
+    };
     try {
       if (inBatch) {
         setTokenUsageOnSpan(span, combined);
       } else if (hasUsage(childStatsNew)) {
+        // For loaded parents, addTokenUsageToSpan handles the max logic for errors
         addTokenUsageToSpan(span, childStatsNew);
       }
     } catch (error) {

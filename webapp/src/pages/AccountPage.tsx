@@ -22,7 +22,7 @@ import {
 } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getOrganisation, getOrganisationAccount, updateSubscription, createCheckoutSession, listOrganisations, getOrCreateUser } from '../api';
+import { getOrganisation, getOrganisationAccount, getOrganisationAccountUsage, updateOrganisationAccount, updateSubscription, createCheckoutSession, listOrganisations, getOrCreateUser } from '../api';
 import subscriptionsConfig from '../subscriptions.json';
 
 type SubscriptionPackage = 'free' | 'pro' | 'enterprise';
@@ -48,6 +48,13 @@ const AccountPage: React.FC = () => {
 		enabled: !!organisationId,
 	});
 
+	const { data: usage, isLoading: isLoadingUsage } = useQuery({
+		queryKey: ['organisationAccountUsage', organisationId],
+		queryFn: () => getOrganisationAccountUsage(organisationId!),
+		enabled: !!organisationId,
+		refetchInterval: 30000, // Refresh every 30 seconds
+	});
+
 	// Check if user is super admin
 	const { data: dbUser } = useQuery({
 		queryKey: ['user', auth0User?.email],
@@ -58,13 +65,7 @@ const AccountPage: React.FC = () => {
 		enabled: !!auth0User?.email,
 	});
 
-	const { data: allOrganisations } = useQuery({
-		queryKey: ['organisations'],
-		queryFn: () => listOrganisations(),
-		enabled: !!dbUser?.id,
-	});
-
-	const isSuperAdmin = allOrganisations?.some(org => org.name === 'AIQA') || false;
+	const isSuperAdmin = dbUser?.isSuperAdmin || false;
 
 	const subscriptionPackage: SubscriptionPackage = (account?.subscription?.type as SubscriptionPackage) || 'free';
 
@@ -115,6 +116,8 @@ const AccountPage: React.FC = () => {
 	};
 
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [editingRateLimit, setEditingRateLimit] = useState(false);
+	const [rateLimitValue, setRateLimitValue] = useState<string>('');
 
 	const updateSubscriptionMutation = useMutation({
 		mutationFn: async ({ planType, noPayment }: { planType: SubscriptionPackage; noPayment: boolean }) => {
@@ -153,6 +156,31 @@ const AccountPage: React.FC = () => {
 		},
 	});
 
+	const updateRateLimitMutation = useMutation({
+		mutationFn: async (rateLimitPerHour: number) => {
+			if (!account) throw new Error('Account not found');
+			return updateOrganisationAccount(account.id, { rateLimitPerHour });
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['organisationAccount', organisationId] });
+			queryClient.invalidateQueries({ queryKey: ['organisationAccountUsage', organisationId] });
+			setEditingRateLimit(false);
+			setErrorMessage(null);
+		},
+		onError: (error: any) => {
+			setErrorMessage(error?.message || 'Failed to update rate limit. Please try again.');
+		},
+	});
+
+	const handleSaveRateLimit = () => {
+		const numValue = parseInt(rateLimitValue.trim(), 10);
+		if (isNaN(numValue) || numValue < 0) {
+			setErrorMessage('Please enter a valid positive number');
+			return;
+		}
+		updateRateLimitMutation.mutate(numValue);
+	};
+
 	const handleChangeSubscription = async () => {
 		setIsProcessing(true);
 		setErrorMessage(null);
@@ -171,7 +199,7 @@ const AccountPage: React.FC = () => {
 		return 'Update Subscription';
 	};
 
-	if (isLoading || isLoadingAccount) {
+	if (isLoading || isLoadingAccount || isLoadingUsage) {
 		return (
 			<Container>
 				<div className="text-center">
@@ -254,27 +282,93 @@ const AccountPage: React.FC = () => {
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Rate Limit:</strong>{' '}
-									{(() => {
-										const currentValue = account.rateLimitPerHour;
-										const defaultValue = getSubscriptionDefault('rate_limit_per_hour');
-										const displayValue = currentValue ?? defaultValue;
-										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
-										
-										if (displayValue === undefined) {
-											return 'Not set';
-										}
-										
-										return (
-											<>
-												{displayValue} per hour
-												{isCustom && defaultValue !== undefined && (
-													<span className="text-muted ms-2">
-														(custom: default is {defaultValue})
+									{editingRateLimit && isSuperAdmin ? (
+										<div className="d-flex align-items-center gap-2">
+											<Input
+												type="number"
+												value={rateLimitValue}
+												onChange={(e) => setRateLimitValue(e.target.value)}
+												placeholder="Enter rate limit"
+												style={{ width: '150px' }}
+											/>
+											<Button
+												color="primary"
+												size="sm"
+												onClick={handleSaveRateLimit}
+												disabled={updateRateLimitMutation.isPending}
+											>
+												Save
+											</Button>
+											<Button
+												color="secondary"
+												size="sm"
+												onClick={() => {
+													setEditingRateLimit(false);
+													setRateLimitValue('');
+													setErrorMessage(null);
+												}}
+												disabled={updateRateLimitMutation.isPending}
+											>
+												Cancel
+											</Button>
+										</div>
+									) : (
+										<div className="d-flex align-items-center gap-2">
+											<span>
+												{(() => {
+													const currentValue = account.rateLimitPerHour;
+													const defaultValue = getSubscriptionDefault('rate_limit_per_hour');
+													const displayValue = currentValue ?? defaultValue;
+													const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
+													
+													if (displayValue === undefined) {
+														return 'Not set';
+													}
+													
+													return (
+														<>
+															{displayValue} per hour
+															{isCustom && defaultValue !== undefined && (
+																<span className="text-muted ms-2">
+																	(custom: default is {defaultValue})
+																</span>
+															)}
+														</>
+													);
+												})()}
+											</span>
+											{isSuperAdmin && (
+												<Button
+													color="link"
+													size="sm"
+													onClick={() => {
+														setEditingRateLimit(true);
+														setRateLimitValue(account.rateLimitPerHour?.toString() || '');
+													}}
+													className="p-0 ms-2"
+												>
+													Edit
+												</Button>
+											)}
+										</div>
+									)}
+									{usage && usage.available && (
+										<div className="mt-2">
+											<small className="text-muted">
+												Usage: <strong>{usage.current}</strong> / {usage.limit} ({usage.remaining} remaining)
+												{usage.resetAt && (
+													<span className="ms-2">
+														(Resets: {new Date(usage.resetAt).toLocaleTimeString()})
 													</span>
 												)}
-											</>
-										);
-									})()}
+											</small>
+										</div>
+									)}
+									{usage && !usage.available && (
+										<div className="mt-2">
+											<small className="text-muted">Usage data unavailable (Redis not available)</small>
+										</div>
+									)}
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Retention Period:</strong>{' '}

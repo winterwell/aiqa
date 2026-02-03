@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from '../src/server_auth.js';
 dotenv.config();
 
 // ES/DB setup and one HTTP test can exceed default tap timeout when run with other suites.
-tap.setTimeout(90000);
+tap.setTimeout(30000); // Reduced from 90000ms - single test runs in ~300ms
 
 // Test server setup
 let fastify: ReturnType<typeof Fastify> | null = null;
@@ -111,23 +111,28 @@ tap.before(async () => {
   testApiKey = apiKey;
 });
 
-const TEARDOWN_STEP_MS = 2000;
+const TEARDOWN_TIMEOUT_MS = 1000; // Reduced from 2000ms for faster teardown
+
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<void> {
+  await Promise.race([
+    p,
+    new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  ]);
+}
 
 tap.after(async () => {
   if (fastify) {
+    // Let keepAliveTimeout close idle connections, then force-close any remaining (Node 18.2+)
+    await new Promise((r) => setTimeout(r, 50)); // Reduced from 150ms
     const server = fastify.server as import('http').Server & { closeAllConnections?: () => void };
     if (typeof server?.closeAllConnections === 'function') {
       server.closeAllConnections();
     }
-    await Promise.race([
-      new Promise<void>((resolve) => server.close(() => resolve())),
-      new Promise<void>((_, rej) => setTimeout(() => rej(new Error('server.close timeout')), TEARDOWN_STEP_MS)),
-    ]).catch(() => {});
+    await withTimeout(fastify.close(), TEARDOWN_TIMEOUT_MS);
+    fastify = null;
   }
-  await Promise.race([closePool(), new Promise<void>((_, rej) => setTimeout(() => rej(new Error('closePool timeout')), TEARDOWN_STEP_MS))]).catch(() => {});
-  await Promise.race([closeClient(), new Promise<void>((_, rej) => setTimeout(() => rej(new Error('closeClient timeout')), TEARDOWN_STEP_MS))]).catch(() => {});
-  // Tap runs this file in a subprocess and waits for exit; open handles (e.g. fetch keep-alive) can prevent exit
-  setImmediate(() => process.exit(0));
+  await withTimeout(closePool(), TEARDOWN_TIMEOUT_MS);
+  await withTimeout(closeClient(), TEARDOWN_TIMEOUT_MS);
 });
 
 tap.test('create a new span and retrieve it by id', { timeout: 10000 }, async (t) => {
@@ -189,9 +194,8 @@ tap.test('create a new span and retrieve it by id', { timeout: 10000 }, async (t
   t.equal(createResult.success, true, 'should return success');
   t.equal(createResult.count, 1, 'should create one span');
 
-  // ES visibility: with REFRESH_AFTER_INDEX (npm test) doc is visible immediately; otherwise wait_for ~1s
-  const indexWaitMs = process.env.REFRESH_AFTER_INDEX === 'true' ? 200 : 1100;
-  await new Promise(resolve => setTimeout(resolve, indexWaitMs));
+  // No wait needed: bulkInsertSpans already handles refresh (refresh: true or wait_for),
+  // and getSpan uses client.get() which retrieves documents directly by ID without requiring refresh
 
   const getResponse = await fetch(`${serverUrl}/span/${encodeURIComponent(spanId)}`, {
     method: 'GET',

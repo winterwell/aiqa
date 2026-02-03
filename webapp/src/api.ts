@@ -89,6 +89,10 @@ export async function getOrganisationAccount(organisationId: string) {
 	return fetchWithAuth(`/organisation/${organisationId}/account`);
 }
 
+export async function getOrganisationAccountUsage(organisationId: string) {
+	return fetchWithAuth(`/organisation/${organisationId}/account/usage`);
+}
+
 export async function updateOrganisationAccount(id: string, updates: Partial<{
 	subscription?: {
 		type?: 'free' | 'trial' | 'pro' | 'enterprise';
@@ -375,6 +379,14 @@ export async function getUserByJWT() {
 	return fetchWithAuth(`/user/jwt`);
 }
 
+/** Update the current user (JWT) profile. Used e.g. to sync email from Auth0 when ID token omits it. */
+export async function updateCurrentUser(updates: { email?: string; name?: string }) {
+	return fetchWithAuth('/user/jwt', {
+		method: 'PUT',
+		body: JSON.stringify(updates),
+	});
+}
+
 export async function getUser(id: string) {
 	return fetchWithAuth(`/user/${id}`);
 }
@@ -387,26 +399,11 @@ export async function createUser(user: { email: string; name: string }) {
 }
 
 /**
- * Relying on fetchWithAuth to add JWT token -- get/create user
- * @param email Set the email if making a new user
- * @param name Set the name if making a new user
- * @returns 
+ * Get or create the current user, and ensure email/name are set from Auth0 (login/signup).
+ * Always POSTs so the server receives email/name; server does create-or-update by JWT sub and syncs email.
  */
 export async function getOrCreateUser(email: string, name: string) {
-	console.log("getOrCreateUser: "+email+" "+name);
-	// First, try to find the user by email
-	try {
-		const user = await getUserByJWT();
-		if (user) {
-			console.log("user found: "+user.id);
-			return user;
-		}
-	} catch (error) {
-		console.log("Error getting user by JWT:", error);
-	}
-	// If not found, create a new user
-	console.log("creating new user: "+email+" "+name);
-	return createUser({ email, name});
+	return createUser({ email, name });
 }
 
 export async function listUsers(query?: string) {

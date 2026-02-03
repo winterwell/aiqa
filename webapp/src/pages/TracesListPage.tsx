@@ -9,7 +9,7 @@ import { getSpanId, getTraceId } from '../common/types/Span.js';
 import { propFromString, setPropInString } from '../common/SearchQuery';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
-import { getStartTime, getDurationMs, getTotalTokenCount, getCost, durationString, formatCost, prettyNumber } from '../utils/span-utils';
+import { getStartTime, getDurationMs, getTotalTokenCount, getCost, getErrors, durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import Page from '../components/generic/Page';
 import Tags from '../components/generic/Tags';
 import { updateSpan } from '../api';
@@ -366,6 +366,20 @@ const TracesListPage: React.FC = () => {
           const cost = getCost(row.original);
           if (cost === null) return <span>N/A</span>;
           return <span>{formatCost(cost)}</span>;
+        },
+        enableSorting: true,
+      },
+      {
+        id: 'errors',
+        header: 'Errors',
+        accessorFn: (row) => {
+          const errors = getErrors(row);
+          return errors !== null ? errors : null;
+        },
+        cell: ({ row }) => {
+          const errors = getErrors(row.original);
+          if (errors === null) return <span></span>;
+          return <span className="text-danger">{prettyNumber(errors)}</span>;
         },
         enableSorting: true,
       },

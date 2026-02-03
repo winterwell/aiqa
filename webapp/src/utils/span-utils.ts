@@ -1,5 +1,6 @@
 import { Span } from "../common/types";
-import { getSpanId, getTraceId, getParentSpanId } from "../common/types/Span.js";
+import { getSpanId, getTraceId, getParentSpanId } from "../common/types/Span";
+import { GEN_AI_ERRORS } from "../common/constants_otel";
 
 /** Pick display unit for a duration in ms. */
 function getDurationUnits(durationMs: number): 'ms' | 's' | 'm' | 'h' | 'd' {
@@ -215,6 +216,12 @@ export const getCost = (span: Span): number | null => {
     }
   }
    return null; 
+};
+
+/** Get error count from aiqa.errors attribute */
+export const getErrors = (span: Span): number | null => {
+  const attributes = (span as any).attributes || {};
+  return toNumber(attributes[GEN_AI_ERRORS]);
 };
 
 export const isRootSpan = (span: Span): boolean => {

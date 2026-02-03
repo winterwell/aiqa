@@ -4,7 +4,7 @@ import { Container, Row, Col, Card, Button } from 'reactstrap';
 import Logo from '../components/Logo';
 
 import { useNavigate } from 'react-router-dom';
-import { getOrCreateUser } from '../api';
+import { getOrCreateUser, getUserByJWT } from '../api';
 
 const LoginPage: React.FC = () => {
   const { loginWithRedirect, isAuthenticated, user } = useAuth0();
@@ -14,34 +14,41 @@ const LoginPage: React.FC = () => {
   React.useEffect(() => {
     const fetchUserAndNavigate = async () => {
       try {
+        // When Auth0 omits email (e.g. some Google OAuth configs), try existing user by JWT first
         if (!user?.email) {
-          console.error("No email found in Auth0 user object");
+          try {
+            const dbUser = await getUserByJWT();
+            if (dbUser) {
+              navigate('/organisation');
+              return;
+            }
+          } catch {
+            // No user yet; need email for first-time create
+          }
+          console.error("No email found in Auth0 user object - cannot create new user");
           return;
         }
 
-        // Fetch or create user in the database using email as the identifying key
         const dbUser = await getOrCreateUser(
           user.email,
-		  user.name || user.email,
+          user.name || user.email,
         );
         console.log("User fetched/created:", dbUser);
 
-        // You might also want to fetch the organisation info from backend
         const organisationId = dbUser?.organisation || user?.organisation;
         if (organisationId) {
           navigate(`/organisation/${organisationId}`);
         } else {
-			navigate(`/organisation`);
-		}
+          navigate(`/organisation`);
+        }
       } catch (err) {
         console.error("Error fetching user or organisation:", err);
       }
     };
-    
+
     if (isAuthenticated && user) {
       fetchUserAndNavigate();
     }
-    // Only run once on authentication
   }, [isAuthenticated, user, navigate]);
 
   if (isAuthenticated) {

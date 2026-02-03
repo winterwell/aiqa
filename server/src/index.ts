@@ -27,6 +27,7 @@ import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
 import { registerSpanRoutes } from './routes/spans.js';
 import { registerOrganisationRoutes } from './routes/organisations.js';
+import { registerOrganisationAccountRoutes } from './routes/organisationaccounts.js';
 import { registerUserRoutes } from './routes/users.js';
 import { registerExampleRoutes } from './routes/examples.js';
 import { registerDatasetRoutes } from './routes/datasets.js';
@@ -114,28 +115,23 @@ async function initializeAiqaOrg(): Promise<void> {
     fastify.log.info(`Created AIQA organisation: ${aiqaOrg.id}`);
   }
   
-  // Find or create admin user
+  // Find admin user by email (users are created when they log in via Auth0)
   if (adminEmail !== ANYONE_EMAIL) {
-    const adminSub = `aiqa-admin-${adminEmail}`;
-    // Check by sub first (primary identifier)
-    let adminUser = (await listUsers(new SearchQuery(`sub:${adminSub}`)))[0];
-    // Fallback to email if not found by sub
-    if (!adminUser) {
-      adminUser = (await listUsers(new SearchQuery(`email:${adminEmail}`)))[0];
-    }
-    if (!adminUser) {
-      adminUser = await createUser({
-        email: adminEmail,
-        name: adminEmail.split('@')[0],
-        sub: adminSub, // Placeholder sub for admin user
-      });
-      fastify.log.info(`Created admin user: ${adminUser.id}`);
-    }
+    // Look for user by email (Auth0 users are created on first login with their real sub)
+    const adminUser = (await listUsers(new SearchQuery(`email:${adminEmail}`)))[0];
     
-    // Add admin user to AIQA organisation if not already a member
-    if (!aiqaOrg.members.includes(adminUser.id)) {
-      await addOrganisationMember(aiqaOrg.id, adminUser.id);
-      fastify.log.info(`Added ${adminEmail} to AIQA organisation`);
+    if (adminUser) {
+      // Add admin user to AIQA organisation if not already a member
+      if (!aiqaOrg.members.includes(adminUser.id)) {
+        await addOrganisationMember(aiqaOrg.id, adminUser.id);
+        fastify.log.info(`Added ${adminEmail} (user ${adminUser.id}) to AIQA organisation`);
+      } else {
+        fastify.log.info(`${adminEmail} is already a member of AIQA organisation`);
+      }
+    } else {
+      // User doesn't exist yet - they'll be added when they first log in
+      // (processPendingMembersForUser will handle it if they were invited)
+      fastify.log.info(`Admin user ${adminEmail} not found - will be added when they log in`);
     }
   }
 
@@ -203,6 +199,9 @@ const start = async () => {
     
     // Register organisation routes
     await registerOrganisationRoutes(fastify);
+    
+    // Register organisation account routes
+    await registerOrganisationAccountRoutes(fastify);
     
     // Register user routes
     await registerUserRoutes(fastify);

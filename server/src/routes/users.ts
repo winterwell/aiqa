@@ -10,7 +10,7 @@ import {
 import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import type User from '../common/types/User.js';
-
+import { isSuperAdmin } from '../server_auth.js';
 /**
  * Helper to process pending members for a user after creation/update.
  * Extracted to avoid code duplication.
@@ -66,7 +66,8 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
     const newUser = request.body as any;
-    newUser.email = jwtToken.email;
+    // Use JWT email when present; otherwise fall back to body (e.g. Auth0 user object when ID token omits email)
+    newUser.email = jwtToken.email ?? (newUser.email || undefined);
     newUser.sub = jwtToken.userId;
     
     if (!newUser.name) {
@@ -136,7 +137,6 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
 
   // Security: No authentication required. Any user can view any user by ID (or use "jwt" to get own user via JWT token).
   fastify.get('/user/:id', async (request, reply) => {
-    try {
       let jwtToken = await authenticateWithJwtFromHeader(request);
       let { id } = request.params as { id: string };
       if (id === "jwt") {
@@ -167,13 +167,12 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
         reply.code(404).send({ error: 'User not found' });
         return;
       }
+      // HACK let the frontend know if the user is a super admin
+      const superAdmin = await isSuperAdmin(user.id);
+      if (superAdmin) {
+        user.isSuperAdmin = true;
+      }
       return user;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      fastify.log.error(`Error in /user/:id endpoint: ${errorMessage}`);
-      fastify.log.error(error);
-      reply.code(500).send({ error: 'Internal server error', details: errorMessage });
-    }
   });
 
   // Security: Authenticated users only. No organisation filtering - returns all users matching search query.
@@ -193,16 +192,19 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       return;
     }  
     let { id } = request.params as { id: string };
+    let targetUser: User | null;
     if (id === "jwt") {
       if (!jwtToken.userId) {
         reply.code(401).send({ error: 'JWT token missing user ID' });
         return;
       }
-      id = jwtToken.userId;
+      const usersBySub = await listUsers(new SearchQuery(`sub:${jwtToken.userId}`));
+      targetUser = usersBySub.length > 0 ? usersBySub[0] : null;
+      if (targetUser) id = targetUser.id;
+    } else {
+      targetUser = await getUser(id);
     }
     // Authorization check: user can only update themselves
-    // Get the user being updated and verify JWT token matches
-    const targetUser = await getUser(id);
     if (!targetUser) {
       reply.code(404).send({ error: 'User not found' });
       return;

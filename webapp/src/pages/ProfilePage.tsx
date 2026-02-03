@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
-import { getUserByJWT } from '../api';
+import { getUserByJWT, listOrganisations, updateCurrentUser } from '../api';
+import { Badge } from 'reactstrap';
 
 const ProfilePage: React.FC = () => {
   const { user: auth0User } = useAuth0();
@@ -46,8 +47,9 @@ const ProfilePage: React.FC = () => {
       <Row className="mt-4">
         <Col md={6}>
           <Card>
-            <CardHeader>
-              <h5>Profile Information</h5>
+            <CardHeader className="d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">Profile Information</h5>
+              {isSuperAdmin && <Badge color="primary">Super Admin</Badge>}
             </CardHeader>
             <CardBody>
               {auth0User?.picture && (

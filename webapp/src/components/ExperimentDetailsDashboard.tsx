@@ -171,7 +171,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 
 	return (
 		<DashboardStrip>
-			{overallScoreStats && (
+			{overallScoreStats && false /* off for now */ && (
 				<Card key="Overall Score">
 					<CardHeader>
 						<h5>Overall Score</h5>

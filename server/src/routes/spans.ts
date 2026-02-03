@@ -194,13 +194,13 @@ function bytesToHex(bytes: any): string {
  * 
  * @param otlpRequest - Parsed OTLP ExportTraceServiceRequest (JSON format)
  * @param organisation - Organisation ID
- * @returns Object with success status and optional error information
+ * @returns Object with success status and optional error information (retryAfterSeconds when rate limited)
  * @throws Error for connection errors (should be caught by caller)
  */
 export async function processOtlpTraceExport(
   otlpRequest: any,
   organisation: string
-): Promise<{ success: boolean; error?: { code: number; message: string } }> {
+): Promise<{ success: boolean; error?: { code: number; message: string }; retryAfterSeconds?: number }> {
   // Convert OTLP spans to internal format
   const spansArray = convertOtlpSpansToInternal(otlpRequest);
 
@@ -230,12 +230,14 @@ export async function processOtlpTraceExport(
   // Check rate limit before processing
   const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);
   if (rateLimitResult && !rateLimitResult.allowed) {
+    const retryAfterSeconds = Math.ceil(Math.max(0, rateLimitResult.resetAt - Date.now()) / 1000);
     return {
       success: false,
       error: {
         code: 14, // RESOURCE_EXHAUSTED / UNAVAILABLE per gRPC status codes
         message: 'Rate limit exceeded',
       },
+      retryAfterSeconds,
     };
   }
   
@@ -358,6 +360,9 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       if (!result.success && result.error) {
         // Map error code to HTTP status
         const httpStatus = result.error.code === 14 ? 429 : 400;
+        if (httpStatus === 429 && result.retryAfterSeconds != null) {
+          reply.header('Retry-After', String(result.retryAfterSeconds));
+        }
         reply.code(httpStatus).send(result.error);
         return;
       }

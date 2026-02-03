@@ -132,11 +132,11 @@ REDIS_URL=redis://username:password@host:port
 
 ### Behavior
 
-- Rate limiting uses a sliding window approach (last hour)
+- Rate limiting uses a sliding window approach (last hour); the limit counts **spans** per organisation (default 1000/hour if not set).
 - If Redis is unavailable, rate limiting is disabled (fail-open behavior)
 - Rate limit is checked before processing spans
-- Returns HTTP 429 (Too Many Requests) when limit is exceeded
-- Response includes `limit`, `remaining`, and `resetAt` fields
+- When exceeded: HTTP 429 (Too Many Requests) with body `{ code: 14, message: "Rate limit exceeded" }` and a `Retry-After` header (seconds until the sliding window allows more spans)
+- To increase the limit for an organisation: use the **Admin** page to set a higher **Rate limit (per hour)** for that organisation’s account
 
 ### Testing Redis Connection
 
