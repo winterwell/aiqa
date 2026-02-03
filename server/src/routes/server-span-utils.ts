@@ -137,7 +137,7 @@ export async function propagateTokenCostsToRootSpan(
       spanIdsInBatch.add(spanId);
       spanMap.set(spanId, span);
     } else {
-      console.warn('propagateTokenCostsToRootSpan: span missing id, skipping', span.name);
+      throw new Error(`propagateTokenCostsToRootSpan: span missing id! ${span}`);
     }
   }
 
@@ -185,8 +185,7 @@ export async function propagateTokenCostsToRootSpan(
   for (const span of allSpans) {
     const spanId = getSpanId(span);
     if (!spanId) {
-      console.warn('propagateTokenCostsToRootSpan: span missing id in allSpans, skipping', (span as any).name);
-      continue;
+      throw new Error(`propagateTokenCostsToRootSpan: span missing id in allSpans! ${span.name}`);
     }
     const parentSpanId = (span as any).parent;
     if (!parentSpanId) {

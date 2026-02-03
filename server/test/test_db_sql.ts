@@ -28,6 +28,9 @@ import {
 
 dotenv.config();
 
+// DB tests are slow (many serial queries); default tap timeout (30s) is too short when run alone.
+tap.setTimeout(60000);
+
 let dbAvailable = true;
 
 tap.before(async () => {
