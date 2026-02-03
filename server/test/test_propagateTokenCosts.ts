@@ -337,9 +337,12 @@ tap.test('propagateTokenCostsToRootSpan - span without organisation', async t =>
 tap.test('propagateTokenCostsToRootSpan - span without id', async t => {
   const span = createTestSpan('span1', 'test');
   delete (span as any).id;
-  
-  await propagateTokenCostsToRootSpan([span]);
-  t.pass('should handle missing id gracefully');
+
+  await t.rejects(
+    () => propagateTokenCostsToRootSpan([span]),
+    /propagateTokenCostsToRootSpan: span missing id/,
+    'should throw when span has no id'
+  );
   t.end();
 });
 

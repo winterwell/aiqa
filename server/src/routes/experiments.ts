@@ -354,20 +354,20 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     // Get experiment
     const experiment = await getExperiment(experimentId);
     if (!experiment) {
-		reply.code(404).send({ error: 'Experiment not found' });
+		reply.code(404).send({ error: 'scoreAndStore: Experiment not found: ' + experimentId });
 		return;
     }
 
     // Verify organisation matches
     if (experiment.organisation !== organisation) {
-      reply.code(403).send({ error: 'Experiment does not belong to your organisation' });
+      reply.code(403).send({ error: 'scoreAndStore: Experiment does not belong to your organisation' });
       return;
     }
 
     // Get dataset
     const dataset = await getDataset(experiment.dataset);
     if (!dataset) {
-      reply.code(404).send({ error: 'Dataset not found' });
+      reply.code(404).send({ error: 'scoreAndStore: Dataset not found: ' + experiment.dataset });
       return;
     }
 
@@ -378,13 +378,13 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       exampleResult = await searchExamples(exampleQuery, organisation, experiment.dataset, 1, 0);
     } catch (error: any) {
       if (error.name === 'ConnectionError' || error.message?.includes('ConnectionError')) {
-        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        reply.code(503).send({ error: 'scoreAndStore: Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
         return;
       }
       throw error;
     }
     if (exampleResult.total === 0 || exampleResult.hits.length === 0) {
-      reply.code(404).send({ error: 'Example not found' });
+      reply.code(404).send({ error: 'scoreAndStore: Example not found: ' + exampleId });
       return;
     }
     const example = exampleResult.hits[0];

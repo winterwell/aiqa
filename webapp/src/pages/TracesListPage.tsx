@@ -38,9 +38,11 @@ const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | 
 
 // Attributes we need for the traces list page
 const REQUIRED_ATTRIBUTES = [
-  'trace_id',
-  'start_time',
-  'end_time',
+  'id',
+  'trace',
+  'parent',
+  'start',
+  'end',
   'name',
   'attributes',
   'tags',
@@ -278,18 +280,18 @@ const TracesListPage: React.FC = () => {
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
 		{
-			id: 'startTime',
+			id: 'start',
 			header: 'Start Time',
 			accessorFn: (row) => {
 			  const startTime = getStartTime(row);
 			  return startTime ? startTime.getTime() : null;
 			},
 			cell: ({ row }) => {
-			  const startTime = getStartTime(row.original);
+			  const start = getStartTime(row.original);
 			  return (
 				<span>
-				  {startTime
-					? startTime.toLocaleString(undefined, {
+				  {start
+					? start.toLocaleString(undefined, {
 						year: 'numeric',
 						month: '2-digit',
 						day: '2-digit',
@@ -534,10 +536,10 @@ const TracesListPage: React.FC = () => {
 
     try {
       if (traceIds.size > 0) {
-        await deleteSpans(organisationId!, { traceIds: Array.from(traceIds) });
+        await deleteSpans(organisationId!, { traces: Array.from(traceIds) });
       }
       if (orphanSpanIds.size > 0) {
-        await deleteSpans(organisationId!, { spanIds: Array.from(orphanSpanIds) });
+        await deleteSpans(organisationId!, { spans: Array.from(orphanSpanIds) });
       }
       // Invalidate queries to refresh the table data
       // Invalidate both the table-data queries and trace-related queries

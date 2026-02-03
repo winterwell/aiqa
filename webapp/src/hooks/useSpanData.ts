@@ -100,7 +100,7 @@ export function useRootSpansForTraces(
         async (batch, traceIdQuery) => {
           const result = await searchSpans({
             organisationId,
-            query: `(${traceIdQuery}) AND parent_span_id:unset`,
+            query: `(${traceIdQuery}) AND parent:unset`,
             limit: batch.length,
             offset: 0,
             fields: options?.fields,

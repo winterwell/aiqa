@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm run build && concurrently \"pnpm exec tsc --watch\" \"nodemon dist/index.js\"",
     "build": "pnpm exec tsc",
-    "test": "REFRESH_AFTER_INDEX=true pnpm run build && tap --timeout=60 test/test_*.ts",
+    "test": "REFRESH_AFTER_INDEX=true pnpm run build && tap --timeout=120 test/test_*.ts",
     "start": "node dist/index.js",
     "schema": "node scripts/generate-schemas.js",
     "retention": "pnpm run build && node dist/scripts/delete-old-spans.js",

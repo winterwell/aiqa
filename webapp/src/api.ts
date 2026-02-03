@@ -228,8 +228,8 @@ export async function searchSpans(args: {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);
 	if (isRoot) {
-		if (!query) query = 'parent_span_id:unset';
-		else query = `(${query}) AND parent_span_id:unset`;
+		if (!query) query = 'parent:unset';
+		else query = `(${query}) AND parent:unset`;
 	}
 	if (query) params.append('q', query);
 	params.append('limit', limit.toString());
@@ -255,7 +255,7 @@ export async function updateSpan(spanId: string, updates: { starred?: boolean; t
 
 export async function deleteSpans(
 	organisationId: string,
-	options: { spanIds: string[] } | { traceIds: string[] }
+	options: { spans: string[] } | { traces: string[] }
 ) {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);

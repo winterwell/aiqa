@@ -45,10 +45,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const type = e.target.value as 'javascript' | 'llm' | 'number';
     metric.type = type;
-    if (type === 'llm' && !('prompt' in metric && metric.prompt)) {
-      (metric as any).prompt = getDefaultLLMPrompt(metric.name || metric.id || 'metric');
-      metric.unit = 'fraction';
-    }
+    metric.unit = 'fraction';
     rerender();
   };
 

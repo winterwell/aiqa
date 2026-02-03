@@ -420,12 +420,30 @@ function getDisplayOutput(attrs: Record<string, unknown> | undefined): unknown {
 	return output;
 }
 
+/** Display string for span error: status.message when status is ERROR, or exception info from attributes. */
+function getDisplayError(span: Span): string | undefined {
+	const spanAny = span as any;
+	const status = spanAny?.status;
+	const attrs = spanAny?.attributes;
+	// OTel SpanStatusCode: UNSET=0, OK=1, ERROR=2
+	if (status?.code === 2 && status?.message) return status.message;
+	if (attrs) {
+		const msg = attrs['exception.message'];
+		if (typeof msg === 'string' && msg) return msg;
+		const type = attrs['exception.type'];
+		if (typeof type === 'string' && type) return type;
+	}
+	if (status?.code === 2) return 'Error';
+	return undefined;
+}
+
 function SpanDetails({ span, organisationId, datasets }: { span: Span; organisationId?: string; datasets?: any[] }) {
 	const spanId = getSpanId(span);
 	const spanAny = span as any;
 	const attrs = spanAny.attributes;
 	const input = getDisplayInput(attrs);
 	const output = getDisplayOutput(attrs);
+	const error = getDisplayError(span);
 	const durationMs = getDurationMs(span);
 	const tokenCount = getTotalTokenCount(span);
 	const cost = getCost(span);
@@ -575,7 +593,15 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 					</div>
 				</div>
 			)}
-			{!input && !output && (
+			{error && (
+				<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
+					<strong>Error:</strong>
+					<div style={{ ...textBoxStyle, backgroundColor: '#f8d7da', borderColor: '#f5c2c7' }}>
+						<TextWithStructureViewer text={error} />
+					</div>
+				</div>
+			)}
+			{!input && !output && !error && (
 				<div style={{ marginTop: '15px', color: '#666', fontStyle: 'italic' }}>
 					No input or output data available for this span.
 				</div>

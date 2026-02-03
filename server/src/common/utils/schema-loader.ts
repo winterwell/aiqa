@@ -188,6 +188,8 @@ export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
         return { type: 'text', fields: { keyword: { type: 'keyword' } } };
       }
       return { type: 'keyword' };
+    case 'integer':
+      return { type: 'long' };
     case 'number':
       return { type: 'float' };
     case 'boolean':

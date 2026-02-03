@@ -250,6 +250,7 @@ export async function processOtlpTraceExport(
   // propagate token costs to the root span
   await propagateTokenCostsToRootSpan(spansWithOrg);
   // Save spans (may throw ConnectionError for Elasticsearch)
+  console.log(`spans.ts processOtlpTraceExport: Bulk inserting ${spansWithOrg.length} spans for organisation ${organisation}`);
   await bulkInsertSpans(spansWithOrg);
   await recordSpanPosting(organisation, spansWithOrg.length);
   
@@ -360,7 +361,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         reply.code(httpStatus).send(result.error);
         return;
       }
-      
+      console.log(`spans.ts POST: OTLP success - spans uploaded for organisation ${organisation}`);
       // Return OTLP success response (empty ExportTraceServiceResponse)
       reply.code(200).send({});
       
@@ -384,7 +385,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         message: error.message || 'Invalid request data',
       });
     }
-  });
+  }); //  end of POST /v1/traces
 
   /**
    * Query spans ie Traces
@@ -522,46 +523,36 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
   });
 
-  /**
-   * Delete spans by IDs or by trace IDs.
-   *
-   * Body: Either { spanIds: string[] } or { traceIds: string[] }.
-   *
-   * Security: Authenticated users only. Organisation membership verified by authenticate middleware.
-   * Deletions are scoped to the authenticated user's organisation.
-   */
-  fastify.delete('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+  /** Shared handler for span deletion. Body shape: either spans or traces (webapp uses POST /span/delete with this). */
+  async function handleDeleteSpans(
+    request: AuthenticatedRequest,
+    reply: any,
+    body: { spanIds?: string[]; traceIds?: string[] } | { spans?: string[]; traces?: string[] }
+  ) {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const organisation = request.organisation!;
-    const body = request.body as { spanIds?: string[]; traceIds?: string[] };
-    const traceIds = body.traceIds;
+    const spanIds = (body as any).spanIds ?? (body as any).spans;
+    const traceIds = (body as any).traceIds ?? (body as any).traces;
 
-    // Validate request body
-    if (!body.spanIds && !traceIds) {
-      reply.code(400).send({ error: 'Either spanIds or traceIds must be provided' });
+    if (!spanIds && !traceIds) {
+      reply.code(400).send({ error: 'Either spanIds/spans or traceIds/traces must be provided' });
       return;
     }
-
-    if (body.spanIds && traceIds) {
-      reply.code(400).send({ error: 'Cannot specify both spanIds and traceIds' });
+    if (spanIds && traceIds) {
+      reply.code(400).send({ error: 'Cannot specify both span IDs and trace IDs' });
       return;
     }
-
-    if (body.spanIds && (!Array.isArray(body.spanIds) || body.spanIds.length === 0)) {
-      reply.code(400).send({ error: 'spanIds must be a non-empty array' });
+    if (spanIds && (!Array.isArray(spanIds) || spanIds.length === 0)) {
+      reply.code(400).send({ error: 'spanIds/spans must be a non-empty array' });
       return;
     }
-
     if (traceIds && (!Array.isArray(traceIds) || traceIds.length === 0)) {
-      reply.code(400).send({ error: 'traceIds must be a non-empty array' });
+      reply.code(400).send({ error: 'traceIds/traces must be a non-empty array' });
       return;
     }
 
     try {
-      const options = body.spanIds
-        ? { spans: body.spanIds }
-        : { traces: traceIds! };
-
+      const options = spanIds ? { spans: spanIds } : { traces: traceIds! };
       const deletedCount = await deleteSpans(options, organisation);
       return { success: true, deleted: deletedCount };
     } catch (error: any) {
@@ -571,6 +562,28 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       }
       throw error;
     }
+  }
+
+  /**
+   * Delete spans by IDs or by trace IDs.
+   *
+   * Body: Either { spanIds: string[] } or { traceIds: string[] }.
+   *
+   * Security: Authenticated users only. Organisation membership verified by authenticate middleware.
+   * Deletions are scoped to the authenticated user's organisation.
+   */
+  fastify.delete('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    const body = (request.body as { spanIds?: string[]; traceIds?: string[] }) ?? {};
+    return handleDeleteSpans(request, reply, body);
+  });
+
+  /**
+   * Delete spans (POST). Same as DELETE /span but allows request body for clients that prefer POST.
+   * Body: { spans: string[] } or { traces: string[] }.
+   */
+  fastify.post('/span/delete', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    const body = (request.body as { spans?: string[]; traces?: string[] }) ?? {};
+    return handleDeleteSpans(request, reply, body);
   });
 }
 

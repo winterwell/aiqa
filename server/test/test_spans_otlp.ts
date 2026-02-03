@@ -16,6 +16,9 @@ import * as crypto from 'crypto';
 
 dotenv.config();
 
+// Setup (ES, Redis, Fastify, gRPC) and 11 OTLP tests exceed default tap timeout.
+tap.setTimeout(90000);
+
 // Test server setup
 let fastify: ReturnType<typeof Fastify> | null = null;
 let grpcServer: grpc.Server | null = null;
@@ -457,6 +460,9 @@ tap.after(async () => {
   await withTimeout(closeClient(), TEARDOWN_TIMEOUT_MS);
   await withTimeout(closeRedis(), TEARDOWN_TIMEOUT_MS);
 });
+
+// Declare expected number of top-level tests so tap does not report plan mismatch
+tap.plan(11);
 
 // ===== HTTP + JSON Tests =====
 
