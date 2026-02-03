@@ -5,7 +5,7 @@ import { Button, FormGroup, Input, Label } from 'reactstrap';
 import { createExampleFromSpans, createDataset, listDatasets } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId, getParentSpanId } from '../common/types/Span.js';
-import { getStartTime, getEndTime, getDurationMs, getDurationUnits, getTotalTokenCount, getCost, prettyNumber } from '../utils/span-utils';
+import { getStartTime, getEndTime, getDurationMs, getDurationUnits, getTotalTokenCount, getCost, prettyNumber, durationString } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 import LoadingSpinner from '../components/generic/LoadingSpinner';
 import TraceDetailsPageHeader from '../components/TraceDetailsPageHeader';
@@ -519,7 +519,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 				{span.example && <div><strong>Example:</strong> {span.example}</div>}
 				{span.experiment && <div><strong>Experiment:</strong> {span.experiment}</div>}
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
-				<div><strong>Duration:</strong> {durationMs ? `${durationMs}ms` : 'N/A'}</div>
+				<div><strong>Duration:</strong> {durationString(durationMs)}</div>
 				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
 				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
 			</div>
@@ -629,7 +629,7 @@ function OtherAttributes({ span }: { span: Span }) {
 	return (
 	<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Other Attributes:</strong>
-					<JsonObjectViewer json={attributes2} />
+					<JsonObjectViewer json={attributes2} depth={0} />
 				</div>
 	);
 }

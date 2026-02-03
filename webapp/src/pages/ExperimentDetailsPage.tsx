@@ -131,8 +131,18 @@ const ExperimentDetailsPage: React.FC = () => {
 
     return [
       {
-        header: 'Example ID',
-        accessorKey: 'exampleId',
+        header: 'Example',
+        accessorKey: 'example',
+        accessorFn: (row: any) => {
+          // TODO efficiently load the example names
+          return row.original.example
+        },
+        cell: ({ row }: any) => {
+          return <Link style={{ fontSize: '0.8em', overflow: 'hidden', textOverflow: 'ellipsis' }} to={`/organisation/${organisationId}/example/${row.original.example}`}>{row.original.example}</Link>;
+        },
+        csvValue: (row: any) => {
+          return row.original.example;
+        },
       },
       ...priorityMetrics.map(buildMetricColumn),
       ...otherMetrics.map(buildMetricColumn),
@@ -173,7 +183,7 @@ const ExperimentDetailsPage: React.FC = () => {
         <div className="alert alert-danger">
           <h4>Error</h4>
           <p>Failed to load experiment: {error instanceof Error ? error.message : 'Unknown error'}</p>
-          <Link to={`/organisation/${organisationId}/experiments`} className="btn btn-primary">
+          <Link to={`/organisation/${organisationId}/experiment`} className="btn btn-primary">
             Back to Experiments List
           </Link>
         </div>

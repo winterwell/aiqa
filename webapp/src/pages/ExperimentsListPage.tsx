@@ -100,23 +100,51 @@ const ExperimentsListPage: React.FC = () => {
         return row.summaries?.duration?.count ?? 0;
       },
     },
+    // { TODO
+    //   id: 'errors',
+    //   header: 'Errors',
+    //   accessorFn: (row) => getMetricMean(row, 'errors'),
+    //   cell: ({ row }) => {
+    //     const v = getMetricMean(row.original, 'errors');
+    //     return v != null ? prettyNumber(v) : '-';
+    //   },
+    //   csvValue: (row) => {
+    //     const v = getMetricMean(row, 'errors');
+    //     return v != null ? String(v) : '';
+    //   },
+    //   enableSorting: true,
+    // },
+    // {
+    //   id: 'overallScore',
+    //   header: 'Overall Score',
+    //   accessorFn: (row) => getOverallScore(row),
+    //   cell: ({ row }) => {
+    //     const v = getOverallScore(row.original);
+    //     return v !== null && isFinite(v) ? v.toFixed(2) : '-';
+    //   },
+    //   csvValue: (row) => {
+    //     const v = getOverallScore(row);
+    //     return v !== null && isFinite(v) ? String(v) : '';
+    //   },
+    //   enableSorting: true,
+    // },
     {
-      id: 'overallScore',
-      header: 'Overall Score',
-      accessorFn: (row) => getOverallScore(row),
+      id: 'specific',
+      header: 'Specific Evals',
+      accessorFn: (row) => getMetricMean(row, 'specific'),
       cell: ({ row }) => {
-        const v = getOverallScore(row.original);
-        return v !== null && isFinite(v) ? v.toFixed(2) : '-';
+        const v = getMetricMean(row.original, 'specific');
+        return v != null ? (100*v).toFixed(1) : '-';
       },
       csvValue: (row) => {
-        const v = getOverallScore(row);
-        return v !== null && isFinite(v) ? String(v) : '';
+        const v = getMetricMean(row, 'specific');
+        return v != null ? String(100*v) : '';
       },
       enableSorting: true,
     },
     {
       id: 'duration',
-      header: 'Duration',
+      header: 'Duration (avg)',
       accessorFn: (row) => getMetricMean(row, 'duration'),
       cell: ({ row }) => {
         const ms = getMetricMean(row.original, 'duration');
@@ -130,7 +158,7 @@ const ExperimentsListPage: React.FC = () => {
     },
     {
       id: 'tokensPerExample',
-      header: 'Tokens per example',
+      header: 'Tokens (avg)',
       accessorFn: (row) => getMetricMean(row, 'gen_ai.usage.total_tokens'),
       cell: ({ row }) => {
         const v = getMetricMean(row.original, 'gen_ai.usage.total_tokens');
@@ -144,7 +172,7 @@ const ExperimentsListPage: React.FC = () => {
     },
     {
       id: 'costPerExample',
-      header: 'Cost per example',
+      header: 'Cost (avg)',
       accessorFn: (row) => getMetricMean(row, 'gen_ai.cost.usd'),
       cell: ({ row }) => {
         const v = getMetricMean(row.original, 'gen_ai.cost.usd');

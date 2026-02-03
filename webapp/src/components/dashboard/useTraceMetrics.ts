@@ -3,6 +3,8 @@ import { Span } from '../../common/types';
 import { getTraceId } from '../../common/types/Span.js';
 import { getStartTime, getDurationMs, getTotalTokenCount, getCost, isRootSpan, organizeSpansByTraceId, calculateTokensForTree, calculateCostForTree } from '../../utils/span-utils';
 
+const MIN_DURATION_MS = 200;
+
 interface FeedbackInfo {
   type: 'positive' | 'negative' | 'neutral';
   comment?: string;
@@ -75,11 +77,12 @@ export function useTraceMetrics(
       }
     });
 
-    // Calculate duration for root spans only
+    // Calculate duration for root spans only (ignore traces with duration < MIN_DURATION_MS)
     spans.forEach(span => {
       if (isRootSpan(span)) {
         const duration = getDurationMs(span);
-        if (duration !== null) {
+        // Explicitly filter out null, 0, and durations < MIN_DURATION_MS
+        if (duration !== null && duration > 0 && duration >= MIN_DURATION_MS) {
           totalDuration += duration;
           durationCount++;
         }
@@ -135,10 +138,11 @@ export function useHistogramData(spans: Span[]): DurationHistogramDataPoint[] {
     const bins: { [key: number]: number } = {};
     
     spans.forEach(span => {
-      // Only include root spans in duration histogram
+      // Only include root spans in duration histogram (ignore traces with duration < MIN_DURATION_MS)
       if (isRootSpan(span)) {
         const duration = getDurationMs(span);
-        if (duration !== null) {
+        // Explicitly filter out null, 0, and durations < MIN_DURATION_MS
+        if (duration !== null && duration > 0 && duration >= MIN_DURATION_MS) {
           const bin = Math.floor(duration / 1000) * 1000; // 1 second bins
           bins[bin] = (bins[bin] || 0) + 1;
         }
@@ -214,7 +218,8 @@ export function useTimeseriesData(
         const traceId = getTraceId(span);
         const feedback = traceId ? feedbackMap.get(traceId) : null;
 
-        if (!startTime || duration === null) return null;
+        // Explicitly filter out null, 0, and durations < MIN_DURATION_MS
+        if (!startTime || duration === null || duration < MIN_DURATION_MS) return null;
 
         return {
           time: startTime.getTime(),

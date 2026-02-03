@@ -256,15 +256,21 @@ async function listEntities<T extends QueryResultRow>(
  * @param tableName The name of the database table to insert into.
  * @param item The object containing fields and values for the new row.
  * @param transform Optional function to transform the returned row before returning.
+ * @param id Optional ID to use for the new entity. If not provided, the database will generate a unique ID (normally safer).
  * @returns The created entity (optionally transformed).
  */
 async function createEntity<T extends QueryResultRow>(
 	tableName: string,
 	item: Record<string, any>,
+	id?: string,
 	transform?: (row: any) => T
 ): Promise<T> {
 	const filteredItem = filterFields(tableName, item);
 	const fields = Object.keys(filteredItem);
+	if (id !== undefined && id !== null) {
+		fields.unshift('id');
+		filteredItem.id = id;
+	}
 	const columnNames = fields.map(f => toSnakeCase(f));
 	let values = fields.map(field => filteredItem[field]);
 	// convert Object values to JSON strings for storage
@@ -350,11 +356,11 @@ function transformOrganisation(row: any): Organisation {
 }
 
 // CRUD operations for Organisation
-export async function createOrganisation(org: Omit<Organisation, 'created' | 'updated'> & { id?: string }): Promise<Organisation> {
+export async function createOrganisation(org: Omit<Organisation, 'created' | 'updated'>, id?: string): Promise<Organisation> {
 	if ( ! org.memberSettings) org.memberSettings = {};
 	if ( ! org.members) org.members = [];
 	return createEntity<Organisation>(
-		'organisations', org,
+		'organisations', org, id,
 		transformOrganisation
 	);
 }
@@ -412,7 +418,7 @@ function transformOrganisationAccount(row: any): OrganisationAccount {
 export async function createOrganisationAccount(account: Omit<OrganisationAccount, 'id' | 'created' | 'updated'>): Promise<OrganisationAccount> {
 	if ( ! account.subscription) account.subscription = { type: 'free', status: 'active', start: new Date(), end: null, renewal: null, pricePerMonth: 0, currency: 'USD' };
 	return createEntity<OrganisationAccount>(
-		'organisation_accounts', account,
+		'organisation_accounts', account, null,
 		transformOrganisationAccount
 	);
 }
@@ -449,7 +455,7 @@ export async function deleteOrganisationAccount(id: string): Promise<boolean> {
 // CRUD operations for User
 export async function createUser(user: Omit<User, 'id' | 'created' | 'updated'>): Promise<User> {
 	return createEntity<User>(
-		'users', user
+		'users', user, null
 	);
 }
 
@@ -501,6 +507,7 @@ export async function createApiKey(apiKey: Omit<ApiKey, 'id' | 'created' | 'upda
 	return createEntity<ApiKey>(
 		'api_keys',
 		apiKey,
+		null,
 		transformApiKey
 	);
 }
@@ -786,6 +793,7 @@ export async function createDataset(dataset: Omit<Dataset, 'id' | 'created' | 'u
 	return createEntity<Dataset>(
 		'datasets',
 		dataset,
+		null,
 		transformDataset
 	);
 }
@@ -852,6 +860,7 @@ export async function createExperiment(experiment: Omit<Experiment, 'id' | 'crea
 	return createEntity<Experiment>(
 		'experiments',
 		experiment,
+		null,
 		transformExperiment
 	);
 }
@@ -901,6 +910,7 @@ export async function createModel(model: Omit<Model, 'id' | 'created' | 'updated
 	return createEntity<Model>(
 		'models',
 		model,
+		null,
 		transformModel
 	);
 }

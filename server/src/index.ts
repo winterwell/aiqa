@@ -11,7 +11,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-import { initPool, createTables, closePool, createOrganisation, listOrganisations, addOrganisationMember, createOrganisationAccount, getOrganisationAccountByOrganisation } from './db/db_sql.js';
+import { initPool, createTables, closePool, createOrganisation, getOrganisation, listOrganisations, addOrganisationMember, createOrganisationAccount, getOrganisationAccountByOrganisation } from './db/db_sql.js';
 import { initClient, createIndices, closeClient } from './db/db_es.js';
 import { initRedis, closeRedis } from './rate_limit.js';
 import {
@@ -103,16 +103,18 @@ fastify.get('/version', async () => {
 async function initializeAiqaOrg(): Promise<void> {
   const adminEmail = process.env.AIQA_ADMIN_EMAIL || ANYONE_EMAIL;
   
-  // Find or create AIQA organisation
-  let aiqaOrg = (await listOrganisations(new SearchQuery('name:AIQA')))[0];
+  // Find or create AIQA organisation - must use correct ID
+  let aiqaOrg = await getOrganisation(AIQA_ORG_ID);
   if (!aiqaOrg) {
     aiqaOrg = await createOrganisation({
       id: AIQA_ORG_ID,
       name: 'AIQA',
       members: [],
       memberSettings: {},
-    });
+    }, AIQA_ORG_ID);
     fastify.log.info(`Created AIQA organisation: ${aiqaOrg.id}`);
+  } else {
+    fastify.log.info(`Found AIQA organisation with correct ID: ${aiqaOrg.id}`);
   }
   
   // Find admin user by email (users are created when they log in via Auth0)

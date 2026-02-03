@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Container, Row, Col, FormGroup, Label, Input, Form, Button } from 'reactstrap';
 import { ColumnDef } from '@tanstack/react-table';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { searchSpans, deleteSpans } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId } from '../common/types/Span.js';
@@ -56,7 +56,7 @@ const FEEDBACK_ATTRIBUTES = [
   'feedback.comment',
 ].join(',');
 
-const BATCH_SIZE = 10;
+const FEEDBACK_BATCH_SIZE = 100;
 const CACHE_STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 type DateFilterType = '1h' | '1d' | '1w' | 'custom';
@@ -90,7 +90,7 @@ const TracesListPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [feedbackMap, setFeedbackMap] = useState<Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>>(new Map());
+  const [traceIdsForFeedback, setTraceIdsForFeedback] = useState<string[]>([]);
   const [enrichedSpans, setEnrichedSpans] = useState<Map<string, Span>>(new Map());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
@@ -197,7 +197,7 @@ const TracesListPage: React.FC = () => {
     return parts.length > 0 ? parts.join(' AND ') : '';
   };
 
-  // Main loadData function (server handles feedback:positive/negative in search as attribute.feedback)
+  // Load root spans only so the table and dashboard can render immediately.
   const loadData = async (query: string): Promise<PageableData<Span>> => {
     const dateFilter = buildDateFilterQuery();
     const parts: string[] = [];
@@ -205,76 +205,66 @@ const TracesListPage: React.FC = () => {
     if (searchQuery) parts.push(`(${searchQuery})`);
     if (dateFilter) parts.push(`(${dateFilter})`);
     const combinedQuery = parts.length > 0 ? parts.join(' AND ') : '';
-    
-    // Load root spans with required attributes directly
-    const result = await searchSpans({ 
-      organisationId: organisationId!, 
-      query: combinedQuery, 
-      isRoot: true, 
+
+    const result = await searchSpans({
+      organisationId: organisationId!,
+      query: combinedQuery,
+      isRoot: true,
       limit: 1000,
       offset: 0,
       fields: REQUIRED_ATTRIBUTES,
       exclude: 'attributes.input,attributes.output',
     });
-    
-    if (!result.hits || result.hits.length === 0) {
-      setFeedbackMap(new Map());
-      setEnrichedSpans(new Map());
-      return result;
-    }
 
-    // Extract trace IDs
-    const traceIds = result.hits
-      .map(span => getTraceId(span))
-      .filter((id): id is string => !!id);
+    const traceIds = result.hits?.length
+      ? result.hits.map(span => getTraceId(span)).filter((id): id is string => !!id)
+      : [];
+    setTraceIdsForFeedback(traceIds);
 
-    // Load feedback in batches with caching
-    const feedbackData = new Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>();
-    for (let i = 0; i < traceIds.length; i += BATCH_SIZE) {
-      const batch = traceIds.slice(i, i + BATCH_SIZE);
-      const sortedBatch = [...batch].sort();
-      const cacheKey = ['feedback-spans', organisationId, sortedBatch.join(',')];
-      
-      const spans = await queryClient.fetchQuery({
-        queryKey: cacheKey,
-        queryFn: async () => {
-          const traceIdQuery = batch.map(id => `trace:${id}`).join(' OR ');
-          const feedbackResult = await searchSpans({
-            organisationId: organisationId!,
-            query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
-            limit: batch.length,
-            offset: 0,
-            fields: FEEDBACK_ATTRIBUTES,
-          });
-          return feedbackResult.hits || [];
-        },
-        staleTime: CACHE_STALE_TIME,
-      });
-      
-      spans.forEach((span: Span) => {
-        const traceId = getTraceId(span);
-        if (traceId) {
-          const feedback = getFeedback(span);
-          if (feedback && feedback.type !== null) {
-            feedbackData.set(traceId, feedback);
-          }
-        }
-      });
-    }
-
-    // Update state and build enriched spans map
-    setFeedbackMap(feedbackData);
     const enrichedMap = new Map<string, Span>();
-    result.hits.forEach(span => {
+    (result.hits || []).forEach(span => {
       const traceId = getTraceId(span);
-      if (traceId) {
-        enrichedMap.set(traceId, span);
-      }
+      if (traceId) enrichedMap.set(traceId, span);
     });
     setEnrichedSpans(enrichedMap);
 
     return result;
   };
+
+  type FeedbackMap = Map<string, { type: 'positive' | 'negative' | 'neutral'; comment?: string }>;
+
+  // Separate query: load feedback in batches of 100 so table isn't blocked.
+  const loadFeedbackData = async (traceIds: string[]): Promise<FeedbackMap> => {
+    const feedbackData: FeedbackMap = new Map();
+    for (let i = 0; i < traceIds.length; i += FEEDBACK_BATCH_SIZE) {
+      const batch = traceIds.slice(i, i + FEEDBACK_BATCH_SIZE);
+      const traceIdQuery = batch.map(id => `trace:${id}`).join(' OR ');
+      const feedbackResult = await searchSpans({
+        organisationId: organisationId!,
+        query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
+        limit: batch.length,
+        offset: 0,
+        fields: FEEDBACK_ATTRIBUTES,
+      });
+      (feedbackResult.hits || []).forEach((span: Span) => {
+        const traceId = getTraceId(span);
+        if (traceId) {
+          const feedback = getFeedback(span);
+          if (feedback && feedback.type !== null) feedbackData.set(traceId, feedback);
+        }
+      });
+    }
+    return feedbackData;
+  };
+
+  const feedbackQueryKey = ['feedback-spans', organisationId, traceIdsForFeedback.slice().sort().join(',')];
+  const { data: feedbackMapData } = useQuery({
+    queryKey: feedbackQueryKey,
+    queryFn: () => loadFeedbackData(traceIdsForFeedback),
+    enabled: traceIdsForFeedback.length > 0 && !!organisationId,
+    staleTime: CACHE_STALE_TIME,
+  });
+  const feedbackMap = traceIdsForFeedback.length > 0 && feedbackMapData ? feedbackMapData : (new Map() as FeedbackMap);
 
   // Table columns
   const columns = useMemo<ColumnDef<Span>[]>(
@@ -312,7 +302,7 @@ const TracesListPage: React.FC = () => {
 		  },
 	
 		{
-        id: 'trace_id',
+        id: 'trace',
         header: 'Trace ID',
         cell: ({ row }) => {
           const traceId = getTraceId(row.original);
@@ -378,7 +368,7 @@ const TracesListPage: React.FC = () => {
         },
         cell: ({ row }) => {
           const errors = getErrors(row.original);
-          if (errors === null) return <span></span>;
+          if (errors === null || errors === 0) return <span></span>;
           return <span className="text-danger">{prettyNumber(errors)}</span>;
         },
         enableSorting: true,

@@ -38,7 +38,7 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
           value={
             (() => {
               const rootSpans = spans.filter(s => isRootSpan(s));
-              const durations = rootSpans.map(s => getDurationMs(s)).filter((d): d is number => d !== null);
+              const durations = rootSpans.map(s => getDurationMs(s)).filter((d): d is number => d !== null && d > 0 && d >= 50); // Ignore traces with duration < 50ms
               const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
               return (
                 <div>
@@ -116,7 +116,7 @@ const TracesListDashboard: React.FC<TracesListDashboardProps> = ({ spans, feedba
         </CardBody>
       </Card>
 
-      <WordcloudCard spans={spans} />
+      {/* <WordcloudCard spans={spans} /> */}
     </div>
   );
 };

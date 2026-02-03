@@ -330,7 +330,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
   /**
    * Score an example result for an experiment. You must first create the experiment with the createExperiment endpoint.
-   * POST body: { output, traceId, scores }
+   * POST body: { output, trace, scores }
    * For each metric (from dataset or example), if scores has a value, use it;
    * otherwise the server runs scoring for that metric.
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware. Verifies experiment.organisation matches request.organisation (endpoint handler).
@@ -338,7 +338,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   fastify.post('/experiment/:id/example/:exampleid/scoreAndStore', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { id: experimentId, exampleid: exampleId } = request.params as { id: string; exampleid: string };
-    const body = request.body as { output: any; traceId?: string; scores?: Record<string, number>; duration?: number };
+    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>; duration?: number };
     const organisation = request.organisation!;
 
     // Validate required fields
@@ -429,7 +429,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     
     // Extract token count and cost from spans if traceId is provided
     // Retry logic handles race condition: spans may still be indexing in ES after client flush
-    if (body.traceId) {
+    if (body.trace) {
       try {
         // Retry with exponential backoff: spans may not be indexed immediately after flush
         let spanResult = null;
@@ -438,7 +438,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           // Find root span for this trace (parent:unset means it's a root span)
-          const traceQuery = new SearchQuery(`trace:${body.traceId} parent:unset`);
+          const traceQuery = new SearchQuery(`trace:${body.trace} parent:unset`);
           spanResult = await searchSpans(traceQuery, organisation, 1, 0);
           
           if (spanResult.hits.length > 0) {
@@ -465,11 +465,11 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
           }
         } else {
           // Spans not found after retries - log but don't fail (token info is optional)
-          request.log.debug({ traceId: body.traceId }, 'Root span not found after retries - token info will be missing');
+          request.log.debug({ traceId: body.trace }, 'Root span not found after retries - token info will be missing');
         }
       } catch (error) {
         // Log error but don't fail the request - token info is optional
-        request.log.warn({ traceId: body.traceId, error }, 'Failed to extract token info from spans');
+        request.log.warn({ traceId: body.trace, error }, 'Failed to extract token info from spans');
       }
     }
     
