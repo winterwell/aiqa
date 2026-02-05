@@ -7,6 +7,9 @@
  */
 import tap from 'tap';
 import { encodeOtlpProtobuf } from '../utils-for-tests';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const BASE_URL = process.env.SERVER_URL || 'http://localhost:4318';
 const API_KEY = process.env.AIQA_API_KEY;
