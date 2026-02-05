@@ -5,8 +5,20 @@ import CopyButton from './CopyButton';
 import ExpandCollapseControl from './ExpandCollapseControl';
 import { truncate } from '../../common/utils/miscutils';
 
-function getMessageContent(json: any): string | null {
+function _asString(value: any): string {
+	if (typeof value === "string") {
+		return value;
+	}
+	return JSON.stringify(value);
+}
+
+function getMessageContentObj(json: any): any | null {
 	let baseContent = json.content || json.Content || (json.choices?.length > 0 ? json.choices[0].message?.content : null);
+	return baseContent;
+}
+
+function getMessageContentText(json: any): string | null {
+	let baseContent = getMessageContentObj(json);
 	if ( ! baseContent) return null;
 	// unwrap common chat message formats
 	if (Array.isArray(baseContent) && baseContent.length === 1) {
@@ -14,14 +26,18 @@ function getMessageContent(json: any): string | null {
 	}
 	if (typeof baseContent === "object") {
 		if (baseContent.type === "text") {
-			return baseContent.text;
+			const text = baseContent.text;
+			if (typeof text === "string") {
+				return text;
+			}
+			return _asString(baseContent);
 		}
 		// Bedrock Converse format
 		if (baseContent.value || baseContent.Value) {
-			return baseContent.value || baseContent.Value;
+			return _asString(baseContent.value || baseContent.Value);
 		}
 	}
-	return baseContent;
+	return _asString(baseContent === "string" ? baseContent : JSON.stringify(baseContent));
 }
 
 /**
@@ -34,10 +50,10 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const TextComponent = textComponent;
 	const [expanded, setExpanded] = useState(false);
 	const $copyButton = <CopyButton content={json} logToConsole />
-	let content = getMessageContent(json);
+	let content = getMessageContentText(json);
 	let role = json.role || json.Role;
 	// HACK sniff tool use from e.g. Bedrock which uses role:user
-	if (content?.ToolUseId) {
+	if (role==='user' && getMessageContentObj(json)?.ToolUseId) {
 		role = 'tool';
 	}
 	const otherKVs = { ...json };

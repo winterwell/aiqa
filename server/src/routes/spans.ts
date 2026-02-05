@@ -443,9 +443,8 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     let resolvedQ = (query?.trim() || 'parent:unset');
     const feedbackValue = SearchQuery.propFromString(resolvedQ, 'feedback');
     if (feedbackValue === 'positive' || feedbackValue === 'negative') {
-      const thumbsUp = feedbackValue === 'positive';
       resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
-      const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.thumbs_up:${thumbsUp}`;
+      const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.value:${feedbackValue}`;
       const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace'], undefined);
       const traceIds = feedbackResult.hits.map((s: Span) => s.trace).filter(Boolean) as string[];
       if (traceIds.length === 0) {
@@ -567,10 +566,10 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
           // Check for feedback
           const feedback = attrs.feedback;
-          if (feedback && typeof feedback === 'object') {
-            const thumbsUp = feedback.thumbs_up;
-            if (thumbsUp === true) positiveFeedback++;
-            if (thumbsUp === false) negativeFeedback++;
+          if (feedback && typeof feedback === 'object' && !Array.isArray(feedback)) {
+            const value = (feedback as any).value;
+            if (value === 'positive') positiveFeedback++;
+            if (value === 'negative') negativeFeedback++;
           }
         });
 

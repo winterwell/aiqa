@@ -20,15 +20,17 @@ const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | 
   const attributes = (span as any).attributes || {};
   const spanType = attributes['aiqa.span_type'];
   if (spanType === 'feedback') {
-    const feedbackType = attributes['feedback.type'] as string | undefined;
-    const thumbsUp = attributes['feedback.thumbs_up'] as boolean | undefined;
-    const comment = attributes['feedback.comment'] as string | undefined;
+    const feedback = attributes['feedback'];
+    const value = feedback?.value || attributes['feedback.value'] as string | undefined;
+    const comment = feedback?.comment || attributes['feedback.comment'] as string | undefined;
     
     let type: 'positive' | 'negative' | 'neutral' = 'neutral';
-    if (feedbackType === 'positive' || thumbsUp === true) {
+    if (value === 'positive') {
       type = 'positive';
-    } else if (feedbackType === 'negative' || thumbsUp === false) {
+    } else if (value === 'negative') {
       type = 'negative';
+    } else if (value === 'neutral') {
+      type = 'neutral';
     }
     
     return { type, comment };
@@ -51,8 +53,8 @@ const REQUIRED_ATTRIBUTES = [
 // Attributes we need for feedback spans
 const FEEDBACK_ATTRIBUTES = [
   'aiqa.span_type',
-  'feedback.type',
-  'feedback.thumbs_up',
+  'feedback',
+  'feedback.value',
   'feedback.comment',
 ].join(',');
 

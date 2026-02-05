@@ -106,8 +106,11 @@ async function runIntegrationTests() {
   if (testDatasetId) {
     try {
       console.log('Test 5: List examples...');
-      const examples = await client.listExamples(testDatasetId, undefined, 10);
-      assert(Array.isArray(examples), 'Examples should be an array');
+      const result = await client.listExamples(testDatasetId, undefined, 10);
+      // API returns { hits: [...], total: ..., limit: ..., offset: ... }
+      assert(result !== null, 'Result should not be null');
+      assert(result.hits !== undefined, 'Result should have hits');
+      assert(Array.isArray(result.hits), 'Hits should be an array');
       console.log('✓ List examples test passed\n');
     } catch (error) {
       console.error('✗ List examples test failed:', error);

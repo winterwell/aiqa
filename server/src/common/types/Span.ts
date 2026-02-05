@@ -1,6 +1,14 @@
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 
 /**
+ * Stored on spans as attributes.feedback.{value,comment}
+ */
+export interface Feedback {
+  value: 'positive' | 'negative' | 'neutral';
+  comment?: string;
+}
+
+/**
  * Span type extending OpenTelemetry's ReadableSpan interface.
  * Represents a completed span that can be read and exported.
  */
