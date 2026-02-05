@@ -21,12 +21,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # - name: Setup Java
-      #   uses: actions/setup-java@v4
-      #   with:
-      #     distribution: 'temurin'
-      #     java-version: '17'
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -56,6 +50,11 @@ jobs:
             echo "Error: package.json not found in website directory"
             exit 1
           fi
+          
+      - name: Copy common files from webapp to website
+        working-directory: ./website
+        run: |
+          cp -r ../webapp/public/common webroot/common
 
       - name: Compile LESS to CSS
         working-directory: ./website

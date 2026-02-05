@@ -78,42 +78,6 @@ pnpm run test:integration
 
 ## Production Deployment
 
-### Manual Deployment
-
-1. Build the server:
-```bash
-cd aiqa/mcp
-pnpm install
-pnpm run build
-```
-
-2. Copy files to server:
-```bash
-scp -r dist package.json pnpm-lock.yaml user@server:/opt/aiqa/mcp/
-```
-
-3. On the server, install dependencies:
-```bash
-cd /opt/aiqa/mcp
-pnpm install --prod
-```
-
-4. Create `.env` file:
-```bash
-cat > .env << EOF
-AIQA_API_BASE_URL=https://server-aiqa.winterwell.com
-MCP_PORT=4319
-LOG_LEVEL=info
-EOF
-chmod 600 .env
-```
-
-Note: No API key is needed in the server's environment - users provide their API keys when connecting via Cursor/Claude Code.
-
-5. Set up nginx configuration (see below)
-
-6. Create systemd service (see below)
-
 ### Automated Deployment (GitHub Actions)
 
 The repository includes a GitHub Actions workflow (`.github/workflows/mcp-deploy.yml`) that automatically deploys when changes are pushed to the `mcp/` directory.
@@ -125,37 +89,16 @@ The repository includes a GitHub Actions workflow (`.github/workflows/mcp-deploy
 - `DEPLOY_HOST`: Deployment server hostname
 - `DEPLOY_USER`: SSH username for deployment
 - `DEPLOY_PORT`: SSH port (default: 22)
-- `AIQA_API_BASE_URL`: Base URL for server-aiqa API (default: http://localhost:4318)
+- `AIQA_API_BASE_URL`: Base URL for server-aiqa API (default: https://server-aiqa.winterwell.com)
 - `MCP_PORT`: Port for MCP server (default: 4319)
 - `LOG_LEVEL`: Log level (default: info)
 
 ## Systemd Service
 
+Install deploy/aiqa-mcp.service
+TODO how?
+
 Create `/etc/systemd/system/aiqa-mcp.service`:
-
-```ini
-[Unit]
-Description=AIQA MCP Server
-After=network.target
-
-[Service]
-Type=simple
-User=winterwell
-WorkingDirectory=/opt/aiqa/mcp
-Environment="NODE_ENV=production"
-EnvironmentFile=/opt/aiqa/mcp/.env
-ExecStart=/usr/bin/node /opt/aiqa/mcp/dist/index.js
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-# Limit resources
-MemoryLimit=512M
-CPUQuota=50%
-
-[Install]
-WantedBy=multi-user.target
-```
 
 ### Nginx Configuration
 
@@ -209,26 +152,12 @@ sudo systemctl start aiqa-mcp
 
 Users configure their Cursor or Claude Code clients to connect to the hosted MCP server.
 
-### Configuring Cursor
+### Configuring Cursor / Claude Code / Other Tools
 
 1. Open Cursor settings
 2. Navigate to MCP settings
 3. Add a new MCP server with HTTP/SSE transport:
 
-```json
-{
-  "mcpServers": {
-    "aiqa": {
-      "url": "https://mcp-aiqa.winterwell.com/sse",
-      "headers": {
-        "Authorization": "Bearer YOUR_API_KEY_HERE"
-      }
-    }
-  }
-}
-```
-
-Or using the ApiKey format:
 ```json
 {
   "mcpServers": {
@@ -243,10 +172,6 @@ Or using the ApiKey format:
 ```
 
 **Important:** Users should replace `YOUR_API_KEY_HERE` with their actual API key from server-aiqa.
-
-### Configuring Claude Code
-
-Similar configuration applies for Claude Code. Configure the MCP server to connect via HTTP/SSE to `https://mcp-aiqa.winterwell.com/sse` with the user's API key in the Authorization header.
 
 ### Getting an API Key
 

@@ -99,7 +99,7 @@ jobs:
       - name: Install dependencies and configure MCP server
         uses: appleboy/ssh-action@v1.0.3
         env:
-          AIQA_API_BASE_URL: ${{ vars.AIQA_API_BASE_URL || 'http://localhost:4318' }}
+          AIQA_API_BASE_URL: ${{ vars.AIQA_API_BASE_URL || 'https://server-aiqa.winterwell.com' }}
           MCP_PORT: ${{ vars.MCP_PORT || '4319' }}
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
         with:
@@ -134,7 +134,7 @@ jobs:
             echo "Dependencies installed successfully"
             # Create .env file
             {
-              echo "AIQA_API_BASE_URL=${AIQA_API_BASE_URL:-http://localhost:4318}"
+              echo "AIQA_API_BASE_URL=${AIQA_API_BASE_URL:-https://server-aiqa.winterwell.com}"
               echo "MCP_PORT=${MCP_PORT:-4319}"
               echo "LOG_LEVEL=${LOG_LEVEL:-info}"
             } > .env
