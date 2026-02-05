@@ -117,8 +117,28 @@ function hasKeys(obj: any): boolean {
 /** Keys that must be stored as objects in ES flattened attributes to avoid mapping conflicts (e.g. Go sends string, Python sends object). */
 const ATTRIBUTE_OBJECT_KEYS = ['input', 'output'];
 
+/** Key used to wrap primitive input/output for ES flattened; distinctive to avoid clashing with user data. */
+const AIQA_VALUE_KEY = 'aiqa_value';
+
 /**
- * Normalize attribute.input, .output to always be objects for ES: wrap primitives in { value } so the index always sees an object.
+ * If v is a string that is valid JSON and parses to a plain object, return that object.
+ * Otherwise return undefined (caller will wrap in { aiqa_value: v }).
+ * This avoids storing filter_input/filter_output output as a wrapper when the client sent a JSON-serialized dict.
+ */
+function tryParseJsonObject(v: string): any {
+  if (typeof v !== 'string' || v.length === 0) return undefined;
+  try {
+    const parsed = JSON.parse(v);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Normalize attribute.input, .output to always be objects for ES: wrap primitives in { aiqa_value } so the index always sees an object.
+ * String values that are valid JSON objects are parsed and stored as objects. On read, recognise and unwrap aiqa_value (or legacy value).
  */
 function normalizeAttributesForFlattened(attributes: any): any {
   if (!attributes || typeof attributes !== 'object') return attributes;
@@ -126,12 +146,27 @@ function normalizeAttributesForFlattened(attributes: any): any {
   for (const key of ATTRIBUTE_OBJECT_KEYS) {
     if (out[key] === undefined || out[key] === null) continue;
     const v = out[key];
-    if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-      out[key] = { value: v };
+    if (typeof v === 'string') {
+      const asObject = tryParseJsonObject(v);
+      out[key] = asObject !== undefined ? asObject : { [AIQA_VALUE_KEY]: v };
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      out[key] = { [AIQA_VALUE_KEY]: v };
     }
     // Arrays and objects left as-is so nested input/output still work
   }
   return out;
+}
+
+/**
+ * If obj is a single-key wrapper { aiqa_value: x } or legacy { value: x }, return the inner value; otherwise return obj.
+ * Used when returning spans so API/UI see unwrapped input/output.
+ */
+function unwrapAttributeWrapper(obj: any): any {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const keys = Object.keys(obj);
+  if (keys.length !== 1) return obj;
+  const v = obj[AIQA_VALUE_KEY] ?? obj.value;
+  return v !== undefined ? v : obj;
 }
 
 /**
@@ -479,10 +514,14 @@ export async function getExample(id: string, organisationId?: string): Promise<E
 }
 
 /**
- * Get a single span by ID. Uses getItem.
+ * Get a single span by ID. Uses getItem. Unwraps input/output from { aiqa_value } or legacy { value } so API returns raw values.
  */
 export async function getSpan(id: string, organisationId?: string): Promise<Span | null> {
   const doc = await getItem(SPAN_INDEX_ALIAS, id, organisationId);
+  if (doc?.attributes) {
+    if (doc.attributes.input !== undefined) doc.attributes.input = unwrapAttributeWrapper(doc.attributes.input);
+    if (doc.attributes.output !== undefined) doc.attributes.output = unwrapAttributeWrapper(doc.attributes.output);
+  }
   return doc != null ? (doc as Span) : null;
 }
 

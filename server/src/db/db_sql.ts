@@ -188,6 +188,16 @@ export async function createTables(): Promise<void> {
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, []));
 
+	// Rate limit events: one row per 429 (trace export rejected due to rate limit)
+	await doQuery(`
+		CREATE TABLE IF NOT EXISTS rate_limit_events (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			organisation UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
+			occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
+	`);
+	
+
 	// Create indexes
 		await doQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_organisation ON api_keys(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_organisation_accounts_organisation ON organisation_accounts(organisation)`);
@@ -195,14 +205,26 @@ export async function createTables(): Promise<void> {
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_datasets_organisation ON datasets(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_dataset ON experiments(dataset)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_organisation ON experiments(organisation)`);
+	await doQuery(`
+		CREATE INDEX IF NOT EXISTS idx_rate_limit_events_organisation_occurred_at
+		ON rate_limit_events(organisation, occurred_at)
+	`);
 
 	await applyMigrations();
 }
 
 
+// periodically delete this when all existing database tables are up to date
 async function applyMigrations(): Promise<void> {
-	
-
+	// Standardise Model secret column: api_key → key
+	await doQuery(`
+		DO $$
+		BEGIN
+			IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'models' AND column_name = 'api_key') THEN
+				ALTER TABLE models RENAME COLUMN api_key TO key;
+			END IF;
+		END $$;
+	`);
 } // end applyMigrations
 
 /**
@@ -439,6 +461,33 @@ export async function getOrganisationAccountByOrganisation(organisationId: strin
 		return null;
 	}
 	return transformOrganisationAccount(result.rows[0]);
+}
+
+/**
+ * Record a single rate-limit hit (trace export rejected with 429). Fire-and-forget from caller.
+ */
+export async function recordRateLimitHit(organisationId: string): Promise<void> {
+	await doQuery(
+		'INSERT INTO rate_limit_events (organisation) VALUES ($1)',
+		[organisationId]
+	);
+}
+
+/**
+ * Count rate-limit hits in the last 24h and last 7d for an organisation.
+ */
+export async function getRateLimitHits(organisationId: string): Promise<{ last24h: number; last7d: number }> {
+	const result = await doQuery<{ last_24h: string; last_7d: string }>(
+		`SELECT
+			(SELECT COUNT(*) FROM rate_limit_events WHERE organisation = $1 AND occurred_at > now() - interval '24 hours') AS last_24h,
+			(SELECT COUNT(*) FROM rate_limit_events WHERE organisation = $1 AND occurred_at > now() - interval '7 days') AS last_7d`,
+		[organisationId]
+	);
+	const row = result.rows[0];
+	return {
+		last24h: row ? parseInt(row.last_24h, 10) : 0,
+		last7d: row ? parseInt(row.last_7d, 10) : 0,
+	};
 }
 
 export async function updateOrganisationAccount(id: string, updatedItem: Partial<OrganisationAccount>): Promise<OrganisationAccount | null> {
@@ -899,10 +948,10 @@ export async function deleteExperiment(id: string): Promise<boolean> {
 	return deleteEntity('experiments', id);
 }
 
-// Helper function to transform Model (snake_case columns -> camelCase)
+// Helper function to transform Model (snake_case columns -> camelCase). Supports legacy api_key column until migration has run.
 function transformModel(row: any): Model {
-	const { api_key, api_key_sig, ...rest } = row;
-	return { ...rest, apiKey: api_key ?? rest.apiKey, hash: api_key_sig ?? rest.hash } as Model;
+	const { key, api_key, hash, ...rest } = row;
+	return { ...rest, key: key ?? api_key, hash } as Model;
 }
 
 // CRUD operations for Model

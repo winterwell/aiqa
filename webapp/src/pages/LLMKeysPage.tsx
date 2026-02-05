@@ -28,7 +28,7 @@ const LLMKeysPage: React.FC = () => {
     mutationFn: async (model: {
       provider: 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'other';
       name: string;
-      api_key: string;
+      key: string;
       version?: string;
       description?: string;
     }) => {
@@ -81,7 +81,7 @@ const LLMKeysPage: React.FC = () => {
     createModelMutation.mutate({
       provider: newModelProvider,
       name: newModelName.trim(),
-      api_key: newModelApiKey.trim(),
+      key: newModelApiKey.trim(),
       version: newModelVersion.trim() || undefined,
       description: newModelDescription.trim() || undefined,
     });

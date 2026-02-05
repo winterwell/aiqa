@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@aiqa/common/*": ["../server/src/common/*"]
+    },
     "target": "es2020",
     "downlevelIteration": true,
     "lib": [

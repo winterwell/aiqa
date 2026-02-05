@@ -1,7 +1,7 @@
 import { Metric } from './common/types/Metric.js';
 import Model from './common/types/Model.js';
 import { getDefaultLLMPrompt } from './common/llmPromptTemplate.js';
-import { getModel } from './db/db_sql.js';
+import { getModel, listModels } from './db/db_sql.js';
 import { VM } from 'vm2';
 
 /**
@@ -106,37 +106,15 @@ async function scoreMetricLLM(organisationId: string, metric: Metric, output: an
 		if (!model) {
 			throw new Error(`Model not found: ${modelId}`);
 		}
-		
 		if (model.organisation !== organisationId) {
 			throw new Error('Model does not belong to the organisation');
 		}
 	} else {
-		// No model specified - try to use environment variables
-		const openaiKey = process.env.OPENAI_API_KEY;
-		const anthropicKey = process.env.ANTHROPIC_API_KEY;
-		
-		if (openaiKey) {
-			model = {
-				id: 'env-openai',
-				organisation: organisationId,
-				provider: 'openai',
-				name: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-				apiKey: openaiKey,
-				created: new Date(),
-				updated: new Date(),
-			} as Model;
-		} else if (anthropicKey) {
-			model = {
-				id: 'env-anthropic',
-				organisation: organisationId,
-				provider: 'anthropic',
-				name: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
-				apiKey: anthropicKey,
-				created: new Date(),
-				updated: new Date(),
-			} as Model;
-		} else {
-			throw new Error('LLM metric has no model specified and no OPENAI_API_KEY or ANTHROPIC_API_KEY found in environment variables');
+		// No model specified: use first LLM model for this org that has an API key
+		const orgModels = await listModels(organisationId);
+		model = orgModels.find(m => ['openai', 'anthropic', 'google', 'azure'].includes(m.provider) && m.key) ?? null;
+		if (!model) {
+			throw new Error('No LLM model with an API key found for this organisation. Add a model (OpenAI, Anthropic, Google or Azure) with a key, or set metric.parameters.model.');
 		}
 	}
 	
@@ -209,7 +187,7 @@ async function callOpenAI(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'Authorization': `Bearer ${model.apiKey}`,
+			'Authorization': `Bearer ${model.key}`,
 		},
 		body: JSON.stringify({
 			model: model.name,
@@ -242,7 +220,7 @@ async function callAnthropic(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'x-api-key': model.apiKey,
+			'x-api-key': model.key,
 			'anthropic-version': '2023-06-01',
 		},
 		body: JSON.stringify({
@@ -274,7 +252,7 @@ async function callAnthropic(model: Model, prompt: string): Promise<LLMResult> {
  */
 async function callGoogle(model: Model, prompt: string): Promise<LLMResult> {
 	const modelName = model.name || 'gemini-pro';
-	const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${model.apiKey}`;
+	const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${model.key}`;
 	
 	const response = await fetch(url, {
 		method: 'POST',
@@ -309,13 +287,11 @@ async function callGoogle(model: Model, prompt: string): Promise<LLMResult> {
 
 /**
  * Call Azure OpenAI API
- * Note: Azure requires the deployment name in the model.name field and the endpoint in model.apiKey or a separate field
- * For now, we'll assume the API key contains the endpoint or it's configured separately
+ * Note: Azure requires the deployment name in the model.name field and the endpoint in model.key or a separate field
  */
 async function callAzure(model: Model, prompt: string): Promise<LLMResult> {
 	// Azure OpenAI endpoint format: https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=2024-02-15-preview
-	// For simplicity, we'll assume the endpoint is provided in an environment variable or model configuration
-	// If model.apiKey contains the full endpoint URL, use it; otherwise construct from model.name
+	// Endpoint from env or model.name; API key from model.key
 	
 	// Try to get endpoint from environment or use a default pattern
 	const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT || `https://${model.name}.openai.azure.com`;
@@ -328,7 +304,7 @@ async function callAzure(model: Model, prompt: string): Promise<LLMResult> {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			'api-key': model.apiKey,
+			'api-key': model.key,
 		},
 		body: JSON.stringify({
 			messages: [

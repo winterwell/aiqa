@@ -1,0 +1,25 @@
+{
+  "name": "@aiqa/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for AIQA - provides tools for working with datasets, examples, experiments, and traces",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
+    "test:unit": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
+    "test:integration": "pnpm run build && node --loader ts-node/esm test/integration/integration.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "fastify": "^4.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

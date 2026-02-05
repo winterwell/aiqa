@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button } from 'reactstrap';
+import { Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Alert, Button } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
 import { Users as UsersIcon } from '@phosphor-icons/react';
 import { getOrganisation, getOrCreateUser, listOrganisations, getUser, getOrganisationAccount } from '../api';
 import CreateOrganisationButton from '../components/generic/CreateOrganisationButton';
 import ManageMembersModal from '../components/ManageMembersModal';
+import Page from '../components/generic/Page';
 import Organisation from '../common/types/Organisation';
 
 const OrganisationPage: React.FC = () => {
@@ -53,13 +54,13 @@ const OrganisationPage: React.FC = () => {
 
   if (isLoading || isLoadingUser || (shouldCheckOrganisations && isLoadingOrgs)) {
     return (
-      <Container>
+      <Page header="Organisation">
         <div className="text-center">
           <div className="spinner-border" role="status">
             <span className="visually-hidden">Loading...</span>
           </div>
         </div>
-      </Container>
+      </Page>
     );
   }
 
@@ -68,12 +69,11 @@ const OrganisationPage: React.FC = () => {
     // If user has no organizations, show create form
     if (allOrganisations && allOrganisations.length === 0 && dbUser?.id) {
       return (
-        <Container>
+        <Page header="Welcome to AIQA">
           <Row className="justify-content-center">
             <Col md={8}>
               <Card>
                 <CardBody>
-                  <h3>Welcome to AIQA</h3>
                   <p className="lead">You're not a member of any organization yet.</p>
                   <p>Create your first organization to get started:</p>
                   <CreateOrganisationButton dbUserId={dbUser.id} showFormInline={true} />
@@ -81,13 +81,13 @@ const OrganisationPage: React.FC = () => {
               </Card>
             </Col>
           </Row>
-        </Container>
+        </Page>
       );
     }
 
     // If user has organizations but this one doesn't exist, show error
     return (
-      <Container>
+      <Page header="Organisation">
         <Alert color="danger">
           <h4>Error</h4>
           <p>Failed to load organisation: {error instanceof Error ? error.message : 'Unknown error'}</p>
@@ -95,34 +95,20 @@ const OrganisationPage: React.FC = () => {
             <p className="mt-2">Please select an organization from the list or create a new one.</p>
           )}
         </Alert>
-      </Container>
+      </Page>
     );
   }
 
   return (
-    <Container className="mt-4">
-      <Row>
-        <Col>
-          <div className="d-flex justify-content-between align-items-center">
-            <div>
-              <h1>{organisation.name}</h1>
-              <p className="text-muted">Organisation ID: {organisation.id}</p>
-            </div>
-            <div className="d-flex gap-2 align-items-center">
-              <Button color="secondary" tag={Link} to={`/organisation/${organisationId}/account`}>
-                Account
-              </Button>
-              {dbUser?.id && <CreateOrganisationButton dbUserId={dbUser.id} />}
-            </div>
-          </div>
-        </Col>
-      </Row>
-
+    <Page header={organisation.name} item={organisation}>
       <Row className="mt-4">
         <Col md={6}>
           <Card>
-            <CardHeader>
-              <h5>Organisation Details</h5>
+            <CardHeader className="d-flex justify-content-between align-items-center">
+              <h5 className="mb-0">Organisation Details</h5>
+              <Button color="secondary" tag={Link} to={`/organisation/${organisationId}/account`}>
+                Account
+              </Button>
             </CardHeader>
             <CardBody>
               <ListGroup flush>
@@ -141,14 +127,6 @@ const OrganisationPage: React.FC = () => {
                 <ListGroupItem>
                   <strong>Members:</strong> {organisation.members?.length || 0}
                 </ListGroupItem>
-                <ListGroupItem>
-                  <strong>Created:</strong>{' '}
-                  {new Date(organisation.created).toLocaleString()}
-                </ListGroupItem>
-                <ListGroupItem>
-                  <strong>Updated:</strong>{' '}
-                  {new Date(organisation.updated).toLocaleString()}
-                </ListGroupItem>
               </ListGroup>
             </CardBody>
           </Card>
@@ -159,9 +137,7 @@ const OrganisationPage: React.FC = () => {
           <MembersCard organisation={organisation} />
         </Col>
       </Row>
-
-      
-    </Container>
+    </Page>
   );
 };
 

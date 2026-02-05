@@ -1,5 +1,8 @@
 TODO
 
+# Funding
+https://www.mozillafoundation.org/en/what-we-do/grantmaking/
+
 Football analogy for why more than one model might be used in
 a multi-agent system
 e.g. you could have 11 Lionel Messis, but

@@ -5,6 +5,7 @@ import {
   createOrganisationAccount,
   updateOrganisationAccount,
   getOrganisation,
+  getRateLimitHits,
 } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess, isSuperAdmin } from '../server_auth.js';
 import { checkRateLimit } from '../rate_limit.js';
@@ -190,30 +191,36 @@ export async function registerOrganisationAccountRoutes(fastify: FastifyInstance
     
     // Get account to determine rate limit
     const account = await getOrganisationAccountByOrganisation(organisationId);
-    const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
+    const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rateLimitPerHour') ?? 1000 : 1000;
     
     // Get current usage from Redis
     const rateLimitResult = await checkRateLimit(organisationId, rateLimitPerHour);
     
     if (!rateLimitResult) {
       // Redis unavailable or error
+      const hits = await getRateLimitHits(organisationId);
       return {
         current: 0,
         limit: rateLimitPerHour,
         remaining: rateLimitPerHour,
         resetAt: null,
         available: false,
+        rateLimitHitsLast24h: hits.last24h,
+        rateLimitHitsLast7d: hits.last7d,
       };
     }
     
     const current = rateLimitPerHour - rateLimitResult.remaining;
-    
+    const hits = await getRateLimitHits(organisationId);
+
     return {
       current,
       limit: rateLimitPerHour,
       remaining: rateLimitResult.remaining,
       resetAt: rateLimitResult.resetAt,
       available: true,
+      rateLimitHitsLast24h: hits.last24h,
+      rateLimitHitsLast7d: hits.last7d,
     };
   });
 }

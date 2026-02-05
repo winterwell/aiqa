@@ -160,7 +160,18 @@ const ApiKeyPage: React.FC = () => {
       <Row>
         <Col>
           <h1>API Keys</h1>
-          <p className="text-muted">Manage API keys for organisation: {organisationId}</p>
+          <p className="text-muted">
+            Manage API keys for organisation: {organisationId}
+            {organisationId && (
+              <CopyButton
+                content={organisationId}
+                className="btn btn-link btn-sm p-0 ms-2"
+                size="sm"
+                showToast={showToast}
+                successMessage="Organisation ID copied to clipboard!"
+              />
+            )}
+          </p>
         </Col>
       </Row>
 

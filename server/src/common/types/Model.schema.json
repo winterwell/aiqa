@@ -5,7 +5,7 @@
     "Model": {
       "additionalProperties": false,
       "properties": {
-        "apiKey": {
+        "key": {
           "description": "the API key. This IS stored in the database as our code needs it to run LLMs for the user",
           "type": "string"
         },

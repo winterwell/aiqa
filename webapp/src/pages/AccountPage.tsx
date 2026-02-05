@@ -23,7 +23,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth0 } from '@auth0/auth0-react';
 import { getOrganisation, getOrganisationAccount, getOrganisationAccountUsage, updateOrganisationAccount, updateSubscription, createCheckoutSession, listOrganisations, getOrCreateUser } from '../api';
-import subscriptionsConfig from '../subscriptions.json';
+import { subscriptionsConfig } from '@aiqa/common/subscriptions';
 
 type SubscriptionPackage = 'free' | 'pro' | 'enterprise';
 
@@ -69,18 +69,10 @@ const AccountPage: React.FC = () => {
 
 	const subscriptionPackage: SubscriptionPackage = (account?.subscription?.type as SubscriptionPackage) || 'free';
 
-	// Get subscription plan defaults
-	const getSubscriptionDefault = (key: 'rate_limit_per_hour' | 'retention_period_days'): number | undefined => {
-		const planConfig = subscriptionsConfig[subscriptionPackage];
-		if (planConfig && key in planConfig) {
-			const value = planConfig[key as keyof typeof planConfig];
-			return typeof value === 'number' ? value : undefined;
-		}
-		// Enterprise fallback defaults (not in webapp subscriptions.json)
-		if (subscriptionPackage === 'enterprise') {
-			return key === 'rate_limit_per_hour' ? 10000 : 365;
-		}
-		return undefined;
+	// Get subscription plan defaults (shared config uses camelCase)
+	const getSubscriptionDefault = (key: 'rateLimitPerHour' | 'retentionPeriodDays'): number | undefined => {
+		const planConfig = subscriptionsConfig[subscriptionPackage as keyof typeof subscriptionsConfig];
+		return planConfig && typeof planConfig[key] === 'number' ? planConfig[key] : undefined;
 	};
 
 	const getSubscriptionBadgeColor = (pkg: SubscriptionPackage | null) => {
@@ -317,7 +309,7 @@ const AccountPage: React.FC = () => {
 											<span>
 												{(() => {
 													const currentValue = account.rateLimitPerHour;
-													const defaultValue = getSubscriptionDefault('rate_limit_per_hour');
+													const defaultValue = getSubscriptionDefault('rateLimitPerHour');
 													const displayValue = currentValue ?? defaultValue;
 													const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
 													
@@ -369,12 +361,19 @@ const AccountPage: React.FC = () => {
 											<small className="text-muted">Usage data unavailable (Redis not available)</small>
 										</div>
 									)}
+									{usage && ((usage.rateLimitHitsLast24h ?? 0) > 0 || (usage.rateLimitHitsLast7d ?? 0) > 0) && (
+										<div className="mt-2">
+											<small className="text-warning">
+												Your traces were rate-limited {usage.rateLimitHitsLast7d ?? 0} time{(usage.rateLimitHitsLast7d ?? 0) !== 1 ? 's' : ''} in the last week, {usage.rateLimitHitsLast24h ?? 0} time{(usage.rateLimitHitsLast24h ?? 0) !== 1 ? 's' : ''} in the last day.
+											</small>
+										</div>
+									)}
 								</ListGroupItem>
 								<ListGroupItem>
 									<strong>Retention Period:</strong>{' '}
 									{(() => {
 										const currentValue = account.retentionPeriodDays;
-										const defaultValue = getSubscriptionDefault('retention_period_days');
+										const defaultValue = getSubscriptionDefault('retentionPeriodDays');
 										const displayValue = currentValue ?? defaultValue;
 										const isCustom = currentValue !== undefined && currentValue !== null && defaultValue !== undefined && currentValue !== defaultValue;
 										

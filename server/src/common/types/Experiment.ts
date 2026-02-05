@@ -4,6 +4,11 @@
 export interface Result {
 	example: string;
   trace?: string;
+  /** TODO detect this in scoreAndStore
+   * true if this example was affected by a tracing rate-limit 
+   * - so token usage may be incomplete
+  */
+  rateLimited?: boolean;
 	scores: {
 		[metricName: string]: number;
 	},

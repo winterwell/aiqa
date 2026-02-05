@@ -93,7 +93,7 @@ const ExperimentCodePage: React.FC = () => {
             <CardBody>
               <TabContent activeTab={activeTab}>
                
-                <TabPanePython />
+                <TabPanePython datasetId={datasetId} organisationId={organisationId} />
                 <TabPane tabId="javascript">
                   <h5>Running Experiments with JavaScript</h5>
                   <ol>
@@ -170,15 +170,18 @@ const ExperimentCodePage: React.FC = () => {
   );
 };
 
-function TabPanePython() {
-return <TabPane tabId="python">
+function TabPanePython({ datasetId, organisationId }: { datasetId: string; organisationId: string }) {
+  const datasetPlaceholder = datasetId || 'YOUR_DATASET_ID';
+  const orgPlaceholder = organisationId || 'YOUR_ORGANISATION_ID';
+  return (
+    <TabPane tabId="python">
 <h5>Running Experiments with Python</h5>
 <ol>
   <li>
     <strong>Prepare your Dataset</strong> – these are the example inputs that will be tested.
   </li>
   <li>
-    <strong>Setup your Metrics</strong>.
+    <strong>Setup your Metrics</strong> - AIQA always measures latency, token count, and cost. You can add your own metrics too. For example, you can use an LLM-as-Judge metric to score "helpfulness".
   </li>
   <li>
     <strong>Install the Python client library:</strong>
@@ -190,6 +193,29 @@ return <TabPane tabId="python">
   </li>
   <li>
     <strong>Use the AIQA ExperimentRunner:</strong>
+          <pre className="bg-light p-3 mb-2"><code>{`from aiqa import ExperimentRunner
+
+# If you have LLM-as-Judge metrics - the ExperimentRunner needs a way to call the LLM. 
+# Default: just set OPENAI_API_KEY or ANTHROPIC_API_KEY in env
+# Or: provide a custom llm_call_fn: async (system_prompt, user_message) -> str
+
+runner = ExperimentRunner(
+    dataset_id="${datasetPlaceholder}",
+)
+
+dataset = runner.get_dataset()  # fetch the dataset
+runner.create_experiment({"name": "My experiment"})
+
+# The experiment runner feeds example inputs to your code, then analyses the output and the traces.
+# To do this, you need to define an engine function that takes the input and any extra parameters (e.g. model choice or configuration), and returns the output.
+# Usually the input_data is from a WithTracing trace. So my_engine will use that to rerun the function.
+# You might use mocks for e.g. the database or API calls, depending on your code.
+
+async def my_engine(input_data, parameters):
+    return await my_model(input_data, parameters)  # your model call
+
+# Running the experiment is easy!
+await runner.run(my_engine)  # runs on all examples, uploads results`}</code></pre>
     <ul>
       <li>Fetch the dataset</li>
       <li>Run the experiment</li>
@@ -199,8 +225,10 @@ return <TabPane tabId="python">
   <li>
     This will create a new experiment here.
   </li>
+  <li>For large datasets, the experiment might take a while to run. You can stop and restart an experiment - just get the experiment ID from here, and run again with that ID.</li>
 </ol>
-</TabPane>;
+    </TabPane>
+  );
 }
 
 function TabPaneGolang() {

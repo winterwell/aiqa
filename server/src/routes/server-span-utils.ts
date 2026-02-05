@@ -46,6 +46,9 @@ export interface TokenStats {
   errors: number;
 }
 
+/**
+ * Note: unset could mean a rate-limit blocked tracing. This is handled separately by tracking rate-limits.
+ */
 const ZERO_STATS: TokenStats = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, totalTokens: 0, cost: 0, errors: 0 };
 
 function addTokenStats(a: TokenStats, b: TokenStats): TokenStats {

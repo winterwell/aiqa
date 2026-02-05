@@ -118,6 +118,39 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   result = await searchSpans(sq, orgId, 10, 0);
   t.equal(result.total, 2, 'Should find both spans with OR query');
 
+  // Insert span with input as JSON string (e.g. Python WithTracing filter_input sends serialized dict).
+  // normalizeAttributesForFlattened should parse it to an object so we don't store { value: "..." }.
+  const spanWithJsonInput: Span = {
+    id: 'sp_json_input',
+    trace: 'tr1',
+    name: 'Span with JSON string input',
+    kind: 1,
+    start: now,
+    end: now + 50,
+    duration: 50,
+    ended: true,
+    status: { code: 1 },
+    attributes: {
+      input: '{"user_message":"Clara Harrow","mystery_id":9}',
+    },
+    links: [],
+    events: [],
+    resource: { attributes: {} },
+    instrumentationLibrary: { name: 'test' },
+    droppedAttributesCount: 0,
+    droppedEventsCount: 0,
+    droppedLinksCount: 0,
+    organisation: orgId,
+    starred: false,
+  };
+  await bulkInsertSpans([spanWithJsonInput]);
+  result = await searchSpans('attributes.input.user_message:Clara Harrow', orgId, 10, 0);
+  t.ok(result.total >= 1, 'JSON string input should be parsed to object and queryable by nested key');
+  const hit = result.hits.find((s: any) => s.id === 'sp_json_input');
+  t.ok(hit, 'Should find span with JSON input');
+  t.same((hit as any).attributes?.input?.user_message, 'Clara Harrow', 'input should be stored as object, not { value: string }');
+  t.same((hit as any).attributes?.input?.mystery_id, 9, 'input.mystery_id should be number');
+
   await closeClient();
   t.end();
 });

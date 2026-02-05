@@ -95,7 +95,7 @@ curl http://localhost:9200
 
 ## Redis Setup (Rate Limiting)
 
-The server uses Redis for rate limiting span posting per organisation. Rate limits are configured per organisation via the `rate_limit_per_hour` field (defaults to 1000 if not set).
+The server uses Redis for rate limiting span posting per organisation. Rate limits are configured per organisation via the `rateLimitPerHour` field (defaults to 1000 if not set).
 
 ### Installation
 

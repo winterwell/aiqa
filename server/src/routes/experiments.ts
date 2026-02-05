@@ -457,10 +457,11 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
           const tokenUsage = getTokenUsage(rootSpan);
           
           // Add token count and cost as system metrics (using IDs from defaultSystemMetrics.ts)
-          if (tokenUsage.totalTokens > 0) {
+          // 0 can be valid (e.g. a cached response)
+          if (tokenUsage.totalTokens >= 0) {
             computedScores[GEN_AI_USAGE_TOTAL_TOKENS] = tokenUsage.totalTokens;
           }
-          if (tokenUsage.cost > 0) {
+          if (tokenUsage.cost >= 0) {
             computedScores[GEN_AI_COST_USD] = tokenUsage.cost;
           }
         } else {
@@ -473,22 +474,22 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       }
     }
     
-    // Compute scores for each metric
+    // Compute scores for each metric. Key by metric.id (fallback name) so we match client-sent scores and webapp lookup.
     for (const { metric } of allMetrics) {
-      const metricName = metric.name;
-      
+      const metricKey = metric.id || metric.name;
+
       // If score is already provided in request body, skip computation
-      if (metricName in computedScores) {
+      if (metricKey in computedScores) {
         continue;
       }
-      
+
       // Otherwise, compute the score
       try {
-        computedScores[metricName] = await scoreMetric(organisation, metric, body.output, example);
+        computedScores[metricKey] = await scoreMetric(organisation, metric, body.output, example);
       } catch (error) {
         // Record error for this metric but continue processing other metrics
         const message = error instanceof Error ? error.message : String(error);
-        computedErrors[metricName] = message;
+        computedErrors[metricKey] = message;
       }
     }
 

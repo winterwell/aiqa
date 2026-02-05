@@ -1,13 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Row, Col } from 'reactstrap';
-import { useQuery } from '@tanstack/react-query';
-import { listExperiments, listDatasets } from '../api';
+import { Container, Row, Col, Button } from 'reactstrap';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listExperiments, listDatasets, deleteExperiment } from '../api';
 import type Experiment from '../common/types/Experiment';
+import type { Metric } from '../common/types/Metric';
 import ExperimentsListMetricsDashboard from '../components/ExperimentListMetricsDashboard';
 import TableUsingAPI, { ExtendedColumnDef, PageableData } from '../components/generic/TableUsingAPI';
 import A from '../components/generic/A';
+import ConfirmDialog from '../components/generic/ConfirmDialog';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
+import { TrashIcon } from '@phosphor-icons/react';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
   const summary = exp.summaries || {};
@@ -17,15 +20,13 @@ function getMetricMean(exp: Experiment, metricId: string): number | null {
   return n != null && isFinite(n) ? Number(n) : null;
 }
 
-function getOverallScore(exp: Experiment): number | null {
-  const summary = exp.summaries || {};
-  const overallScore = summary['Overall Score'];
-  return overallScore?.mean ?? overallScore?.avg ?? overallScore?.average ?? null;
-}
-
 const ExperimentsListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
+  const [selectedRows, setSelectedRows] = useState<Experiment[]>([]);
 
   const { data: experimentsForDashboard } = useQuery({
     queryKey: ['experiments', organisationId, 'dashboard'],
@@ -41,6 +42,62 @@ const ExperimentsListPage: React.FC = () => {
     if (!datasets || !Array.isArray(datasets)) return new Map<string, string>();
     return new Map(datasets.map((d: { id: string; name: string }) => [d.id, d.name]));
   }, [datasets]);
+
+  // Union of metric ids from datasets referenced by experiments (first metric with each id gives display name)
+  const metricsById = useMemo(() => {
+    const refIds = new Set<string>(
+      (Array.isArray(experimentsForDashboard) ? experimentsForDashboard : [])
+        .map((e: Experiment) => e.dataset)
+        .filter(Boolean)
+    );
+    const refDatasets = Array.isArray(datasets) ? datasets.filter((d: { id: string }) => refIds.has(d.id)) : [];
+    const byId = new Map<string, Metric>();
+    for (const d of refDatasets) {
+      for (const m of d.metrics || []) {
+        if (m?.id && !byId.has(m.id)) byId.set(m.id, m);
+      }
+    }
+    return byId;
+  }, [datasets, experimentsForDashboard]);
+
+  const metricColumns = useMemo(() => {
+    const priorityIds = ['duration', 'gen_ai.cost.usd', 'gen_ai.usage.total_tokens'];
+    const priority: Metric[] = [];
+    const rest: Metric[] = [];
+    metricsById.forEach((m) => {
+      if (priorityIds.includes(m.id)) priority.push(m);
+      else rest.push(m);
+    });
+    const ordered = [...priority.sort((a, b) => priorityIds.indexOf(a.id) - priorityIds.indexOf(b.id)), ...rest];
+    return ordered.map((metric) => {
+      const displayName = metric.name || metric.id;
+      const isDuration = metric.id === 'duration';
+      const isCost = metric.id === 'gen_ai.cost.usd';
+      const isTokens = metric.id === 'gen_ai.usage.total_tokens';
+      const isSpecific = metric.id === 'specific';
+      return {
+        id: metric.id,
+        header: displayName,
+        accessorFn: (row: Experiment) => getMetricMean(row, metric.id),
+        cell: ({ row }: { row: { original: Experiment } }) => {
+          const v = getMetricMean(row.original, metric.id);
+          if (v == null) return '-';
+          if (isDuration) return durationString(v);
+          if (isCost) return formatCost(v);
+          if (isTokens) return prettyNumber(v);
+          if (isSpecific) return (100 * v).toFixed(1);
+          return prettyNumber(v);
+        },
+        csvValue: (row: Experiment) => {
+          const v = getMetricMean(row, metric.id);
+          if (v == null) return '';
+          if (isSpecific) return String(100 * v);
+          return String(v);
+        },
+        enableSorting: true,
+      };
+    });
+  }, [metricsById]);
 
   const loadData = async (query: string): Promise<PageableData<Experiment>> => {
     const hits = await listExperiments(organisationId!, query || undefined);
@@ -96,95 +153,32 @@ const ExperimentsListPage: React.FC = () => {
       id: 'exampleCount',
       header: 'Examples',
       accessorFn: (row) => row.summaries?.duration?.count ?? 0,
-      csvValue: (row) => {
-        return row.summaries?.duration?.count ?? 0;
-      },
+      csvValue: (row) => row.summaries?.duration?.count ?? 0,
     },
-    // { TODO
-    //   id: 'errors',
-    //   header: 'Errors',
-    //   accessorFn: (row) => getMetricMean(row, 'errors'),
-    //   cell: ({ row }) => {
-    //     const v = getMetricMean(row.original, 'errors');
-    //     return v != null ? prettyNumber(v) : '-';
-    //   },
-    //   csvValue: (row) => {
-    //     const v = getMetricMean(row, 'errors');
-    //     return v != null ? String(v) : '';
-    //   },
-    //   enableSorting: true,
-    // },
-    // {
-    //   id: 'overallScore',
-    //   header: 'Overall Score',
-    //   accessorFn: (row) => getOverallScore(row),
-    //   cell: ({ row }) => {
-    //     const v = getOverallScore(row.original);
-    //     return v !== null && isFinite(v) ? v.toFixed(2) : '-';
-    //   },
-    //   csvValue: (row) => {
-    //     const v = getOverallScore(row);
-    //     return v !== null && isFinite(v) ? String(v) : '';
-    //   },
-    //   enableSorting: true,
-    // },
-    {
-      id: 'specific',
-      header: 'Specific Evals',
-      accessorFn: (row) => getMetricMean(row, 'specific'),
-      cell: ({ row }) => {
-        const v = getMetricMean(row.original, 'specific');
-        return v != null ? (100*v).toFixed(1) : '-';
-      },
-      csvValue: (row) => {
-        const v = getMetricMean(row, 'specific');
-        return v != null ? String(100*v) : '';
-      },
-      enableSorting: true,
-    },
-    {
-      id: 'duration',
-      header: 'Duration (avg)',
-      accessorFn: (row) => getMetricMean(row, 'duration'),
-      cell: ({ row }) => {
-        const ms = getMetricMean(row.original, 'duration');
-        return ms != null ? durationString(ms) : '-';
-      },
-      csvValue: (row) => {
-        const ms = getMetricMean(row, 'duration');
-        return ms != null ? String(ms) : '';
-      },
-      enableSorting: true,
-    },
-    {
-      id: 'tokensPerExample',
-      header: 'Tokens (avg)',
-      accessorFn: (row) => getMetricMean(row, 'gen_ai.usage.total_tokens'),
-      cell: ({ row }) => {
-        const v = getMetricMean(row.original, 'gen_ai.usage.total_tokens');
-        return v != null ? prettyNumber(v) : '-';
-      },
-      csvValue: (row) => {
-        const v = getMetricMean(row, 'gen_ai.usage.total_tokens');
-        return v != null ? String(v) : '';
-      },
-      enableSorting: true,
-    },
-    {
-      id: 'costPerExample',
-      header: 'Cost (avg)',
-      accessorFn: (row) => getMetricMean(row, 'gen_ai.cost.usd'),
-      cell: ({ row }) => {
-        const v = getMetricMean(row.original, 'gen_ai.cost.usd');
-        return v != null ? formatCost(v) : '-';
-      },
-      csvValue: (row) => {
-        const v = getMetricMean(row, 'gen_ai.cost.usd');
-        return v != null ? String(v) : '';
-      },
-      enableSorting: true,
-    },
-  ], [organisationId, datasetNameById]);
+    ...metricColumns,
+  ], [organisationId, datasetNameById, metricColumns]);
+
+  const handleBulkDelete = (ids: string[], rows: Experiment[]) => {
+    setSelectedRowIds(ids);
+    setSelectedRows(rows);
+    setDeleteModalOpen(true);
+  };
+
+  const handleBulkDeleteConfirmed = async () => {
+    if (selectedRows.length === 0) {
+      setDeleteModalOpen(false);
+      return;
+    }
+    try {
+      await Promise.all(selectedRows.map((row) => deleteExperiment(row.id)));
+      queryClient.invalidateQueries({ queryKey: ['experiments', organisationId] });
+      setDeleteModalOpen(false);
+      setSelectedRowIds([]);
+      setSelectedRows([]);
+    } catch (err) {
+      console.error('Failed to delete experiments:', err);
+    }
+  };
 
   return (
     <Container className="mt-4">
@@ -205,7 +199,24 @@ const ExperimentsListPage: React.FC = () => {
             columns={columns}
             queryKeyPrefix={['experiments', organisationId]}
             searchPlaceholder="Search experiments (Gmail-style syntax)"
+            getRowId={(row) => row.id}
             onRowClick={(row) => navigate(`/organisation/${organisationId}/experiment/${row.id}`)}
+            enableRowSelection={true}
+            bulkActionsToolbar={(ids, rows) => (
+              <Button color="danger" size="sm" onClick={() => handleBulkDelete(ids, rows)} title="Delete selected experiments">
+                <TrashIcon size={16} className="me-1" />
+                Delete
+              </Button>
+            )}
+          />
+          <ConfirmDialog
+            isOpen={deleteModalOpen}
+            toggle={() => setDeleteModalOpen(false)}
+            header="Delete selected experiments"
+            body={`Are you sure you want to delete ${selectedRows.length} experiment(s)?`}
+            onConfirm={handleBulkDeleteConfirmed}
+            confirmButtonText="Delete"
+            confirmButtonColor="danger"
           />
         </Col>
       </Row>

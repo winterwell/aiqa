@@ -141,6 +141,15 @@ const DatasetDetailsPage: React.FC = () => {
         },
       },
       {
+        id: 'created',
+        header: 'Created',
+        accessorFn: (row) => (row.created ? new Date(row.created).getTime() : 0),
+        cell: ({ row }) => row.original.created
+          ? new Date(row.original.created).toLocaleString()
+          : <span className="text-muted">—</span>,
+        enableSorting: true,
+      },
+      {
         id: 'tags',
         header: 'Tags',
         accessorFn: (row) => {

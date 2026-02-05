@@ -5,7 +5,7 @@ import SearchQuery from '../common/SearchQuery.js';
 import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
 import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
-import { getOrganisation, getOrganisationAccountByOrganisation } from '../db/db_sql.js';
+import { getOrganisation, getOrganisationAccountByOrganisation, recordRateLimitHit } from '../db/db_sql.js';
 import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
 import { propagateTokenCostsToRootSpan } from './server-span-utils.js';
@@ -225,12 +225,13 @@ export async function processOtlpTraceExport(
 
   // Get organisation account to check rate limit
   const account = await getOrganisationAccountByOrganisation(organisation);
-  const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rate_limit_per_hour') ?? 1000 : 1000;
+  const rateLimitPerHour = account ? getOrganisationThreshold(account, 'rateLimitPerHour') ?? 1000 : 1000;
   
   // Check rate limit before processing
   const rateLimitResult = await checkRateLimit(organisation, rateLimitPerHour);
   if (rateLimitResult && !rateLimitResult.allowed) {
     const retryAfterSeconds = Math.ceil(Math.max(0, rateLimitResult.resetAt - Date.now()) / 1000);
+    recordRateLimitHit(organisation).catch(err => console.error('Failed to record rate limit hit:', err));
     return {
       success: false,
       error: {
@@ -483,6 +484,156 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
     return span;
+  });
+
+  /**
+   * Get trace dashboard statistics.
+   * 
+   * Query parameters:
+   * - organisation: required - organisation ID
+   * - q: optional - search query string to filter traces
+   * - limit: optional - max traces to analyze (default: 20)
+   * 
+   * Security: Authenticated users only. Organisation membership verified by authenticate middleware.
+   * Returns aggregated statistics including duration, tokens, cost, and feedback metrics.
+   */
+  fastify.get('/trace/stat', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    const organisationId = (request.query as any).organisation as string | undefined || request.organisation;
+    if (!organisationId) {
+      reply.code(400).send({ error: 'organisation query parameter is required (JWT authentication) or organisation must be associated with API key' });
+      return;
+    }
+    const query = (request.query as any).q as string | undefined;
+    const limitRaw = parseInt(String((request.query as any).limit ?? 20), 10);
+    const limit = Number.isNaN(limitRaw) || limitRaw < 1 ? 20 : Math.min(limitRaw, 100); // Cap at 100 for performance
+
+    // Query root spans only for stats (more efficient)
+    let resolvedQ = query?.trim() || 'parent:unset';
+    if (!resolvedQ.includes('parent:unset') && !resolvedQ.includes('parent:')) {
+      resolvedQ = `(${resolvedQ}) AND parent:unset`;
+    }
+
+    const searchQuery = new SearchQuery(resolvedQ);
+
+    try {
+      // Get root spans with token/cost info
+      const result = await searchSpans(
+        searchQuery,
+        organisationId,
+        limit,
+        0,
+        ['id', 'trace', 'name', 'start', 'end', 'attributes.gen_ai.usage.total_tokens', 'attributes.gen_ai.cost.usd', 'attributes.feedback'],
+        ['attributes.input', 'attributes.output', 'attributes.unindexed_attributes']
+      );
+
+      const spans = result.hits;
+      const MIN_DURATION_MS = 50; // Ignore traces with duration < 50ms
+
+      // Calculate stats
+      const traceMap = new Map<string, Span[]>();
+      spans.forEach(span => {
+        const traceId = getTraceId(span);
+        if (traceId) {
+          if (!traceMap.has(traceId)) {
+            traceMap.set(traceId, []);
+          }
+          traceMap.get(traceId)!.push(span);
+        }
+      });
+
+      const traceTokens: number[] = [];
+      const traceCosts: number[] = [];
+      const durations: number[] = [];
+      let positiveFeedback = 0;
+      let negativeFeedback = 0;
+
+      traceMap.forEach((traceSpans, traceId) => {
+        // Sum tokens and cost for this trace
+        let traceTokensTotal = 0;
+        let traceCostTotal = 0;
+        
+        traceSpans.forEach(span => {
+          const attrs = span.attributes || {};
+          const tokens = attrs['gen_ai.usage.total_tokens'];
+          const cost = attrs['gen_ai.cost.usd'];
+          
+          if (typeof tokens === 'number' && tokens > 0) {
+            traceTokensTotal += tokens;
+          }
+          if (typeof cost === 'number' && cost > 0) {
+            traceCostTotal += cost;
+          }
+
+          // Check for feedback
+          const feedback = attrs.feedback;
+          if (feedback && typeof feedback === 'object') {
+            const thumbsUp = feedback.thumbs_up;
+            if (thumbsUp === true) positiveFeedback++;
+            if (thumbsUp === false) negativeFeedback++;
+          }
+        });
+
+        if (traceTokensTotal > 0) {
+          traceTokens.push(traceTokensTotal);
+        }
+        if (traceCostTotal > 0) {
+          traceCosts.push(traceCostTotal);
+        }
+
+        // Calculate duration from root spans
+        traceSpans.forEach(span => {
+          const start = span.start;
+          const end = span.end;
+          if (start && end && typeof start === 'number' && typeof end === 'number') {
+            const duration = end - start;
+            if (duration >= MIN_DURATION_MS) {
+              durations.push(duration);
+            }
+          }
+        });
+      });
+
+      const count = traceMap.size;
+      const tokensTotal = traceTokens.reduce((sum, t) => sum + t, 0);
+      const tokensAvg = traceTokens.length > 0 ? tokensTotal / traceTokens.length : 0;
+      const tokensMax = traceTokens.length > 0 ? Math.max(...traceTokens) : 0;
+
+      const costTotal = traceCosts.reduce((sum, c) => sum + c, 0);
+      const costAvg = traceCosts.length > 0 ? costTotal / traceCosts.length : 0;
+      const costMax = traceCosts.length > 0 ? Math.max(...traceCosts) : 0;
+
+      const avgDuration = durations.length > 0 ? durations.reduce((sum, d) => sum + d, 0) / durations.length : 0;
+      const maxDuration = durations.length > 0 ? Math.max(...durations) : 0;
+
+      return {
+        count,
+        tokens: {
+          total: tokensTotal,
+          avg: tokensAvg,
+          max: tokensMax,
+        },
+        cost: {
+          total: costTotal,
+          avg: costAvg,
+          max: costMax,
+        },
+        duration: {
+          avg: avgDuration,
+          max: maxDuration,
+        },
+        feedback: {
+          positive: positiveFeedback,
+          negative: negativeFeedback,
+        },
+      };
+    } catch (error: any) {
+      if (isConnectionError(error)) {
+        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+        return;
+      }
+      throw error;
+    }
   });
 
   /**

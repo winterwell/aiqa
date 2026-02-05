@@ -491,6 +491,7 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
                   renewal: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
                 },
               });
+              await clearRateLimitForOrganisation(organisationId);
             }
           }
         }
@@ -515,6 +516,7 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
                 renewal: subscription.current_period_end ? new Date(subscription.current_period_end * 1000) : null,
               },
             });
+            await clearRateLimitForOrganisation(organisationId);
           }
         }
         break;

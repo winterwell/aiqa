@@ -20,7 +20,6 @@ COPY server/tsconfig.json ./server/
 COPY server/src ./server/src
 COPY server/scripts ./server/scripts
 COPY server/src/version.json ./server/src/
-COPY server/subscriptions.json ./server/
 COPY server/token_costs.csv ./server/
 
 # Copy opentelemetry-proto directory (may be empty if git submodule not initialized)
@@ -56,7 +55,6 @@ COPY --from=base /app/server/node_modules ./node_modules
 COPY --from=base /app/server/package.json ./
 COPY --from=base /app/server/opentelemetry-proto ./opentelemetry-proto
 COPY --from=base /app/server/src/version.json ./src/
-COPY --from=base /app/server/subscriptions.json ./
 COPY --from=base /app/server/token_costs.csv ./
 
 EXPOSE 4318 4317

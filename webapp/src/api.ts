@@ -461,17 +461,17 @@ export async function deleteApiKey(id: string) {
 }
 
 // Model endpoints
-export async function listModels(organisationId: string, query?: string, includeApiKey?: boolean) {
+export async function listModels(organisationId: string, query?: string, includeKey?: boolean) {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);
 	if (query) params.append('q', query);
-	if (includeApiKey) params.append('fields', 'api_key');
+	if (includeKey) params.append('fields', 'key');
 	return fetchWithAuth(`/model?${params.toString()}`);
 }
 
-export async function getModel(id: string, includeApiKey?: boolean) {
+export async function getModel(id: string, includeKey?: boolean) {
 	const params = new URLSearchParams();
-	if (includeApiKey) params.append('fields', 'api_key');
+	if (includeKey) params.append('fields', 'key');
 	const queryString = params.toString();
 	return fetchWithAuth(`/model/${id}${queryString ? `?${queryString}` : ''}`);
 }
@@ -479,7 +479,7 @@ export async function getModel(id: string, includeApiKey?: boolean) {
 export async function createModel(organisationId: string, model: {
 	provider: 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'other';
 	name: string;
-	api_key: string;
+	key: string;
 	version?: string;
 	description?: string;
 }) {

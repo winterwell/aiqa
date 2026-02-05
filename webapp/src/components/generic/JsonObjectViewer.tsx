@@ -36,8 +36,8 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const $copyButton = <CopyButton content={json} logToConsole />
 	let content = getMessageContent(json);
 	let role = json.role || json.Role;
-	// HACK sniff tool use from e.g. Bedrock which uses role:user (content can be object when unwrapped)
-	if (content != null && typeof content === 'object' && 'ToolUseId' in (content as object)) {
+	// HACK sniff tool use from e.g. Bedrock which uses role:user
+	if (content?.ToolUseId) {
 		role = 'tool';
 	}
 	const otherKVs = { ...json };
@@ -130,6 +130,10 @@ export default function JsonObjectViewer({ json, textComponent, depth = 2 }: { j
 	if (Array.isArray(json)) {
 		if (json.length === 0) {
 			return <span className="text-muted">[]</span>;
+		}
+		// Single-item array: expand by default (same idea as single-key object below)
+		if (json.length === 1 && localDepth === null && effectiveDepth <= 0) {
+			setLocalDepth(1);
 		}
 		const itemsToShow = arrayFullyExpanded ? json.length : Math.min(3, json.length);
 		const hasMore = json.length > 3;

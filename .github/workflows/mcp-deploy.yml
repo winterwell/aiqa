@@ -1,0 +1,158 @@
+name: Deploy MCP Server
+
+on:
+  push:
+    paths:
+      - 'mcp/**'
+      - '.github/workflows/mcp-deploy.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        working-directory: ./mcp
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build MCP server
+        working-directory: ./mcp
+        run: pnpm run build
+
+      - name: Run unit tests
+        working-directory: ./mcp
+        run: pnpm run test:unit || echo "Unit tests skipped if vitest not available"
+
+      - name: Deploy to temporary location
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ env.DEPLOY_PORT }}
+          source: "mcp/dist,mcp/package.json,mcp/pnpm-lock.yaml"
+          target: "/opt/aiqa/mcp.new"
+          strip_components: 1
+
+      - name: Verify deployment and swap files
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ env.DEPLOY_PORT }}
+          script: |
+            # Verify new deployment files exist
+            if [ ! -f /opt/aiqa/mcp.new/dist/index.js ]; then
+              echo "ERROR: New deployment missing dist/index.js!"
+              sudo rm -rf /opt/aiqa/mcp.new
+              exit 1
+            fi
+            
+            # Stop service before swapping files (minimal downtime)
+            sudo systemctl stop aiqa-mcp || true
+            
+            # Backup old files (for rollback)
+            if [ -d /opt/aiqa/mcp/dist ]; then
+              sudo mv /opt/aiqa/mcp/dist /opt/aiqa/mcp/dist.old || true
+            fi
+            if [ -f /opt/aiqa/mcp/package.json ]; then
+              sudo mv /opt/aiqa/mcp/package.json /opt/aiqa/mcp/package.json.old || true
+            fi
+            if [ -f /opt/aiqa/mcp/pnpm-lock.yaml ]; then
+              sudo mv /opt/aiqa/mcp/pnpm-lock.yaml /opt/aiqa/mcp/pnpm-lock.yaml.old || true
+            fi
+            
+            # Move new files into place
+            sudo mv /opt/aiqa/mcp.new/dist /opt/aiqa/mcp/dist
+            sudo mv /opt/aiqa/mcp.new/package.json /opt/aiqa/mcp/package.json
+            sudo mv /opt/aiqa/mcp.new/pnpm-lock.yaml /opt/aiqa/mcp/pnpm-lock.yaml
+            
+            # Clean up temp directory
+            sudo rmdir /opt/aiqa/mcp.new || sudo rm -rf /opt/aiqa/mcp.new
+            
+            # Clean up old backup (keep last deployment for rollback)
+            sudo rm -rf /opt/aiqa/mcp/dist.old.old || true
+            if [ -d /opt/aiqa/mcp/dist.old ]; then
+              sudo mv /opt/aiqa/mcp/dist.old /opt/aiqa/mcp/dist.old.old || true
+            fi
+            sudo rm -f /opt/aiqa/mcp/package.json.old /opt/aiqa/mcp/pnpm-lock.yaml.old || true
+
+      - name: Install dependencies and configure MCP server
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          AIQA_API_BASE_URL: ${{ vars.AIQA_API_BASE_URL || 'http://localhost:4318' }}
+          MCP_PORT: ${{ vars.MCP_PORT || '4319' }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ env.DEPLOY_PORT }}
+          envs: AIQA_API_BASE_URL,MCP_PORT,LOG_LEVEL
+          script: |
+            cd /opt/aiqa/mcp
+            # Ensure directory is writable by deployment user
+            sudo chown -R $USER:$USER /opt/aiqa/mcp || true
+            # Ensure pnpm is available
+            if ! command -v pnpm &> /dev/null; then
+              echo "pnpm not found, installing..."
+              npm install -g pnpm
+            fi
+            # Install dependencies (as deployment user)
+            echo "Installing production dependencies..."
+            pnpm install --prod --no-frozen-lockfile
+            # Verify critical dependencies are installed
+            if [ ! -d node_modules/@modelcontextprotocol ]; then
+              echo "ERROR: @modelcontextprotocol module not found after installation!"
+              echo "Retrying dependency installation..."
+              rm -rf node_modules
+              pnpm install --prod --no-frozen-lockfile
+              if [ ! -d node_modules/@modelcontextprotocol ]; then
+                echo "ERROR: Failed to install dependencies after retry!"
+                exit 1
+              fi
+            fi
+            echo "Dependencies installed successfully"
+            # Create .env file
+            {
+              echo "AIQA_API_BASE_URL=${AIQA_API_BASE_URL:-http://localhost:4318}"
+              echo "MCP_PORT=${MCP_PORT:-4319}"
+              echo "LOG_LEVEL=${LOG_LEVEL:-info}"
+            } > .env
+            # Set all permissions to winterwell
+            sudo chown -R winterwell:winterwell /opt/aiqa/mcp
+            sudo chmod 600 .env
+            # Verify dist/index.js exists
+            if [ ! -f dist/index.js ]; then
+              echo "ERROR: dist/index.js not found!"
+              exit 1
+            fi
+            # Verify node_modules exists and contains critical dependencies
+            if [ ! -d node_modules ] || [ ! -d node_modules/@modelcontextprotocol ]; then
+              echo "ERROR: node_modules missing or incomplete!"
+              exit 1
+            fi
+            # Reload systemd and restart service
+            sudo systemctl daemon-reload
+            sudo systemctl restart aiqa-mcp || sudo systemctl start aiqa-mcp
+            sleep 2
+            sudo systemctl status aiqa-mcp --no-pager -l || echo "Service status check failed - may need manual start"

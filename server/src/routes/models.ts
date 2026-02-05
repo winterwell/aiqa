@@ -8,14 +8,12 @@ import {
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import { checkAccessDeveloperOrAdmin, getOrganisationId, parseSearchQuery, send404 } from './route_helpers.js';
 
-/**
- * Mask API key: return first 4 chars + **** + last 4 chars
- */
-function maskApiKey(apiKey: string): string {
-  if (!apiKey || apiKey.length < 8) {
+/** Mask model key: return first 4 chars + **** + last 4 chars */
+function maskKey(key: string): string {
+  if (!key || key.length < 8) {
     return '****';
   }
-  return `${apiKey.substring(0, 4)}****${apiKey.substring(apiKey.length - 4)}`;
+  return `${key.substring(0, 4)}****${key.substring(key.length - 4)}`;
 }
 
 /**
@@ -41,8 +39,9 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
       return;
     }
     
-    if (!body.api_key) {
-      reply.code(400).send({ error: 'api_key is required' });
+    const key = body.key ?? body.api_key;
+    if (!key) {
+      reply.code(400).send({ error: 'key is required' });
       return;
     }
     
@@ -50,18 +49,17 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
       organisation: organisationId,
       provider: body.provider,
       name: body.name,
-      apiKey: body.apiKey ?? body.api_key,
+      key,
       version: body.version,
       description: body.description,
     });
     
-    // Mask the API key in the response
-    const response = { ...model, hash: maskApiKey(model.apiKey), apiKey: undefined };
+    const response = { ...model, hash: maskKey(model.key), key: undefined };
     return response;
   });
 
   // Security: Authenticated users only. Organisation membership verified by authenticate middleware.
-  // Returns hash (masked api key) by default. Returns full api_key if fields=api_key parameter is sent AND requester has developer/admin role.
+  // Returns hash (masked key) by default. Returns full key if fields=key (or fields=api_key for backwards compat) and requester has developer/admin role.
   fastify.get('/model/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     const { id } = request.params as { id: string };
     const model = await getModel(id);
@@ -71,20 +69,16 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
       return;
     }
     
-    // Check organisation membership
     if (!checkAccess(request, reply, ['developer', 'admin'], model.organisation)) return;
     
-    // Check if requester wants full api_key (must have developer/admin role)
     const fields = (request.query as any).fields as string | undefined;
-    const includeApiKey = fields === 'apiKey' || fields === 'api_key';
+    const includeKey = fields === 'key' || fields === 'apiKey' || fields === 'api_key';
     
-    if (includeApiKey) {
-      // Already checked access above, so return full model
+    if (includeKey) {
       return model;
     }
     
-    // Return masked API key
-    const response = { ...model, hash: maskApiKey(model.apiKey), apiKey: undefined };
+    const response = { ...model, hash: maskKey(model.key), key: undefined };
     return response;
   });
 
@@ -96,20 +90,14 @@ export async function registerModelRoutes(fastify: FastifyInstance): Promise<voi
     // Check access (must be developer/admin)
     if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     
-    // Check if requester wants full apiKey
     const fields = (request.query as any).fields as string | undefined;
-    const includeApiKey = fields === 'apiKey' || fields === 'api_key';
+    const includeKey = fields === 'key' || fields === 'apiKey' || fields === 'api_key';
     
     const searchQuery = parseSearchQuery(request);
     const models = await listModels(organisationId, searchQuery);
     
-    // Mask API keys unless explicitly requested
-    if (!includeApiKey) {
-      return models.map(model => ({
-        ...model,
-        hash: maskApiKey(model.apiKey),
-        apiKey: undefined,
-      }));
+    if (!includeKey) {
+      return models.map(m => ({ ...m, hash: maskKey(m.key), key: undefined }));
     }
     
     return models;

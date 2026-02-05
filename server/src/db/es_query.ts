@@ -306,9 +306,9 @@ export async function searchEntities<T>(
 			console.warn(`Error parsing output for hit ${hit.id}: ${e}`);
 		}
 	}
-	// Unwrap { value } stored for ES flattened (when client sent primitive input/output)
-	if (isValueWrapper(hit.attributes?.input)) hit.attributes.input = hit.attributes.input.value;
-	if (isValueWrapper(hit.attributes?.output)) hit.attributes.output = hit.attributes.output.value;
+	// Unwrap { aiqa_value } or legacy { value } stored for ES flattened (when client sent primitive input/output)
+	if (isValueWrapper(hit.attributes?.input)) hit.attributes.input = hit.attributes.input.aiqa_value ?? hit.attributes.input.value;
+	if (isValueWrapper(hit.attributes?.output)) hit.attributes.output = hit.attributes.output.aiqa_value ?? hit.attributes.output.value;
 	return hit;
   });
 
@@ -324,7 +324,7 @@ function isJsonString(str?: string): boolean {
   return str && typeof str === 'string' && (str[0] == '{' || str[0] == '[');
 }
 
-/** True if obj is a plain object with exactly one key "value" (wrapper used for ES flattened). */
+/** True if obj is a plain object with exactly one key "aiqa_value" or "value" (wrapper used for ES flattened). */
 function isValueWrapper(obj: any): boolean {
-  return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === 1 && 'value' in obj;
+  return obj && typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length === 1 && ('aiqa_value' in obj || 'value' in obj);
 }

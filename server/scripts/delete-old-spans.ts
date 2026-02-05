@@ -52,7 +52,7 @@ async function main() {
       }
 
       // Get retention period, falling back to subscription defaults
-      const retentionDays = getOrganisationThreshold(account, 'retention_period_days');
+      const retentionDays = getOrganisationThreshold(account, 'retentionPeriodDays');
       
       if (retentionDays === null) {
         console.log(`Skipping organisation ${org.id} (${org.name || 'unnamed'}) - no retention period available`);

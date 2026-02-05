@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Container, Row, Col, FormGroup, Label, Input, Form, Button } from 'reactstrap';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Container, Row, Col, FormGroup, Label, Input, Form, Button, Alert } from 'reactstrap';
 import { ColumnDef } from '@tanstack/react-table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { searchSpans, deleteSpans } from '../api';
+import { searchSpans, deleteSpans, getOrganisationAccountUsage } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId } from '../common/types/Span.js';
 import { propFromString, setPropInString } from '../common/SearchQuery';
@@ -96,6 +96,15 @@ const TracesListPage: React.FC = () => {
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<Span[]>([]);
   
+  // Account usage (for rate limit hit banner)
+  const { data: usage } = useQuery({
+    queryKey: ['organisationAccountUsage', organisationId],
+    queryFn: () => getOrganisationAccountUsage(organisationId!),
+    enabled: !!organisationId,
+    refetchInterval: 60000, // Refresh every minute
+  });
+  const hasRateLimitHits = (usage?.rateLimitHitsLast24h ?? 0) > 0 || (usage?.rateLimitHitsLast7d ?? 0) > 0;
+
   // Get date filter from URL params, default to '1d'
   const dateFilterType = (searchParams.get('dateFilter') || '1d') as DateFilterType;
   const sinceParam = searchParams.get('since') || '';
@@ -611,6 +620,11 @@ const TracesListPage: React.FC = () => {
 
   return (
     <Page header="Traces">
+      {hasRateLimitHits && (
+        <Alert color="warning" className="mt-3 mb-0">
+          Traces were rate-limited <strong>{usage!.rateLimitHitsLast7d ?? 0}</strong> time{(usage!.rateLimitHitsLast7d ?? 0) !== 1 ? 's' : ''} in the last week, <strong>{usage!.rateLimitHitsLast24h ?? 0}</strong> time{(usage!.rateLimitHitsLast24h ?? 0) !== 1 ? 's' : ''} in the last day. Check your <Link to={`/organisation/${organisationId}/account`} className="alert-link">account</Link> for limits and usage.
+        </Alert>
+      )}
       {/* filtering is buggy so off for now <Row className="mt-3">
         <Col>
           <Form>
