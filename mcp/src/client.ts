@@ -53,7 +53,8 @@ export class AiqaApiClient {
     tags?: string[];
     metrics?: any[];
   }): Promise<any> {
-    return this.request('POST', '/dataset', dataset);
+    // Server requires organisation as query parameter for POST requests
+    return this.request('POST', `/dataset?organisation=${encodeURIComponent(dataset.organisation)}`, dataset);
   }
 
   async getDataset(id: string): Promise<any> {
