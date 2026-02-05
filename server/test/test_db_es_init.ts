@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
-import { initClient, createIndices, closeClient, checkElasticsearchAvailable, generateSpanMappings, getClient, SPAN_INDEX, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from '../dist/db/db_es.js';
+import { initClient, createIndices, closeClient, checkElasticsearchAvailable, generateSpanMappings, getClient, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from '../dist/db/db_es.js';
+import { SPAN_INDEX } from '../dist/db/db_es_init.js';
 
 dotenv.config();
 
@@ -12,6 +13,16 @@ tap.test('generateSpanMappings returns valid mappings', t => {
   t.ok(mappings.start && mappings.start.type === 'long', 'start is long');
   t.ok(mappings.attributes && mappings.attributes.type === 'flattened', 'attributes is flattened');
   t.ok(mappings.unindexed_attributes && mappings.unindexed_attributes.enabled === false, 'has unindexed_attributes');
+  t.end();
+});
+
+
+tap.test('generateSpanMappings maps Span.status.code to numeric type', t => {
+  const mappings = generateSpanMappings();
+  t.ok(mappings && typeof mappings === 'object', 'returns an object');
+  const statusMapping = mappings.status;
+  t.ok(statusMapping, 'has status field');
+  t.ok(statusMapping.properties?.code && (statusMapping.properties.code.type === 'integer' || statusMapping.properties.code.type === 'long'), 'code is integer or long');
   t.end();
 });
 

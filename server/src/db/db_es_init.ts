@@ -3,8 +3,11 @@
  * Depends on db_es for client and index names. Call createIndices() after initClient().
  */
 
-import { getClient, SPAN_INDEX, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from './db_es.js';
+import { getClient, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from './db_es.js';
 import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/utils/schema-loader.js';
+
+/** Most code should use the SPAN_INDEX_ALIAS. Only init code needs the actual index name. */
+export const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
 
 function isNotFoundError(error: any): boolean {
   return error.meta?.statusCode === 404;
@@ -23,7 +26,7 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
 
     // Special handling for time fields (start, end, duration)
     if ((fieldName === 'start' || fieldName === 'end' || fieldName === 'duration') &&
-        prop.type === 'number') {
+      prop.type === 'number') {
       mappings[fieldName] = { type: 'long' };
       continue;
     }
@@ -33,9 +36,20 @@ function generateEsMappingsFromSchema(properties: Record<string, any>): Record<s
     if (prop.type === 'object' && prop.properties) {
       baseMapping.properties = generateEsMappingsFromSchema(prop.properties);
     }
-    if (prop.type === 'array' && prop.items?.type === 'object' && prop.items.properties) {
-      baseMapping.properties = generateEsMappingsFromSchema(prop.items.properties);
-    }
+    if (prop.type === 'array') {
+      if (prop.items?.type === 'object') {
+        if (prop.items.properties) {
+          baseMapping.properties = generateEsMappingsFromSchema(prop.items.properties);
+        } else {
+          baseMapping.type = 'flattened';
+        }
+      } else if (prop.items?.type) {
+        const arrayItemMapping = jsonSchemaToEsMapping(prop.items, 'item');
+        baseMapping.type = arrayItemMapping.type;
+      } else {
+        console.warn(`TODO Unknown array item type: ${prop.items?.type} from field ${fieldName}`);
+      }
+    } // end array handling
     if (fieldName === 'events' && prop.type === 'array' && prop.items?.properties) {
       const eventProps = prop.items.properties;
       baseMapping.properties = {};
@@ -67,7 +81,7 @@ export function generateSpanMappings(): any {
   return mappings;
 }
 
-function generateExampleMappings(): any {
+export function generateExampleMappings(): any {
   const exampleSchema = loadSchema('Example');
   const exampleDef = getTypeDefinition(exampleSchema, 'Example');
   if (!exampleDef || !exampleDef.properties) {

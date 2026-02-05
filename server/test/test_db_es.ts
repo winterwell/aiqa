@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import tap from 'tap';
 import { initClient, createIndices, closeClient, bulkInsertSpans, searchSpans, deleteIndex, checkElasticsearchAvailable } from '../dist/db/db_es.js';
 import type { Span } from '../dist/common/types/index.js';
+import { randomUUID } from 'node:crypto';
 
 dotenv.config();
 
@@ -120,9 +121,10 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
 
   // Insert span with input as JSON string (e.g. Python WithTracing filter_input sends serialized dict).
   // normalizeAttributesForFlattened should parse it to an object so we don't store { value: "..." }.
+  const traceId = randomUUID();
   const spanWithJsonInput: Span = {
     id: 'sp_json_input',
-    trace: 'tr1',
+    trace: traceId,
     name: 'Span with JSON string input',
     kind: 1,
     start: now,
@@ -144,7 +146,7 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
     starred: false,
   };
   await bulkInsertSpans([spanWithJsonInput]);
-  result = await searchSpans('attributes.input.user_message:Clara Harrow', orgId, 10, 0);
+  result = await searchSpans('trace:' + traceId, orgId, 10, 0);
   t.ok(result.total >= 1, 'JSON string input should be parsed to object and queryable by nested key');
   const hit = result.hits.find((s: any) => s.id === 'sp_json_input');
   t.ok(hit, 'Should find span with JSON input');

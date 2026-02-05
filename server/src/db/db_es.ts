@@ -12,7 +12,7 @@ import { searchEntities as searchEntitiesEs } from './es_query.js';
 import Example from '../common/types/Example.js';
 
 let client: Client | null = null;
-export const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
+
 export const SPAN_INDEX_ALIAS = process.env.SPANS_INDEX_ALIAS || 'aiqa_spans_alias';
 export const DATASET_EXAMPLES_INDEX = process.env.DATASET_EXAMPLES_INDEX || 'aiqa_dataset_examples';
 export const DATASET_EXAMPLES_INDEX_ALIAS = process.env.DATASET_EXAMPLES_INDEX_ALIAS || 'aiqa_dataset_examples_alias';

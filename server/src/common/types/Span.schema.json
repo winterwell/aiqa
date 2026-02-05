@@ -34,7 +34,7 @@
           "properties": {
             "code": {
               "type": "integer",
-              "description": "SpanStatusCode: UNSET=0, OK=1, ERROR=2"
+              "description": "UNSET=0, OK=1, ERROR=2"
             },
             "message": {
               "type": "string"

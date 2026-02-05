@@ -11,7 +11,7 @@
  *   4. Optionally keeps or deletes the old index
  * 
  * Usage:
- *   node dist/db/es_migration.js
+ *   node dist/db/es_migration_examples.js
  * 
  * Environment variables:
  *   - ELASTICSEARCH_URL (default: http://localhost:9200)
@@ -24,12 +24,12 @@
 
 import dotenv from 'dotenv';
 import { Client } from '@elastic/elasticsearch';
-import { initClient, getClient, closeClient, generateSpanMappings } from './db_es.js';
+import { initClient, getClient, closeClient } from './db_es.js';
+import { generateExampleMappings } from './db_es_init.js';
 
 dotenv.config();
 
-const SPAN_INDEX = process.env.SPANS_INDEX || 'aiqa_spans';
-const SPAN_INDEX_ALIAS = process.env.SPANS_INDEX_ALIAS || 'aiqa_spans_alias';
+const INDEX_ALIAS = process.env.DATASET_EXAMPLES_INDEX_ALIAS || 'aiqa_dataset_examples_alias';
 const DELETE_OLD_INDEX = process.env.DELETE_OLD_INDEX === 'true';
 
 // Generate new index name with version suffix
@@ -46,7 +46,7 @@ function getNewIndexName(oldIndexName: string): string {
     version = parseInt(versionMatch[1], 10) + 1;
     newIndexName = `${baseName}_v${version}`;
   }
-  console.log(`Old index name to new: ${oldIndexName} -> ${newIndexName}`);
+  
   return newIndexName;
 }
 
@@ -226,26 +226,13 @@ async function migrateSpanIndex(): Promise<void> {
   let currentIndexName: string | null = null;
   
   try {
-    currentIndexName = await getIndexFromAlias(client, SPAN_INDEX_ALIAS);
+    currentIndexName = await getIndexFromAlias(client, INDEX_ALIAS);
   } catch (error: any) {
-    console.warn(`Could not get index from alias ${SPAN_INDEX_ALIAS}:`, error.message);
+    console.error(`Could not get index from alias ${INDEX_ALIAS}:`, error.message);
+    return;
   }
   
-  // Fallback to SPAN_INDEX if alias doesn't exist or doesn't point anywhere
-  if (!currentIndexName) {
-    const indexExists = await client.indices.exists({ index: SPAN_INDEX });
-    if (indexExists) {
-      currentIndexName = SPAN_INDEX;
-    } else {
-      console.log(`No existing index found. Creating initial index ${SPAN_INDEX}...`);
-      const mappings = generateSpanMappings();
-      await createNewIndex(client, SPAN_INDEX, mappings);
-      await updateAlias(client, SPAN_INDEX_ALIAS, SPAN_INDEX);
-      console.log('Migration complete: Initial index created.');
-      return;
-    }
-  }
-
+ 
   console.log(`Current index: ${currentIndexName}`);
   
   // Generate new index name
@@ -258,7 +245,7 @@ async function migrateSpanIndex(): Promise<void> {
     console.log(`New index ${newIndexName} already exists. Checking if migration is complete...`);
     
     // Check if alias already points to new index
-    const aliasIndex = await getIndexFromAlias(client, SPAN_INDEX_ALIAS);
+    const aliasIndex = await getIndexFromAlias(client, INDEX_ALIAS);
     if (aliasIndex === newIndexName) {
       console.log('Migration already complete. Alias points to new index.');
       
@@ -269,7 +256,7 @@ async function migrateSpanIndex(): Promise<void> {
       return;
     } else {
       console.log('New index exists but alias not updated. Updating alias...');
-      await updateAlias(client, SPAN_INDEX_ALIAS, newIndexName, currentIndexName);
+      await updateAlias(client, INDEX_ALIAS, newIndexName, currentIndexName);
       
       if (DELETE_OLD_INDEX && currentIndexName !== newIndexName) {
         await deleteOldIndex(client, currentIndexName);
@@ -279,8 +266,8 @@ async function migrateSpanIndex(): Promise<void> {
   }
 
   // Generate new mappings
-  console.log('Generating new mappings from Span schema...');
-  const mappings = generateSpanMappings();
+  console.log('Generating new mappings from Example + Span schemas...');
+  const mappings = generateExampleMappings();
 
   // Create new index
   await createNewIndex(client, newIndexName, mappings);
@@ -289,7 +276,7 @@ async function migrateSpanIndex(): Promise<void> {
   await reindexData(client, currentIndexName, newIndexName);
 
   // Update alias
-  await updateAlias(client, SPAN_INDEX_ALIAS, newIndexName, currentIndexName);
+  await updateAlias(client, INDEX_ALIAS, newIndexName, currentIndexName);
 
   // Optionally delete old index
   if (DELETE_OLD_INDEX && currentIndexName !== newIndexName) {
@@ -305,7 +292,6 @@ async function migrateSpanIndex(): Promise<void> {
  * Main entry point.
  */
 async function main() {
-  console.log('Starting Span index migration...');
   const esUrl = process.env.ELASTICSEARCH_URL || 'http://localhost:9200';
 
   console.log('Initializing Elasticsearch client...');
@@ -313,7 +299,6 @@ async function main() {
 
   try {
     // Check if Elasticsearch is available
-    console.log('Checking if Elasticsearch is available...');
     const client = getClient();
     await client.ping();
     console.log('Connected to Elasticsearch\n');

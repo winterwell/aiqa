@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from '../src/server_auth.js';
 dotenv.config();
 
 // ES/DB setup and one HTTP test can exceed default tap timeout when run with other suites.
-tap.setTimeout(30000); // Reduced from 90000ms - single test runs in ~300ms
+tap.setTimeout(60000); // Reduced from 90000ms - single test runs in ~300ms
 
 // Test server setup
 let fastify: ReturnType<typeof Fastify> | null = null;

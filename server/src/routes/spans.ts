@@ -353,7 +353,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         otlpRequest = request.body as any;
       }
 
-      console.log('spans.ts POST: OTLP request:', JSON.stringify(otlpRequest, null, 2));
+      // console.log('spans.ts POST: OTLP request:', JSON.stringify(otlpRequest, null, 2));
       
       // Process the OTLP trace export (rate limiting, storage, etc.)
       const result = await processOtlpTraceExport(otlpRequest, organisation);
@@ -444,7 +444,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     const feedbackValue = SearchQuery.propFromString(resolvedQ, 'feedback');
     if (feedbackValue === 'positive' || feedbackValue === 'negative') {
       resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
-      const feedbackSpanQuery = `attributes.aiqa.span_type:feedback AND attributes.feedback.value:${feedbackValue}`;
+      const feedbackSpanQuery = `attributes.feedback.value:${feedbackValue}`;
       const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace'], undefined);
       const traceIds = feedbackResult.hits.map((s: Span) => s.trace).filter(Boolean) as string[];
       if (traceIds.length === 0) {
