@@ -189,23 +189,30 @@ export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
       }
       return { type: 'keyword' };
     case 'integer':
-      return { type: 'long' };
     case 'number':
-      return { type: 'float' };
     case 'boolean':
-      return { type: 'boolean' };
+      return { type: esTypeForJsonSchemaPrimitiveType[type] };
     case 'array':
-      if (prop.items?.type === 'string') {
-        return { type: 'keyword' };
+      const primitiveType = esTypeForJsonSchemaPrimitiveType[prop.items?.type];
+      if (primitiveType) {
+        return { type: primitiveType };
       }
-      return { type: 'nested' };
+      console.warn(`TODO Unknown array item type: ${prop} from field ${fieldName}`);
+      return {};
     case 'object':
       return {
         type: 'object',
         properties: {}
       };
     default:
-      return { type: 'keyword' };
+      console.warn(`TODO Unknown type: ${type} from field ${fieldName}`);
+      return {};
   }
 }
 
+const esTypeForJsonSchemaPrimitiveType = {
+  'string': 'keyword',
+  'integer': 'long',
+  'number': 'float',
+  'boolean': 'boolean'
+}

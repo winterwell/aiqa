@@ -15,11 +15,14 @@
         "id": {
           "type": "string"
         },
+        "isSuperAdmin": {
+          "type": "boolean"
+        },
         "name": {
           "type": "string"
         },
         "sub": {
-          "description": "Auth0 subject identifier (e.g., \"google-oauth2|1234\")",
+          "description": "Auth0 subject identifier (e.g., \"google-oauth2|109424848053592856653\")",
           "type": "string"
         },
         "updated": {

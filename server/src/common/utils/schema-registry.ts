@@ -8,10 +8,12 @@ import DatasetSchema from '../types/Dataset.schema.json';
 import ExperimentSchema from '../types/Experiment.schema.json';
 import SpanSchema from '../types/Span.schema.json';
 import ExampleSchema from '../types/Example.schema.json';
+import MetricSchema from '../types/Metric.schema.json';
 
 import type { JsonSchema } from './schema-loader.js';
 
 const schemaRegistry: Record<string, JsonSchema> = {
+  Metric: MetricSchema as JsonSchema,
   Organisation: OrganisationSchema as JsonSchema,
   OrganisationAccount: OrganisationAccountSchema as JsonSchema,
   User: UserSchema as JsonSchema,

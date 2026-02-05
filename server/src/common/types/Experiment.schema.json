@@ -73,6 +73,10 @@
           },
           "type": "object"
         },
+        "rateLimited": {
+          "description": "TODO detect this in scoreAndStore true if this example was affected by a tracing rate-limit \n- so token usage may be incomplete",
+          "type": "boolean"
+        },
         "scores": {
           "additionalProperties": {
             "type": "number"

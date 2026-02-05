@@ -5,10 +5,6 @@
     "Model": {
       "additionalProperties": false,
       "properties": {
-        "key": {
-          "description": "the API key. This IS stored in the database as our code needs it to run LLMs for the user",
-          "type": "string"
-        },
         "created": {
           "format": "date-time",
           "type": "string"
@@ -16,11 +12,15 @@
         "description": {
           "type": "string"
         },
-        "hash": {
-          "description": "Masked api key (e.g. first 4 + **** + last 4) when returning model info",
+        "id": {
           "type": "string"
         },
-        "id": {
+        "key": {
+          "description": "the API key. This IS stored in the database as our code needs it to run LLMs for the user",
+          "type": "string"
+        },
+        "keyEnd": {
+          "description": "Last 4 characters of the apiKey for security when returning model info",
           "type": "string"
         },
         "model": {

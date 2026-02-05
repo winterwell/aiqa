@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import tap from 'tap';
 import { initClient, createIndices, closeClient, checkElasticsearchAvailable, generateSpanMappings, getClient, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from '../dist/db/db_es.js';
-import { SPAN_INDEX } from '../dist/db/db_es_init.js';
+import { SPAN_INDEX, generateExampleMappings } from '../dist/db/db_es_init.js';
 
 dotenv.config();
 
@@ -13,6 +13,14 @@ tap.test('generateSpanMappings returns valid mappings', t => {
   t.ok(mappings.start && mappings.start.type === 'long', 'start is long');
   t.ok(mappings.attributes && mappings.attributes.type === 'flattened', 'attributes is flattened');
   t.ok(mappings.unindexed_attributes && mappings.unindexed_attributes.enabled === false, 'has unindexed_attributes');
+  t.end();
+});
+
+
+tap.test('generateExampleMappings returns valid mappings', t => {
+  const mappings = generateExampleMappings();
+  t.ok(mappings && typeof mappings === 'object', 'returns an object');
+  t.ok(mappings.metrics && mappings.metrics.properties);
   t.end();
 });
 

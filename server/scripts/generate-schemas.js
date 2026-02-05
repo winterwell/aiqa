@@ -13,6 +13,7 @@ const outputDir = path.join(__dirname, '../src/common/types');
 const typeFiles = [
   { file: 'Organisation.ts', type: 'Organisation' },
   { file: 'OrganisationAccount.ts', type: 'OrganisationAccount' },
+  { file: 'Metric.ts', type: 'Metric' },
   { file: 'User.ts', type: 'User' },
   { file: 'ApiKey.ts', type: 'ApiKey' },
   { file: 'Model.ts', type: 'Model' },

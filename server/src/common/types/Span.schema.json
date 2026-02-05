@@ -199,7 +199,7 @@
         },
         "_seen": {
           "type": "array",
-          "items": { "type": "number" },
+          "items": { "type": "integer" },
           "description": "For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch)"
         }
       },

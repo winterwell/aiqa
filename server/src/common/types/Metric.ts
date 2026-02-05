@@ -19,7 +19,7 @@ export interface Metric {
   promptCriteria?: string;
   code?: string;
   /** for type:contains|equals|not_contains|not_equals */
-  value?: string | number
+  value?: string
   parameters?: Record<string, any>;
 }
 
