@@ -17,6 +17,26 @@ function getMessageContentObj(json: any): any | null {
 	return baseContent;
 }
 
+/**
+ * Like getMessageContentObj, but it will sniff and unwrap common chat message formats.
+ * @param json 
+ * @returns string | object | null
+ */
+function getMessageContentForDisplay(json: any): string | object | null {
+	let contentObj = getMessageContentObj(json);
+	if ( ! contentObj) return null;
+	if (typeof contentObj === "string") {
+		return contentObj;
+	}
+	if (contentObj.type === "text" && contentObj.text) {
+		return contentObj.text;
+	}
+	if (contentObj.type === "array" && contentObj.items?.length === 1) {
+		return getMessageContentForDisplay(contentObj.items[0]);
+	}
+	return contentObj;
+}
+
 function getMessageContentText(json: any): string | null {
 	let baseContent = getMessageContentObj(json);
 	if ( ! baseContent) return null;
@@ -50,7 +70,7 @@ function MessageViewer({ json, textComponent, depth = 2 }: { json: any, textComp
 	const TextComponent = textComponent;
 	const [expanded, setExpanded] = useState(false);
 	const $copyButton = <CopyButton content={json} logToConsole />
-	let content = getMessageContentText(json);
+	let content = getMessageContentForDisplay(json);
 	let role = json.role || json.Role;
 	// HACK sniff tool use from e.g. Bedrock which uses role:user
 	if (role==='user' && getMessageContentObj(json)?.ToolUseId) {
