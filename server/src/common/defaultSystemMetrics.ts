@@ -1,6 +1,13 @@
 import { Metric } from './types/Metric.js';
-import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from './constants_otel.js';
+import { SpanStats } from './types/Span.js';
 
+
+
+export const COST_METRIC_ID = 'cost';
+export const TOTAL_TOKENS_METRIC_ID = 'totalTokens';
+export const DURATION_METRIC_ID = 'duration';
+export const ERRORS_METRIC_ID = 'errors';
+export const SPECIFIC_METRIC_ID = 'specific';
 /**
  * Default system metrics that are always available for datasets.
  * These are built-in metrics that AIQA handles automatically.
@@ -13,23 +20,24 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
 //     type: 'system',
 //   },
   {
-    id: 'duration',
+    /** matches SpanStats.duration */
+    id: DURATION_METRIC_ID,
     name: 'Duration',
     description: 'Total duration of the trace',
     unit: 'ms',
     type: 'system',
   },
   {
-    /** matches the OpenTelemetry semantic convention */
-    id: GEN_AI_USAGE_TOTAL_TOKENS,
+    /** matches SpanStats.totalTokens */
+    id: TOTAL_TOKENS_METRIC_ID,
     name: 'Token Count',
     description: 'Total number of tokens used',
     unit: 'tokens',
     type: 'system',
   },
   {
-    /** matches the semi-standard-like otel attribute we use */
-    id: GEN_AI_COST_USD,
+    /** matches SpanStats.cost */
+    id: COST_METRIC_ID,
     name: 'Token Cost',
     description: 'Total cost of tokens used',
     unit: 'USD',
@@ -38,7 +46,7 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
 ];
 
 export const SPECIFIC_METRIC: Metric = {
-  id: 'specific',
+  id: SPECIFIC_METRIC_ID,
   name: 'Example Specific',
   description: 'Output rules for this example',
   unit: 'string',

@@ -2,8 +2,8 @@ import React, { useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Container, Row, Col } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getExperiment, getDataset, deleteExperiment } from '../api';
-import { Experiment, Dataset } from '../common/types';
+import { getExperiment, getDataset, deleteExperiment, searchExamples } from '../api';
+import Experiment, {Result} from '../common/types/Experiment';
 import TableUsingAPI from '../components/generic/TableUsingAPI';
 import { useToast } from '../utils/toast';
 import ExperimentDetailsDashboard from '../components/ExperimentDetailsDashboard';
@@ -12,12 +12,15 @@ import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import type { ExtendedColumnDef } from '../components/generic/TableUsingAPI';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
-import { getMetricValue } from '../utils/metric-utils';
+import { getMetricValue, getMetrics } from '../utils/metric-utils';
+import { COST_METRIC_ID, DURATION_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
+import LinkId from '../components/LinkId';
+
+
 
 const ExperimentDetailsPage: React.FC = () => {
-  const { organisationId, datasetId, experimentId } = useParams<{
+  const { organisationId, experimentId } = useParams<{
     organisationId: string;
-    datasetId: string;
     experimentId: string;
   }>();
 
@@ -30,6 +33,7 @@ const ExperimentDetailsPage: React.FC = () => {
     queryFn: () => getExperiment(experimentId!),
     enabled: !!experimentId,
   });
+  let datasetId = experiment?.dataset;
 
   const { data: dataset } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -50,124 +54,93 @@ const ExperimentDetailsPage: React.FC = () => {
     },
   });
 
-  // columns: result id, duration, gen_ai.cost.usd, gen_ai.usage.total_tokens, errors, ...other metrics
+  const { data: examples } = useQuery({
+    queryKey: ['examples', organisationId, experimentId],
+    queryFn: async () => {
+      // what example IDs do we reference?
+      const exampleIds = experiment?.results?.map((result: any) => result.example) || [];
+      if (exampleIds.length === 0) return { hits: [] };
+      const result = await searchExamples({
+        organisationId: organisationId!,
+        datasetId: datasetId!,
+        query: `id:${exampleIds.join(' OR id:')}}`,
+        limit: 1000,
+        offset: 0,
+      });
+      console.log('e4id result', result);
+      const e4id = {};
+      for (const example of result.hits) {
+        e4id[example.id] = example;
+      }
+      return e4id;
+    }
+  });
+
+  console.log('examples', examples);
+
+  // columns: result id, duration, cost, totalTokens, errors, ...other metrics
   // Get the metrics from the dataset
   // This must be computed before any early returns to satisfy Rules of Hooks
-  const columns = useMemo<ExtendedColumnDef<any>[]>(() => {
-    const metrics = dataset?.metrics || [];
-    // add any missing metrics - scores used in examples
-    if (experiment?.results) {
-      for (const result of experiment.results) {
-        for (const metricName in result.scores || []) {
-          if (!metrics.find(metric => metric.name === metricName || metric.id === metricName)) {
-            metrics.push({ id: metricName, name: metricName, type: 'number' });
-          }
-        }
+  const columns : ExtendedColumnDef<Result>[] = [
+    {
+      header: 'Trace',
+      accessorKey: 'trace',
+      cell: ({ row }: any) => {
+        return <LinkId to={`/traces/${row.original.trace}`} id={row.original.trace} />;
       }
-    }
-
-    // Define priority columns that should appear first (by ID, not display name)
-    const priorityColumnIds = ['duration', 'gen_ai.cost.usd', 'gen_ai.usage.total_tokens'];
-    const priorityMetrics: typeof metrics = [];
-    const otherMetrics: typeof metrics = [];
-
-    metrics.forEach(metric => {
-      // Check by ID for priority columns, since IDs are stable identifiers
-      if (priorityColumnIds.includes(metric.id)) {
-        priorityMetrics.push(metric);
-      } else {
-        otherMetrics.push(metric);
-      }
-    });
-
-
-    const buildMetricColumn = (metric: typeof metrics[0]) => {
-      // Use display name if available, otherwise fall back to ID
-      const displayName = metric.name || metric.id;
-      // Check formatting by ID (stable identifier), not display name
-      const isDuration = metric.id === 'duration';
-      const isCost = metric.id === 'gen_ai.cost.usd';
-      const isTokens = metric.id === 'gen_ai.usage.total_tokens';
-
-      return {
-        header: displayName,
-        accessorFn: (row: any) => {
-          const value = getMetricValue(row, metric);
-          const error = row.errors?.[metric.id] ?? row.errors?.[metric.name];
-          return value ?? error ?? null;
-        },
-        cell: ({ row }: any) => {
-          const value = getMetricValue(row.original, metric);
-          const error = row.original.errors?.[metric.id] ?? row.original.errors?.[metric.name];
-          
-          if (error) {
-            return <span className="text-danger">{error}</span>;
-          }
-          
-          if (value === null) {
-            return '';
-          }
-
-          if (isDuration) {
-            return <span>{durationString(value)}</span>;
-          } else if (isCost) {
-            return <span>{formatCost(value)}</span>;
-          } else if (isTokens) {
-            return <span>{prettyNumber(value)}</span>;
-          }
-          
-          // Default formatting for other numeric metrics
-          return <span>{prettyNumber(value)}</span>;
-        },
-        csvValue: (row: any) => {
-          const value = getMetricValue(row, metric);
-          const error = row.errors?.[metric.id] ?? row.errors?.[metric.name];
-          if (error) return error;
-          if (value === null) return '';
-          return String(value);
-        },
-      };
-    };
-
-    return [
-      {
+    },
+  {
         header: 'Example',
         accessorKey: 'example',
         accessorFn: (row: any) => {
           // TODO efficiently load the example names
-          return row.original.example
+          const eid = row.original.example;
+          const example = examples?.[eid];
+          return example?.name || eid;
         },
         cell: ({ row }: any) => {
-          return <Link style={{ fontSize: '0.8em', overflow: 'hidden', textOverflow: 'ellipsis' }} to={`/organisation/${organisationId}/example/${row.original.example}`}>{row.original.example}</Link>;
-        },
-        csvValue: (row: any) => {
-          return row.original.example;
-        },
+          const eid = row.original.example;
+          const example = examples?.[eid];
+          console.log('example', eid, example, "e4id", examples);
+          return <LinkId to={`/organisation/${organisationId}/example/${row.original.example}`} name={example?.name || example?.input} id={eid} />;
+        }
       },
-      ...priorityMetrics.map(buildMetricColumn),
-      ...otherMetrics.map(buildMetricColumn),
+      {
+        header: 'Duration',
+        accessorFn: (row: Result) => {
+          return durationString(row.scores?.[DURATION_METRIC_ID]);
+        }
+      },
+      {
+        header: 'Tokens',
+        accessorFn: (row: Result) => {
+          return prettyNumber(row.scores?.[TOTAL_TOKENS_METRIC_ID]);
+        }
+      },
+      {
+        header: 'Cost',
+        accessorFn: (row: Result) => {
+          return formatCost(row.scores?.[COST_METRIC_ID]);
+        }
+      },
       {
         header: 'Errors',
-        accessorFn: (row: any) => {
-          const errors = row.errors;
-          if (!errors || Object.keys(errors).length === 0) return '';
-          return JSON.stringify(errors);
-        },
-        cell: ({ row }: any) => {
-          const errors = row.original.errors;
-          if (!errors || Object.keys(errors).length === 0) {
-            return <span></span>;
-          }
-          return <span className="text-danger">{JSON.stringify(errors)}</span>;
-        },
-        csvValue: (row: any) => {
-          const errors = row.errors;
-          if (!errors || Object.keys(errors).length === 0) return '';
-          return JSON.stringify(errors);
-        },
+        accessorFn: (row: Result) => {
+          return row.errors? JSON.stringify(row.errors) : '';
+        }
       },
     ];
-  }, [dataset?.metrics, experiment?.results]);
+  // metrics
+  const metrics = getMetrics(dataset);
+  for (const metric of metrics) {
+    if (metric.type === 'system') continue; // done above
+    columns.push({
+      header: metric.name || metric.id,
+      accessorFn: (row: Result) => {
+        return row.scores?.[metric.id];
+      }
+    });
+  }
 
   if (isLoading) {
     return (
@@ -202,7 +175,7 @@ const ExperimentDetailsPage: React.FC = () => {
           }}
         />
       }
-      back={`/organisation/${organisationId}/experiments`}
+      back={`/organisation/${organisationId}/experiment`}
       backLabel="Experiments List"
       item={experiment}
     >
@@ -219,6 +192,7 @@ const ExperimentDetailsPage: React.FC = () => {
       <ExperimentDetailsDashboard experiment={experiment} />
 
       <TableUsingAPI
+      showSearch={false}
         data={{ hits: experiment.results || [] }}
         columns={columns}
         queryKeyPrefix={['experiment-results', organisationId, experimentId]}

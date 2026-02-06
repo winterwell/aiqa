@@ -216,15 +216,6 @@ export async function createTables(): Promise<void> {
 
 // periodically delete this when all existing database tables are up to date
 async function applyMigrations(): Promise<void> {
-	// Standardise Model secret column: api_key → key
-	await doQuery(`
-		DO $$
-		BEGIN
-			IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'models' AND column_name = 'api_key') THEN
-				ALTER TABLE models RENAME COLUMN api_key TO key;
-			END IF;
-		END $$;
-	`);
 } // end applyMigrations
 
 /**
@@ -948,10 +939,10 @@ export async function deleteExperiment(id: string): Promise<boolean> {
 	return deleteEntity('experiments', id);
 }
 
-// Helper function to transform Model (snake_case columns -> camelCase). Supports legacy api_key column until migration has run.
+// Helper function to transform Model (snake_case columns -> camelCase)
 function transformModel(row: any): Model {
-	const { key, api_key, hash, ...rest } = row;
-	return { ...rest, key: key ?? api_key, hash } as Model;
+	const { key, hash, ...rest } = row;
+	return { ...rest, key: key, hash } as Model;
 }
 
 // CRUD operations for Model

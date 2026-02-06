@@ -11,12 +11,15 @@ import A from '../components/generic/A';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { TrashIcon } from '@phosphor-icons/react';
+import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID } from '../common/defaultSystemMetrics';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
   const summary = exp.summaries || {};
   const v = summary[metricId];
-  if (v == null || typeof v !== 'object') return typeof v === 'number' && isFinite(v) ? v : null;
-  const n = v.mean ?? v.avg ?? v.average ?? v.median;
+  if (v == null || typeof v !== 'object') {
+    return typeof v === 'number' && isFinite(v) ? v : null;
+  }
+  const n = v.mean;
   return n != null && isFinite(n) ? Number(n) : null;
 }
 
@@ -61,7 +64,7 @@ const ExperimentsListPage: React.FC = () => {
   }, [datasets, experimentsForDashboard]);
 
   const metricColumns = useMemo(() => {
-    const priorityIds = ['duration', 'gen_ai.cost.usd', 'gen_ai.usage.total_tokens'];
+    const priorityIds = [DURATION_METRIC_ID, COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID];
     const priority: Metric[] = [];
     const rest: Metric[] = [];
     metricsById.forEach((m) => {
@@ -71,10 +74,10 @@ const ExperimentsListPage: React.FC = () => {
     const ordered = [...priority.sort((a, b) => priorityIds.indexOf(a.id) - priorityIds.indexOf(b.id)), ...rest];
     return ordered.map((metric) => {
       const displayName = metric.name || metric.id;
-      const isDuration = metric.id === 'duration';
-      const isCost = metric.id === 'gen_ai.cost.usd';
-      const isTokens = metric.id === 'gen_ai.usage.total_tokens';
-      const isSpecific = metric.id === 'specific';
+      const isDuration = metric.id === DURATION_METRIC_ID;
+      const isCost = metric.id === COST_METRIC_ID;
+      const isTokens = metric.id === TOTAL_TOKENS_METRIC_ID;
+      const isSpecific = metric.id === SPECIFIC_METRIC_ID;
       return {
         id: metric.id,
         header: displayName,
@@ -137,15 +140,9 @@ const ExperimentsListPage: React.FC = () => {
       id: 'dataset',
       header: 'Dataset',
       accessorKey: 'dataset',
-      cell: ({ row }) => {
-        const id = row.original.dataset;
-        const name = datasetNameById.get(id);
-        return name ? `${name} | ${id}` : id;
-      },
-      csvValue: (row) => {
-        const id = row.dataset;
-        const name = datasetNameById.get(id);
-        return name ? `${name} | ${id}` : id;
+      accessorFn: (experiment: Experiment) => {
+        const name = datasetNameById.get(experiment.dataset);
+        return name || experiment.dataset;
       },
       enableSorting: true,
     },
@@ -153,7 +150,7 @@ const ExperimentsListPage: React.FC = () => {
       id: 'exampleCount',
       header: 'Examples',
       accessorFn: (row) => row.summaries?.duration?.count ?? 0,
-      csvValue: (row) => row.summaries?.duration?.count ?? 0,
+      csvValue: (row) => String(row.summaries?.duration?.count ?? 0),
     },
     ...metricColumns,
   ], [organisationId, datasetNameById, metricColumns]);

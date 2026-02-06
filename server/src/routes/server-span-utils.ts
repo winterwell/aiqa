@@ -94,12 +94,13 @@ export interface PropagateTokenCostsDependencies {
  * 3. Processes from leaf nodes up to root, updating parent token-cost stats
  * 4. Spans are modified in place
  * 5. Loaded parent spans are saved here (using update). inBatch spans are NOT saved here.
+ * Returns the root spans.
  */
 export async function propagateTokenCostsToRootSpan(
   spans: Span[],
   deps?: Partial<PropagateTokenCostsDependencies>
-): Promise<void> {
-  if (spans.length === 0) return;
+): Promise<Span[]> {
+  if (spans.length === 0) return [];
   const traceIds = spans.map(span => span.trace);
   const spanIds = spans.map(span => getSpanId(span));
   const tokenStats = spans.map(span => getSpanStatsFromAttributes(span));
@@ -110,10 +111,11 @@ export async function propagateTokenCostsToRootSpan(
   const organisation = spans[0].organisation;
   if (!organisation) {
     console.warn('propagateTokenCostsToRootSpan: spans missing organisation');
-    return;
+    return [];
   }
 
   const spanIdsInBatch = new Set<string>();
+  // map of spanId -> span
   const spanMap = new Map<string, Span>();
   for (const span of spans) {
     const spanId = getSpanId(span);
@@ -134,11 +136,10 @@ export async function propagateTokenCostsToRootSpan(
     }
   }
   // Minor TODO: use batch (id1 or id2 or ...) queries to speed this up
-  const loadedAncestors = new Map<string, Span>();
   const toLoad = Array.from(missingParentIds);
   while (toLoad.length > 0) {
     const parentId = toLoad.pop()!;
-    if (loadedAncestors.has(parentId) || spanMap.has(parentId)) continue;
+    if (spanMap.has(parentId)) continue;
     try {
       const result = await searchSpansFn(
         new SearchQuery(`id:${parentId}`),
@@ -150,10 +151,10 @@ export async function propagateTokenCostsToRootSpan(
       );
       if (result.hits.length > 0) {
         const parent = result.hits[0];
-        loadedAncestors.set(parentId, parent);
         spanMap.set(parentId, parent);
         const grandparentId = (parent as any).parent;
         if (grandparentId && !spanMap.has(grandparentId)) {
+          console.log(`propagateTokenCostsToRootSpan: request load of grandparent ${grandparentId} for parent ${parentId}`);
           toLoad.push(grandparentId);
         }
       }
@@ -161,11 +162,37 @@ export async function propagateTokenCostsToRootSpan(
       console.warn(`Failed to load parent span ${parentId}:`, error);
     }
   }
+  // load child spans for the batch
+  let idsToResolveChildren = Array.from(spanIdsInBatch);
+  while (idsToResolveChildren.length > 0) {
+    // load child spans
+    const result = await searchSpansFn(
+      new SearchQuery(`parent:${idsToResolveChildren.join(' OR ')}`),
+      organisation,
+      1000,
+      0,
+      ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
+      undefined
+    );
+    idsToResolveChildren = [];
+    for(const child of result.hits) {
+      if (spanMap.has(child.id)) {
+        continue;
+      }
+      spanMap.set(child.id, child);
+      const parentSpan = spanMap.get(child.parent);
+      if (parentSpan?._childStats?.[child.id]) {
+        console.log(`propagateTokenCostsToRootSpan: child ${child.id} - parent ${parentSpan.id} already has stats, skipping fetch`);
+      } else {
+        idsToResolveChildren.push(child.id);
+      }
+    }
+  }
 
   // build the span tree aka childrenMap (parentId -> [children])
   const childrenMap = new Map<string, Span[]>();
   const rootSpans: Span[] = [];
-  const allSpans = [...spans, ...Array.from(loadedAncestors.values())];
+  const allSpans = spanMap.values();
 
   for (const span of allSpans) {
     const spanId = getSpanId(span);
@@ -173,7 +200,7 @@ export async function propagateTokenCostsToRootSpan(
       throw new Error(`propagateTokenCostsToRootSpan: span missing id in allSpans! ${span.name}`);
     }
     const parentSpanId = (span as any).parent;
-    if (!parentSpanId) {
+    if (!parentSpanId || !spanMap.has(parentSpanId)) {
       rootSpans.push(span);
     } else {
       if (!childrenMap.has(parentSpanId)) {
@@ -182,6 +209,10 @@ export async function propagateTokenCostsToRootSpan(
       childrenMap.get(parentSpanId)!.push(span);
     }
   }
+  console.log('propagateTokenCostsToRootSpan: toLoad:', toLoad);
+  console.log('propagateTokenCostsToRootSpan: allSpans:', [...allSpans].map(span => getSpanId(span)).join(','));
+  console.log('propagateTokenCostsToRootSpan: rootSpans:', rootSpans.map(root => getSpanId(root)).join(','));
+  console.log('propagateTokenCostsToRootSpan: childrenMap:', childrenMap);
 
   const processedSpans = new Set<string>();
 
@@ -200,7 +231,10 @@ export async function propagateTokenCostsToRootSpan(
   const updateFailures: string[] = [];
   for (const span of modifiedSpans) {
     const spanId = getSpanId(span);
-    if (spanIdsInBatch.has(spanId)) continue; // assume saved later 
+    if (spanIdsInBatch.has(spanId)) {
+      console.log(`propagateTokenCostsToRootSpan: span ${spanId} already in batch, skipping update`);
+      continue; // assume saved later 
+    }
     try {
       const updates: Partial<Span> = {
         stats: span.stats
@@ -208,6 +242,7 @@ export async function propagateTokenCostsToRootSpan(
       if (span._childStats) {
         updates._childStats = span._childStats;
       }
+      console.log(`propagateTokenCostsToRootSpan: updating span ${spanId} with updates: ${JSON.stringify(updates)}`);
       const updated = await updateSpanFn(spanId, updates, organisation);
       if (!updated) {
         updateFailures.push(spanId);
@@ -221,6 +256,9 @@ export async function propagateTokenCostsToRootSpan(
   if (updateFailures.length > 0) {
     console.warn(`propagateTokenCostsToRootSpan: failed to update ${updateFailures.length} parent span(s) in database`);
   }
+  const tokenStatsAfter = spans.map(span => span.stats);
+  console.log('DONE propagateTokenCostsToRootSpan: traces:' + traceIds + ' spans:', spanIds, "tokenStats:", tokenStatsAfter);
+  return rootSpans;
 } // end of propagateTokenCostsToRootSpan
 
 /**
@@ -236,11 +274,12 @@ const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpan
     return getSpanStatsFromAttributes(span);
   }
   processedSpans.add(spanId);
-
+console.log(`processSpan: span ${spanId} ...`);
   const ownStats = getSpanStatsFromAttributes(span);
   const childStatsMap = span._childStats || (span._childStats = {});
 
   const children = childrenMap.get(spanId) || [];
+  console.log(`processSpan: span ${spanId} has children: ${children.map(child => getSpanId(child)).join(',')}`);
   
   // update child stats
   for (const child of children) {
@@ -273,6 +312,9 @@ const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpan
   if (!isEqual(span.stats, totalUsage)) {
     span.stats = totalUsage;
     modifiedSpans.add(span);
+    console.log(`processSpan: span ${spanId} modified, adding to modifiedSpans: ${JSON.stringify(totalUsage)}`);
+  } else {
+    console.log(`No change for: span ${spanId} stats match, skipping update totalUsage: ${JSON.stringify(totalUsage)}`);
   }
   return totalUsage;
 }; // end of processSpan()

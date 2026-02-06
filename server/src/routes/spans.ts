@@ -1,14 +1,17 @@
 import { FastifyInstance } from 'fastify';
-import { bulkInsertSpans, searchSpans, getSpan, updateSpan, deleteSpans } from '../db/db_es.js';
+import { bulkInsertSpans, searchSpans, getSpan, updateSpan, deleteSpans, getExample } from '../db/db_es.js';
+import { updateExperiment } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
 import { checkRateLimit, recordSpanPosting } from '../rate_limit.js';
-import { getOrganisation, getOrganisationAccountByOrganisation, recordRateLimitHit } from '../db/db_sql.js';
+import { getExperiment, getOrganisation, getOrganisationAccountByOrganisation, recordRateLimitHit } from '../db/db_sql.js';
 import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
 import { propagateTokenCostsToRootSpan } from './server-span-utils.js';
+import { recalculateSummaryResults } from '../experiments/summary.js';
+import { AIQA_EXPERIMENT_ID } from '../common/constants_otel.js';
 
 /**
  * Convert OTLP KeyValue array to object.
@@ -242,23 +245,70 @@ export async function processOtlpTraceExport(
     };
   }
   
-  // Add organisation to each span
+  // Add organisation and duration to each span
   const spansWithOrg = spansArray.map(span => ({
     ...span,
     organisation,
   }));
+  for (const span of spansWithOrg) {
+    span.stats = span.stats || {};
+    span.stats.duration = span.end - span.start;
+  }
   
   // Add token cost
   spansWithOrg.forEach(span => addTokenCost(span));
   // propagate token costs to the root span
-  await propagateTokenCostsToRootSpan(spansWithOrg);
+  const rootSpans = await propagateTokenCostsToRootSpan(spansWithOrg);
   // Save spans (may throw ConnectionError for Elasticsearch)
   const spanIds = spansWithOrg.map(span => getSpanId(span));
   console.log(`spans.ts processOtlpTraceExport: Bulk inserting ${spansWithOrg.length} spans for organisation ${organisation} ids: ${spanIds}`);
   await bulkInsertSpans(spansWithOrg);
   await recordSpanPosting(organisation, spansWithOrg.length);
-  
+  // do we need to update any experiments with fresh token usage? (fire-and-forget call)
+  updateExperimentsWithFreshTokenUsage(rootSpans);
   return { success: true };
+}
+
+/**
+ * Update experiments with fresh SpanStats (token usage, cost, errors). Called after propagateTokenCostsToRootSpan.
+ * See also experiments.ts scoreAndStore
+ * @param rootSpans - The root spans to maybe update.
+ */
+async function updateExperimentsWithFreshTokenUsage(rootSpans: Span[]): Promise<void> {
+  for (const rootSpan of rootSpans) {
+    let modified = false;
+    const experimentId = rootSpan.attributes?.[AIQA_EXPERIMENT_ID] as string | undefined;
+    if ( ! experimentId) continue;
+    if ( ! rootSpan.stats) continue;
+    const stats = rootSpan.stats;
+    console.log(`spans.ts updateExperimentsWithFreshTokenUsage: updating experiment ${experimentId} with fresh token usage`);
+    const experiment = await getExperiment(experimentId);
+    if ( ! experiment) {
+      console.warn(`spans.ts updateExperimentsWithFreshTokenUsage: experiment ${experimentId} not found`);
+      continue;
+    }
+    if ( ! experiment.results) {
+      console.log(`spans.ts too-soon updateExperimentsWithFreshTokenUsage: experiment ${experimentId} has no results`);
+      continue;
+    }
+    // loop over results
+    for (const result of experiment.results) {
+      if (result.trace !== rootSpan.trace) continue;
+      if ( ! result.scores) result.scores = {};
+      for (const [metricName, score] of Object.entries(stats)) {
+        if (result.scores[metricName] === score) continue;
+        result.scores[metricName] = score;
+        modified = true;
+      }
+    }
+    if (modified) {
+      const summaries = recalculateSummaryResults(experiment.results);
+      await updateExperiment(experimentId, {
+        results: experiment.results,
+        summaries,
+      });
+    }
+  }
 }
 
 /**
@@ -523,7 +573,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         organisationId,
         limit,
         0,
-        ['id', 'trace', 'name', 'start', 'end', 'attributes.gen_ai.usage.total_tokens', 'attributes.gen_ai.cost.usd', 'attributes.feedback'],
+        ['id', 'trace', 'name', 'start', 'end', 'stats', 'attributes.feedback'],
         ['attributes.input', 'attributes.output', 'attributes.unindexed_attributes']
       );
 
@@ -554,10 +604,10 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         let traceCostTotal = 0;
         
         traceSpans.forEach(span => {
-          const attrs = span.attributes || {};
-          const tokens = attrs['gen_ai.usage.total_tokens'];
-          const cost = attrs['gen_ai.cost.usd'];
-          
+          const stats = span.stats || {};
+          const tokens = stats.totalTokens;
+          const cost = stats.cost;
+
           if (typeof tokens === 'number' && tokens > 0) {
             traceTokensTotal += tokens;
           }
@@ -566,7 +616,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
           }
 
           // Check for feedback
-          const feedback = attrs.feedback;
+          const feedback = span.attributes?.feedback;
           if (feedback && typeof feedback === 'object' && !Array.isArray(feedback)) {
             const value = (feedback as any).value;
             if (value === 'positive') positiveFeedback++;
@@ -758,4 +808,3 @@ function parseFieldList(fields: string | undefined): string[] | undefined {
   const parsed = fields.split(',').map(f => f.trim()).filter(f => f.length > 0);
   return parsed.length > 0 ? parsed : undefined;
 }
-

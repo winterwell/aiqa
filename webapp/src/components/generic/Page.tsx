@@ -71,6 +71,7 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
 };
 
 interface PageProps {
+  /** This is placed within an h1 tag */
   header: React.ReactNode;
   back?: string | React.ReactNode; // URL string or custom ReactNode
   backLabel?: string; // Optional label for back link, e.g. "Dataset" → "← Back to Dataset"

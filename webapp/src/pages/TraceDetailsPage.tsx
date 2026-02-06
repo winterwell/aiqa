@@ -5,7 +5,7 @@ import { Button, FormGroup, Input, Label } from 'reactstrap';
 import { createExampleFromSpans, createDataset, listDatasets } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId, getParentSpanId } from '../common/types/Span.js';
-import { getStartTime, getEndTime, getDurationMs, getDurationUnits, getTotalTokenCount, getCost, prettyNumber, durationString } from '../utils/span-utils';
+import { getDurationMs, getDurationUnits, prettyNumber, durationString, getStartTime } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 import LoadingSpinner from '../components/generic/LoadingSpinner';
 import TraceDetailsPageHeader from '../components/TraceDetailsPageHeader';
@@ -445,8 +445,8 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 	const output = getDisplayOutput(attrs);
 	const error = getDisplayError(span);
 	const durationMs = getDurationMs(span);
-	const tokenCount = getTotalTokenCount(span);
-	const cost = getCost(span);
+	const tokenCount = span.stats?.totalTokens || 0;
+	const cost = span.stats?.cost || 0;
 	const { showToast } = useToast();
 	const queryClient = useQueryClient();
 	const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
@@ -517,7 +517,6 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 				<div><strong>Span ID:</strong> {spanId}</div>
 				{span.name && <div><strong>Name:</strong> {span.name}</div>}
 				{span.example && <div><strong>Example:</strong> {span.example}</div>}
-				{span.experiment && <div><strong>Experiment:</strong> {span.experiment}</div>}
 				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
 				<div><strong>Duration:</strong> {durationString(durationMs)}</div>
 				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}

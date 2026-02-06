@@ -183,17 +183,6 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 			}
 		});
 		
-		// Also add Overall Score if it exists in any experiment's summaries
-		let hasOverallScore = experiments.some(exp => {
-			const summary = exp.summaries || {};
-			const overallScore = summary['Overall Score'];
-			return overallScore && (overallScore.mean !== undefined || overallScore.avg !== undefined || overallScore.average !== undefined);
-		});
-		hasOverallScore	= false; /* off for now */
-		if (hasOverallScore && !metricMap.has('Overall Score')) {
-			metricMap.set('Overall Score', { id: 'Overall Score', name: 'Overall Score', type: 'number' });
-		}
-		
 		return Array.from(metricMap.values());
 	}, [datasetMap, experiments]);
 

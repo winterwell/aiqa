@@ -1,6 +1,5 @@
 import { Span } from "../common/types";
 import { getSpanId, getTraceId, getParentSpanId } from "../common/types/Span";
-import { GEN_AI_ERRORS } from "../common/constants_otel";
 
 /** Pick display unit for a duration in ms. */
 function getDurationUnits(durationMs: number): 'ms' | 's' | 'm' | 'h' | 'd' {
@@ -153,77 +152,6 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
-/**
- * Does NOT recurse into children.
- * @param span 
- * @returns 
- */
-export const getTotalTokenCount = (span: Span): number | null => {
-  const attributes = (span as any).attributes || {};
-  // First check standard OpenTelemetry semantic convention attributes
-  const totalTokens = toNumber(attributes['gen_ai.usage.total_tokens']);
-  if (totalTokens !== null) {
-    return totalTokens;
-  }
-  // Calculate from input + output if total not available
-  const inputTokens = toNumber(attributes['gen_ai.usage.input_tokens']);
-  const outputTokens = toNumber(attributes['gen_ai.usage.output_tokens']);
-  if (inputTokens !== null || outputTokens !== null) {
-    return (inputTokens || 0) + (outputTokens || 0);
-  }
-  // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
-  const output = attributes.output;
-  if (output && typeof output === 'object' && output.usage) {
-    const usage = output.usage;
-    if (typeof usage === 'object') {
-      const nestedTotal = toNumber(usage.total_tokens);
-      if (nestedTotal !== null) {
-        return nestedTotal;
-      }
-      const nestedInput = toNumber(usage.input_tokens);
-      const nestedOutput = toNumber(usage.output_tokens);
-      if (nestedInput !== null || nestedOutput !== null) {
-        return (nestedInput || 0) + (nestedOutput || 0);
-      }
-    }
-  }
-  return null;
-};
-
-/** gen_ai.cost.usd if the tracer or server has added it, otherwise calculate from token usage */
-export const getCost = (span: Span): number | null => {
-  const attributes = (span as any).attributes || {};
-  const cost = toNumber(attributes['gen_ai.cost.usd']);
-  if (cost !== null) {
-    return cost;
-  }
-  // Check standard OpenTelemetry attributes first
-  const inputTokens = toNumber(attributes['gen_ai.usage.input_tokens']);
-  const outputTokens = toNumber(attributes['gen_ai.usage.output_tokens']);
-  if (inputTokens !== null || outputTokens !== null) {
-    // TODO calculate cost from token usage -- should be done server side   
-  }
-  // Fallback: check if token info is nested in output.usage (before extraction to standard attributes)
-  const output = attributes.output;
-  if (output && typeof output === 'object' && output.usage) {
-    const usage = output.usage;
-    if (typeof usage === 'object') {
-      const nestedInput = toNumber(usage.input_tokens);
-      const nestedOutput = toNumber(usage.output_tokens);
-      if (nestedInput !== null || nestedOutput !== null) {
-        // TODO calculate cost from token usage -- should be done server side   
-      }
-    }
-  }
-   return null; 
-};
-
-/** Get error count from aiqa.errors attribute */
-export const getErrors = (span: Span): number | null => {
-  const attributes = (span as any).attributes || {};
-  return toNumber(attributes[GEN_AI_ERRORS]);
-};
-
 export const isRootSpan = (span: Span): boolean => {
   return ! getParentSpanId(span);
 };
@@ -276,48 +204,4 @@ function organizeSpansIntoTree(spans: Span[], parent: Span): SpanTree | null {
     span: parent,
     children: childSpans.map(childSpan => organizeSpansIntoTree(spans, childSpan)).filter((child): child is SpanTree => child !== null),
   };
-}
-
-/**
- * Calculate tokens for a span tree without double-counting.
- * Recurses down the tree, but stops recursing when it finds token info at a node.
- * Sums across branches in the tree.
- */
-export function calculateTokensForTree(tree: SpanTree): number {
-  const tokens = getTotalTokenCount(tree.span);
-  
-  // If this span has token info, use it and don't recurse into children
-  // (to avoid double-counting)
-  if (tokens !== null) {
-    return tokens;
-  }
-
-  // Otherwise, sum tokens from all children branches
-  let total = 0;
-  for (const child of tree.children) {
-    total += calculateTokensForTree(child);
-  }
-  return total;
-}
-
-/**
- * Calculate cost for a span tree without double-counting.
- * Recurses down the tree, but stops recursing when it finds cost info at a node.
- * Sums across branches in the tree.
- */
-export function calculateCostForTree(tree: SpanTree): number {
-  const cost = getCost(tree.span);
-  
-  // If this span has cost info, use it and don't recurse into children
-  // (to avoid double-counting)
-  if (cost !== null) {
-    return cost;
-  }
-
-  // Otherwise, sum cost from all children branches
-  let total = 0;
-  for (const child of tree.children) {
-    total += calculateCostForTree(child);
-  }
-  return total;
 }

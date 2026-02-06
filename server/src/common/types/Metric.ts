@@ -1,4 +1,5 @@
-export interface Metric {
+
+export default interface Metric {
   /** often the same as (or a prettified version of) the name */
   id: string;
   /** The display name */

@@ -7,7 +7,7 @@ import type { Metric } from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
 import { asArray } from '../common/utils/miscutils';
-import { extractMetricValues } from '../utils/metric-utils';
+import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
 
 type MetricDataResult = {
@@ -78,61 +78,12 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	});
 
 	// Get metrics from dataset, or extract from results if dataset not available
-	const metrics = useMemo(() => {
-		const datasetMetrics = asArray(dataset?.metrics);
-		const resultMetrics = new Set<string>();
-		
-		// Also collect metrics from results
-		if (experiment.results) {
-			experiment.results.forEach(result => {
-				if (result.scores) {
-					Object.keys(result.scores).forEach(metricName => {
-						resultMetrics.add(metricName);
-					});
-				}
-			});
-		}
-		
-		// Combine dataset metrics with result metrics
-		const metricMap = new Map<string, Metric>();
-		datasetMetrics.forEach(metric => {
-			metricMap.set(metric.name, metric);
-		});
-		
-		resultMetrics.forEach(metricName => {
-			if (!metricMap.has(metricName)) {
-				metricMap.set(metricName, { id: metricName, name: metricName, type: 'number' });
-			}
-		});
-		
-		return Array.from(metricMap.values());
-	}, [dataset?.metrics, experiment.results]);
+	const metrics = getMetrics(dataset);
 
 	// Process data for each metric
 	const metricData = useMemo(() => {
 		return processMetricData(metrics, experiment);
 	}, [metrics, experiment]);
-
-	// Extract Overall Score from summaries
-	const overallScoreStats = useMemo(() => {
-		const summary = experiment.summaries || {};
-		const overallScore = summary['Overall Score'];
-		if (!overallScore || typeof overallScore !== 'object') {
-			return null;
-		}
-		
-		// Handle both MetricStats format {mean, min, max, var, count} and legacy formats
-		const mean = overallScore.mean ?? overallScore.avg ?? overallScore.average ?? null;
-		const min = overallScore.min ?? null;
-		const max = overallScore.max ?? null;
-		const count = overallScore.count ?? null;
-		
-		if (mean === null || !isFinite(mean)) {
-			return null;
-		}
-		
-		return { mean, min, max, count };
-	}, [experiment.summaries]);
 
 	if (isLoading) {
 		return (
@@ -161,7 +112,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	// Filter to only metrics with numerical data
 	const metricsWithData = metricData.filter(md => md.count > 0);
 
-	if (metricsWithData.length === 0 && !overallScoreStats) {
+	if (metricsWithData.length === 0) {
 		return (
 			<Alert color="info" className="mt-3" fade={false}>
 				No numerical data found for any metrics. Ensure experiment results contain numeric scores.
@@ -171,27 +122,6 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 
 	return (
 		<DashboardStrip>
-			{overallScoreStats && false /* off for now */ && (
-				<Card key="Overall Score">
-					<CardHeader>
-						<h5>Overall Score</h5>
-						<p className="text-muted small mb-0">Geometric mean of all metrics</p>
-					</CardHeader>
-					<CardBody>
-						<div className="mt-3">
-							<p className="mb-1">
-								<strong>Statistics:</strong>
-							</p>
-							<ul className="list-unstyled mb-0">
-								{overallScoreStats.count !== null && <li>Count: {overallScoreStats.count}</li>}
-								{overallScoreStats.min !== null && <li>Min: {overallScoreStats.min.toFixed(2)}</li>}
-								{overallScoreStats.max !== null && <li>Max: {overallScoreStats.max.toFixed(2)}</li>}
-								<li>Mean: {overallScoreStats.mean.toFixed(2)}</li>
-							</ul>
-						</div>
-					</CardBody>
-				</Card>
-			)}
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
 				<MetricDataCard
 					key={metric.name}
@@ -240,11 +170,7 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 					</Alert>
 				) : (
 					<>
-						{unmeasuredCount > 0 && (
-							<Alert color="warning" className="mb-2 small" fade={false}>
-								{unmeasuredCount} of {totalResults} result{totalResults !== 1 ? 's' : ''} had missing or invalid values.
-							</Alert>
-						)}
+						
 						<Histogram data={histogram} />
 						<div className="mt-3">
 							<p className="mb-1">
@@ -256,6 +182,11 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 								<li>Max: {max.toFixed(2)} {metric.unit || ''}</li>
 								<li>Mean: {mean.toFixed(2)} {metric.unit || ''}</li>
 							</ul>
+							{unmeasuredCount > 0 && (
+							<Alert color="warning" className="mb-2 p-1 small" fade={false}>
+								{unmeasuredCount} of {totalResults} missing values.
+							</Alert>
+						)}
 						</div>
 					</>
 				)}

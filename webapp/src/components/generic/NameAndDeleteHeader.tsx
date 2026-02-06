@@ -36,7 +36,7 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
       <span className="d-flex align-items-center justify-content-between w-100">
         <span className="d-flex align-items-center gap-2">
           <span>{label}:</span>
-          <PropInput item={item} prop={prop} label="" placeholder="name" inline onChange={handleNameChange} />
+          <PropInput className="h1" item={item} prop={prop} label="" placeholder="name" inline onChange={handleNameChange} />
         </span>
         {handleDelete != null && (
           <Button color="danger" size="sm" onClick={() => setDeleteModalOpen(true)} className="ms-2">

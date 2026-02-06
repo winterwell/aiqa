@@ -22,10 +22,13 @@ export interface SpanStats {
   errors?: number;
   /** how many spans below this one in the tree? */
   descendants?: number;
+  /** duration in milliseconds (we could derive this from start/end, but storing it here allows for easier aggregation, including within ES)*/
+  duration?: number;
 }
 /**
  * Span type extending OpenTelemetry's ReadableSpan interface.
  * Represents a completed span that can be read and exported.
+ * AIQA defines some special attributes: see constants_otel.ts
  */
 export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime' | 'parentSpanId'> {
   /** Span ID (OpenTelemetry span ID as hex string) */
@@ -37,8 +40,6 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   organisation: string;
   /** Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example */
   example?: string;
-  /** Only set for spans in the `spans` index IF created during an experiment */
-  experiment?: string;
   /** Client-set annotations for the span (for things more complex than a tag) */
   annotations?: Record<string, any>;
   /** token usage etc computed from this + descendants */

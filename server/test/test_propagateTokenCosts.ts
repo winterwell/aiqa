@@ -2,8 +2,7 @@ import tap from 'tap';
 import Span from '../dist/common/types/Span.js';
 import {
   propagateTokenCostsToRootSpan,
-  getTokenUsage,
-  addTokenUsageToSpan,
+  getSpanStatsFromAttributes,
   TokenStats,
   PropagateTokenCostsDependencies,
 } from '../dist/routes/server-span-utils.js';
@@ -53,7 +52,7 @@ function createTestSpan(
   };
 }
 
-tap.test('getTokenUsage - extracts token usage from span attributes', t => {
+tap.test('getSpanStatsFromAttributes - extracts token usage from span attributes', t => {
   const span = createTestSpan('span1', 'test', undefined, {
     inputTokens: 100,
     outputTokens: 50,
@@ -62,7 +61,7 @@ tap.test('getTokenUsage - extracts token usage from span attributes', t => {
     cost: 0.001
   });
   
-  const usage = getTokenUsage(span);
+  const usage = getSpanStatsFromAttributes(span);
   t.equal(usage.inputTokens, 100);
   t.equal(usage.outputTokens, 50);
   t.equal(usage.cachedInputTokens, 10);
@@ -71,9 +70,9 @@ tap.test('getTokenUsage - extracts token usage from span attributes', t => {
   t.end();
 });
 
-tap.test('getTokenUsage - returns zeros for span without token usage', t => {
+tap.test('getSpanStatsFromAttributes - returns zeros for span without token usage', t => {
   const span = createTestSpan('span1', 'test');
-  const usage = getTokenUsage(span);
+  const usage = getSpanStatsFromAttributes(span);
   t.equal(usage.inputTokens, 0);
   t.equal(usage.outputTokens, 0);
   t.equal(usage.cachedInputTokens, 0);
@@ -82,27 +81,22 @@ tap.test('getTokenUsage - returns zeros for span without token usage', t => {
   t.end();
 });
 
-tap.test('addTokenUsageToSpan - adds token usage to span', t => {
+tap.test('propagateTokenCostsToRootSpan - sets stats on leaf span', async t => {
   const span = createTestSpan('span1', 'test', undefined, {
     inputTokens: 10,
     outputTokens: 5,
-    cost: 0.0001
-  });
-  
-  addTokenUsageToSpan(span, {
-    inputTokens: 20,
-    outputTokens: 15,
     cachedInputTokens: 5,
-    totalTokens: 40,
+    totalTokens: 20,
     cost: 0.0002
   });
-  
-  t.equal(span.attributes!['gen_ai.usage.input_tokens'], 30);
-  t.equal(span.attributes!['gen_ai.usage.output_tokens'], 20);
-  t.equal(span.attributes!['gen_ai.usage.cached_input_tokens'], 5);
-  t.equal(span.attributes!['gen_ai.usage.total_tokens'], 40);
-  // Use approximate comparison for floating point
-  t.ok(Math.abs((span.attributes!['gen_ai.cost.usd'] as number) - 0.0003) < 0.000001, 'cost should be approximately 0.0003');
+
+  await propagateTokenCostsToRootSpan([span]);
+
+  t.equal(span.stats?.inputTokens, 10);
+  t.equal(span.stats?.outputTokens, 5);
+  t.equal(span.stats?.cachedInputTokens, 5);
+  t.equal(span.stats?.totalTokens, 20);
+  t.ok(Math.abs((span.stats?.cost ?? 0) - 0.0002) < 0.000001, 'cost should be approximately 0.0002');
   t.end();
 });
 
@@ -124,10 +118,9 @@ tap.test('propagateTokenCostsToRootSpan - simple parent-child propagation', asyn
   await propagateTokenCostsToRootSpan(spans);
   
   // Parent should have aggregated tokens from child
-  const parentUsage = getTokenUsage(parent);
-  t.equal(parentUsage.inputTokens, 110); // 10 + 100
-  t.equal(parentUsage.outputTokens, 55); // 5 + 50
-  t.equal(parentUsage.cost, 0.0011); // 0.0001 + 0.001
+  t.equal(parent.stats?.inputTokens, 110); // 10 + 100
+  t.equal(parent.stats?.outputTokens, 55); // 5 + 50
+  t.equal(parent.stats?.cost, 0.0011); // 0.0001 + 0.001
   t.end();
 });
 
@@ -155,15 +148,13 @@ tap.test('propagateTokenCostsToRootSpan - multi-level tree propagation', async t
   await propagateTokenCostsToRootSpan(spans);
   
   // Child should have grandchild's tokens
-  const childUsage = getTokenUsage(child);
-  t.equal(childUsage.inputTokens, 150); // 100 + 50
-  t.equal(childUsage.outputTokens, 75); // 50 + 25
+  t.equal(child.stats?.inputTokens, 150); // 100 + 50
+  t.equal(child.stats?.outputTokens, 75); // 50 + 25
   
   // Parent should have all tokens
-  const parentUsage = getTokenUsage(parent);
-  t.equal(parentUsage.inputTokens, 160); // 10 + 100 + 50
-  t.equal(parentUsage.outputTokens, 80); // 5 + 50 + 25
-  t.ok(Math.abs(parentUsage.cost - 0.0016) < 0.000001, 'cost should be approximately 0.0016'); // 0.0001 + 0.001 + 0.0005
+  t.equal(parent.stats?.inputTokens, 160); // 10 + 100 + 50
+  t.equal(parent.stats?.outputTokens, 80); // 5 + 50 + 25
+  t.ok(Math.abs((parent.stats?.cost ?? 0) - 0.0016) < 0.000001, 'cost should be approximately 0.0016'); // 0.0001 + 0.001 + 0.0005
   
   t.end();
 });
@@ -196,7 +187,7 @@ tap.test('propagateTokenCostsToRootSpan - loads missing parent from database', a
     },
     updateSpan: async (spanId, updates, org) => {
       t.equal(spanId, 'parent', 'should update loaded parent');
-      t.ok(updates.attributes, 'should include attributes');
+      t.ok(updates.stats, 'should include stats');
       return { ...parent, ...updates } as Span;
     }
   };
@@ -206,9 +197,8 @@ tap.test('propagateTokenCostsToRootSpan - loads missing parent from database', a
   t.equal(loadedParentId, 'parent', 'should have loaded parent');
   
   // Child should have its own tokens (parent was loaded separately)
-  const childUsage = getTokenUsage(child);
-  t.equal(childUsage.inputTokens, 100);
-  t.equal(childUsage.outputTokens, 50);
+  t.equal(child.stats?.inputTokens, 100);
+  t.equal(child.stats?.outputTokens, 50);
   
   t.end();
 });
@@ -230,9 +220,8 @@ tap.test('propagateTokenCostsToRootSpan - parent always set to own + sum(childre
 
   await propagateTokenCostsToRootSpan(spans);
 
-  const parentUsage = getTokenUsage(parent);
-  t.equal(parentUsage.inputTokens, 110, 'parent = own + child');
-  t.equal(parentUsage.outputTokens, 55, 'parent = own + child');
+  t.equal(parent.stats?.inputTokens, 110, 'parent = own + child');
+  t.equal(parent.stats?.outputTokens, 55, 'parent = own + child');
   t.end();
 });
 
@@ -259,10 +248,9 @@ tap.test('propagateTokenCostsToRootSpan - multiple children', async t => {
   
   await propagateTokenCostsToRootSpan(spans);
   
-  const parentUsage = getTokenUsage(parent);
-  t.equal(parentUsage.inputTokens, 310); // 10 + 100 + 200
-  t.equal(parentUsage.outputTokens, 155); // 5 + 50 + 100
-  t.ok(Math.abs(parentUsage.cost - 0.0031) < 0.000001, 'cost should be approximately 0.0031'); // 0.0001 + 0.001 + 0.002
+  t.equal(parent.stats?.inputTokens, 310); // 10 + 100 + 200
+  t.equal(parent.stats?.outputTokens, 155); // 5 + 50 + 100
+  t.ok(Math.abs((parent.stats?.cost ?? 0) - 0.0031) < 0.000001, 'cost should be approximately 0.0031'); // 0.0001 + 0.001 + 0.002
   t.end();
 });
 
@@ -286,36 +274,33 @@ tap.test('propagateTokenCostsToRootSpan - late-arriving batch does not lose earl
     cost: 0.0001
   });
   await propagateTokenCostsToRootSpan([child1, parent]);
-  const afterBatch1 = getTokenUsage(parent);
-  t.equal(afterBatch1.inputTokens, 110, 'after batch 1: parent = 10 + 100');
-  t.equal(afterBatch1.totalTokens, 165, 'after batch 1: total 15 + 150');
+  t.equal(parent.stats?.inputTokens, 110, 'after batch 1: parent = 10 + 100');
+  t.equal(parent.stats?.totalTokens, 165, 'after batch 1: total 15 + 150');
 
   const mockDeps: PropagateTokenCostsDependencies = {
     searchSpans: async (_query, _org, _limit, _offset) => ({
       hits: [{
         ...parent,
-        attributes: {
-          ...parent.attributes,
-          'gen_ai.usage.input_tokens': 110,
-          'gen_ai.usage.output_tokens': 55,
-          'gen_ai.usage.total_tokens': 165,
-          'gen_ai.cost.usd': 0.0011
+        stats: {
+          ...parent.stats,
+          inputTokens: 110,
+          outputTokens: 55,
+          totalTokens: 165,
+          cost: 0.0011
         }
       }],
       total: 1
     }),
     updateSpan: async (_id, updates) => {
-      Object.assign(parent.attributes, updates?.attributes ?? {});
-      (parent as any)._seen = (updates as any)?._seen ?? [];
+      Object.assign(parent, updates ?? {});
       return parent as Span;
     }
   };
   await propagateTokenCostsToRootSpan([child2], mockDeps);
-  const afterBatch2 = getTokenUsage(parent);
-  t.equal(afterBatch2.inputTokens, 310, 'after late-arriving batch 2: parent = 110 + 200 (earlier counts kept)');
-  t.equal(afterBatch2.outputTokens, 155, 'after batch 2: output 55 + 100');
-  t.equal(afterBatch2.totalTokens, 465, 'after batch 2: total 165 + 300');
-  t.ok(Math.abs(afterBatch2.cost - 0.0031) < 0.000001, 'cost = 0.0011 + 0.002');
+  t.equal(parent.stats?.inputTokens, 310, 'after late-arriving batch 2: parent = 110 + 200 (earlier counts kept)');
+  t.equal(parent.stats?.outputTokens, 155, 'after batch 2: output 55 + 100');
+  t.equal(parent.stats?.totalTokens, 465, 'after batch 2: total 165 + 300');
+  t.ok(Math.abs((parent.stats?.cost ?? 0) - 0.0031) < 0.000001, 'cost = 0.0011 + 0.002');
   t.end();
 });
 
@@ -375,13 +360,11 @@ tap.test('propagateTokenCostsToRootSpan - multiple root spans', async t => {
   
   await propagateTokenCostsToRootSpan(spans);
   
-  const root1Usage = getTokenUsage(root1);
-  t.equal(root1Usage.inputTokens, 110); // 10 + 100
-  t.equal(root1Usage.outputTokens, 55); // 5 + 50
+  t.equal(root1.stats?.inputTokens, 110); // 10 + 100
+  t.equal(root1.stats?.outputTokens, 55); // 5 + 50
   
-  const root2Usage = getTokenUsage(root2);
-  t.equal(root2Usage.inputTokens, 220); // 20 + 200
-  t.equal(root2Usage.outputTokens, 110); // 10 + 100
+  t.equal(root2.stats?.inputTokens, 220); // 20 + 200
+  t.equal(root2.stats?.outputTokens, 110); // 10 + 100
   
   t.end();
 });
@@ -406,8 +389,7 @@ tap.test('propagateTokenCostsToRootSpan - handles database errors gracefully', a
   await propagateTokenCostsToRootSpan([child], mockDeps);
   
   // Child should still have its tokens
-  const childUsage = getTokenUsage(child);
-  t.equal(childUsage.inputTokens, 100);
+  t.equal(child.stats?.inputTokens, 100);
   
   t.end();
 });
@@ -459,4 +441,3 @@ tap.test('propagateTokenCostsToRootSpan - recursive parent loading', async t => 
   
   t.end();
 });
-

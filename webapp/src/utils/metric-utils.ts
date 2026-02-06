@@ -1,5 +1,28 @@
-import type { Metric } from '../common/types/Metric';
+
+import type Metric from '../common/types/Metric';
+import type Dataset from '../common/types/Dataset';
 import type Experiment from '../common/types/Experiment';
+import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
+
+
+export function getMetrics(dataset: Dataset): Metric[] {
+	if ( ! dataset) return [];
+	const allMetrics = []
+	if (dataset.metrics) {
+		allMetrics.push(...dataset.metrics);
+	}
+    allMetrics.push(...DEFAULT_SYSTEM_METRICS);
+	allMetrics.push(SPECIFIC_METRIC);
+    const metric4id = {};
+	for (const metric of allMetrics) {
+		if ( ! metric4id[metric.id]) {
+			metric4id[metric.id] = metric;
+		}
+	}
+	// unique
+    return Object.values(metric4id);
+}
+
 
 /**
  * Extract a numeric metric value from an experiment result.

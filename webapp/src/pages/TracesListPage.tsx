@@ -9,7 +9,7 @@ import { getSpanId, getTraceId } from '../common/types/Span.js';
 import { propFromString, setPropInString } from '../common/SearchQuery';
 import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
 import TracesListDashboard from '../components/TracesListDashboard';
-import { getStartTime, getDurationMs, getTotalTokenCount, getCost, getErrors, durationString, formatCost, prettyNumber } from '../utils/span-utils';
+import { getStartTime, getDurationMs, durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import Page from '../components/generic/Page';
 import { updateSpan } from '../api';
 import { TrashIcon } from '@phosphor-icons/react';
@@ -45,7 +45,8 @@ const REQUIRED_ATTRIBUTES = [
   'start',
   'end',
   'name',
-  'attributes'
+  // 'attributes',
+  'stats',
 ].join(',');
 
 // Attributes we need for feedback spans
@@ -345,11 +346,11 @@ const TracesListPage: React.FC = () => {
         id: 'totalTokens',
         header: 'Tokens',
         accessorFn: (row) => {
-          const tokenCount = getTotalTokenCount(row);
+          const tokenCount = row.stats?.totalTokens;
           return tokenCount !== null ? tokenCount : null;
         },
         cell: ({ row }) => {
-          const tokenCount = getTotalTokenCount(row.original);
+          const tokenCount = row.original.stats?.totalTokens;
           return <span>{tokenCount !== null ? prettyNumber(tokenCount) : 'N/A'}</span>;
         },
         enableSorting: true,
@@ -357,13 +358,14 @@ const TracesListPage: React.FC = () => {
       {
         id: 'cost',
         header: 'Cost (USD)',
-        accessorFn: (row) => {
-          const cost = getCost(row);
+        accessorFn: (span) => {
+          console.log('stats', JSON.stringify(span.stats), span.id);
+          const cost = span.stats?.cost;
           return cost !== null ? cost : null;
         },
         cell: ({ row }) => {
-          const cost = getCost(row.original);
-          if (cost === null) return <span>N/A</span>;
+          const cost = row.original.stats?.cost;
+          if (cost === null) return <span>{JSON.stringify(row.original.stats)}</span>;
           return <span>{formatCost(cost)}</span>;
         },
         enableSorting: true,
@@ -372,12 +374,12 @@ const TracesListPage: React.FC = () => {
         id: 'errors',
         header: 'Errors',
         accessorFn: (row) => {
-          const errors = getErrors(row);
+          const errors = row.stats?.errors;
           return errors !== null ? errors : null;
         },
         cell: ({ row }) => {
-          const errors = getErrors(row.original);
-          if (errors === null || errors === 0) return <span></span>;
+          const errors = row.original.stats?.errors;
+          if (!errors) return <span></span>;
           return <span className="text-danger">{prettyNumber(errors)}</span>;
         },
         enableSorting: true,
@@ -681,8 +683,8 @@ const TracesListPage: React.FC = () => {
             }}
             enableRowSelection={true}
             onSelectionChange={(selectedRowIds, selectedRows) => {
-              console.log('selectedRowIds:', selectedRowIds);
-              console.log('selectedRows:', selectedRows);
+              // console.log('selectedRowIds:', selectedRowIds);
+              // console.log('selectedRows:', selectedRows);
             }}
             bulkActionsToolbar={(selectedRowIds, selectedRows) => {
               return (

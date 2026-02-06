@@ -11,7 +11,7 @@ import TextWithStructureViewer from '../components/generic/TextWithStructureView
 import Tags from '../components/generic/Tags';
 import MetricModal, { addOrEditMetric, deleteMetric } from '../components/MetricModal';
 import Page from '../components/generic/Page';
-import { getStartTime, getDurationMs, getTotalTokenCount, getCost, durationString, prettyNumber, formatCost } from '../utils/span-utils';
+import { getStartTime, getDurationMs, durationString, prettyNumber, formatCost } from '../utils/span-utils';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { searchSpans } from '../api';
 import { asArray } from '../common/utils/miscutils';
@@ -271,8 +271,8 @@ function OutputsCard({ example }: { example: Example }) {
               const output = spanAny.attributes?.output;
               const startTime = getStartTime(span);
               const durationMs = getDurationMs(span);
-              const tokenCount = getTotalTokenCount(span);
-              const cost = getCost(span);
+              const tokenCount = span.stats?.totalTokens || 0;
+              const cost = span.stats?.cost || 0;
 
               return (
                 <Card key={index} className="mb-3">

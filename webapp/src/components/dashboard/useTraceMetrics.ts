@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Span } from '../../common/types';
 import { getTraceId } from '../../common/types/Span.js';
-import { getStartTime, getDurationMs, getTotalTokenCount, getCost, isRootSpan, organizeSpansByTraceId, calculateTokensForTree, calculateCostForTree } from '../../utils/span-utils';
+import { getStartTime, getDurationMs, isRootSpan, organizeSpansByTraceId } from '../../utils/span-utils';
 
 const MIN_DURATION_MS = 200;
 
@@ -10,6 +10,8 @@ interface FeedbackInfo {
   comment?: string;
 }
 
+
+// TODO refactor to reuse SpanStats + feedback
 interface TraceMetrics {
   tokens: {
     total: number;
@@ -27,6 +29,7 @@ interface TraceMetrics {
   count: number;
 }
 
+// TODO refactor to reuse SpanStats + feedback + time
 export interface TimeseriesDataPoint {
   time: number;
   duration: number;
@@ -58,8 +61,8 @@ export function useTraceMetrics(
       let traceCostTotal = 0;
       
       for (const tree of trees) {
-        traceTokensTotal += calculateTokensForTree(tree);
-        traceCostTotal += calculateCostForTree(tree);
+        traceTokensTotal += tree.span.stats?.totalTokens || 0;
+        traceCostTotal += tree.span.stats?.cost || 0;
       }
       
       if (traceTokensTotal > 0) {
@@ -163,7 +166,7 @@ export function useTokensHistogramData(spans: Span[]): TokensHistogramDataPoint[
     traceTrees.forEach((trees) => {
       let traceTokensTotal = 0;
       for (const tree of trees) {
-        traceTokensTotal += calculateTokensForTree(tree);
+        traceTokensTotal += tree.span.stats?.totalTokens || 0;
       }
       
       if (traceTokensTotal > 0) {
@@ -187,7 +190,7 @@ export function useCostHistogramData(spans: Span[]): CostHistogramDataPoint[] {
     traceTrees.forEach((trees) => {
       let traceCostTotal = 0;
       for (const tree of trees) {
-        traceCostTotal += calculateCostForTree(tree);
+        traceCostTotal += tree.span.stats?.cost || 0;
       }
       
       if (traceCostTotal > 0) {
@@ -213,8 +216,8 @@ export function useTimeseriesData(
       .map(span => {
         const startTime = getStartTime(span);
         const duration = getDurationMs(span);
-        const tokens = getTotalTokenCount(span);
-        const cost = getCost(span);
+        const tokens = span.stats?.totalTokens || 0;
+        const cost = span.stats?.cost || 0;
         const traceId = getTraceId(span);
         const feedback = traceId ? feedbackMap.get(traceId) : null;
 
@@ -266,7 +269,7 @@ export function useTokensTimeseriesData(
         // Calculate total tokens for this trace (without double-counting)
         let traceTokensTotal = 0;
         for (const tree of trees) {
-          traceTokensTotal += calculateTokensForTree(tree);
+          traceTokensTotal += tree.span.stats?.totalTokens || 0;
         }
 
         if (traceTokensTotal > 0) {
@@ -304,7 +307,7 @@ export function useCostTimeseriesData(
         // Calculate total cost for this trace (without double-counting)
         let traceCostTotal = 0;
         for (const tree of trees) {
-          traceCostTotal += calculateCostForTree(tree);
+          traceCostTotal += tree.span.stats?.cost || 0;
         }
 
         if (traceCostTotal > 0) {
