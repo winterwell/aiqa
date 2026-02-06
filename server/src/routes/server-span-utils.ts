@@ -145,7 +145,7 @@ export async function propagateTokenCostsToRootSpan(
         organisation,
         1,
         0,
-        ['id', 'parent', 'trace', 'organisation', 'attributes', '_childStats'],
+        ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
         undefined
       );
       if (result.hits.length > 0) {
@@ -203,9 +203,11 @@ export async function propagateTokenCostsToRootSpan(
     if (spanIdsInBatch.has(spanId)) continue; // assume saved later 
     try {
       const updates: Partial<Span> = {
-        stats: span.stats,
-        _childStats: span._childStats,
+        stats: span.stats
       };
+      if (span._childStats) {
+        updates._childStats = span._childStats;
+      }
       const updated = await updateSpanFn(spanId, updates, organisation);
       if (!updated) {
         updateFailures.push(spanId);
@@ -248,7 +250,9 @@ const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpan
       console.warn(`propagateTokenCostsToRootSpan: Missing id from child span ${child}`);
       continue;
     }
-    childStatsMap[childId] = childUsage;
+    if (childUsage) {
+      childStatsMap[childId] = childUsage;
+    }
   }
   // sum over children
   let childTotalStats: SpanStats = {};
