@@ -296,7 +296,10 @@ function transformExampleForEs(doc: any): any {
   return transformed;
 } //  end transformExampleForEs
 
-/** Generic bulk insert function. Returns the IDs of the documents that were inserted. */
+/** Generic bulk insert function. Returns the IDs of the documents that were inserted. 
+ * 
+ * How does this affect if the document already exists?? Does it overwrite or merge??
+*/
 async function bulkInsert<T>(indexName: string, documents: T[], transformFn?: (doc: any) => any): Promise<{ id: string }[]> {
   if (!client) {
     throw new Error('Elasticsearch client not initialized.');

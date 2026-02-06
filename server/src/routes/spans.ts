@@ -117,7 +117,7 @@ function convertOtlpSpansToInternalScopeSpan(
     });
   }
   
-  console.log('spans.ts convertOtlpSpansToInternalScopeSpan: Internal spans:', internalSpans);
+  // console.log('spans.ts convertOtlpSpansToInternalScopeSpan: Internal spans:', internalSpans);
   return internalSpans;
 }
 
@@ -253,7 +253,8 @@ export async function processOtlpTraceExport(
   // propagate token costs to the root span
   await propagateTokenCostsToRootSpan(spansWithOrg);
   // Save spans (may throw ConnectionError for Elasticsearch)
-  console.log(`spans.ts processOtlpTraceExport: Bulk inserting ${spansWithOrg.length} spans for organisation ${organisation}`);
+  const spanIds = spansWithOrg.map(span => getSpanId(span));
+  console.log(`spans.ts processOtlpTraceExport: Bulk inserting ${spansWithOrg.length} spans for organisation ${organisation} ids: ${spanIds}`);
   await bulkInsertSpans(spansWithOrg);
   await recordSpanPosting(organisation, spansWithOrg.length);
   

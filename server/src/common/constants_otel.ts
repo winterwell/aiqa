@@ -14,9 +14,6 @@ export const GEN_AI_USAGE_CACHED_INPUT_TOKENS = 'gen_ai.usage.cached_input_token
 export const GEN_AI_COST_USD = 'gen_ai.cost.usd';
 export const GEN_AI_COST_CALCULATOR = 'gen_ai.costcalculator';
 
-// Error count attribute (propagated from children, avoids double counting)
-export const GEN_AI_ERRORS = 'aiqa.errors';
-
 // Provider and model attributes
 export const GEN_AI_PROVIDER_NAME = 'gen_ai.provider.name';
 export const GEN_AI_REQUEST_MODEL = 'gen_ai.request.model';

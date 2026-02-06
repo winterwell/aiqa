@@ -80,6 +80,7 @@ export function generateSpanMappings(): any {
   }
   const mappings = generateEsMappingsFromSchema(spanDef.properties);
   mappings.unindexed_attributes = { type: 'object', enabled: false };
+  mappings._childStats = { type: 'object', enabled: false };
   if (mappings.dataset) {
     console.warn(`Span should not have dataset field?! mappings.dataset:`, JSON.stringify(mappings.dataset, null, 2), "spanDef:", JSON.stringify(spanDef, null, 2));
     delete mappings.dataset;
@@ -99,8 +100,8 @@ export function generateExampleMappings(): any {
   if (!exampleDef || !exampleDef.properties) {
     throw new Error('Could not find Example properties in schema');
   }
-  const metricSchema = loadSchema('Metric');
-  const metricDef = getTypeDefinition(metricSchema, 'Metric');
+  // const metricSchema = loadSchema('Metric');
+  // const metricDef = getTypeDefinition(metricSchema, 'Metric');
   // console.log(`Metric definition:`, JSON.stringify(metricDef, null, 2));
   // convert
   const mappings = generateEsMappingsFromSchema(exampleDef.properties);
@@ -109,10 +110,10 @@ export function generateExampleMappings(): any {
     mappings.spans.properties = generateSpanMappings();
   }
   if (mappings.metrics) {
-    const metricMapping = generateEsMappingsFromSchema(metricDef.properties);
+    // const metricMapping = generateEsMappingsFromSchema(metricDef.properties);
     mappings.metrics = {
       type: 'flattened',
-      properties: metricMapping
+      // properties: metricMapping
     };
     // console.log(`Metrics mapping:`, JSON.stringify(mappings.metrics, null, 2));
   }
@@ -120,13 +121,10 @@ export function generateExampleMappings(): any {
     mappings.input = { type: 'flattened' };
   }
   if (mappings.outputs) {
-    mappings.outputs = { type: 'object', enabled: false };
+    mappings.outputs = { type: 'flattened' };
   }
   if (mappings.parameters) {
-    mappings.parameters = { type: 'object', enabled: false };
-  }
-  if (mappings.metrics?.type === 'nested' && mappings.metrics.properties?.parameters) {
-    mappings.metrics.properties.parameters = { type: 'object', enabled: false };
+    mappings.parameters = { type: 'flattened' };
   }
   return mappings;
 }

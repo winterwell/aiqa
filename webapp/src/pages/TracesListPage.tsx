@@ -11,7 +11,6 @@ import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI
 import TracesListDashboard from '../components/TracesListDashboard';
 import { getStartTime, getDurationMs, getTotalTokenCount, getCost, getErrors, durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import Page from '../components/generic/Page';
-import Tags from '../components/generic/Tags';
 import { updateSpan } from '../api';
 import { TrashIcon } from '@phosphor-icons/react';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
@@ -46,8 +45,7 @@ const REQUIRED_ATTRIBUTES = [
   'start',
   'end',
   'name',
-  'attributes',
-  'tags',
+  'attributes'
 ].join(',');
 
 // Attributes we need for feedback spans
@@ -465,52 +463,6 @@ const TracesListPage: React.FC = () => {
               )}
             </span>
           );
-        },
-        enableSorting: true,
-      },
-      {
-        id: 'tags',
-        header: 'Tags',
-        accessorFn: (row) => {
-          // Sort by first tag alphabetically, or empty string if no tags
-          if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
-            return '';
-          }
-          // Sort by first tag (alphabetically), with empty tags at the end
-          return row.tags[0] || '';
-        },
-        cell: ({ row }) => {
-          const span = row.original;
-          const spanId = getSpanId(span);
-          
-          return (
-            <Tags
-            compact={true}
-              tags={span.tags}
-              setTags={async (newTags) => {
-                try {
-                  const updatedSpan = await updateSpan(spanId, {
-                    tags: newTags,
-                  });
-                  // Update the span in the enriched spans map
-                  const traceId = getTraceId(updatedSpan);
-                  if (traceId) {
-                    setEnrichedSpans(prev => {
-                      const next = new Map(prev);
-                      next.set(traceId, updatedSpan);
-                      return next;
-                    });
-                  }
-                } catch (error) {
-                  console.error('Failed to update span tags:', error);
-                }
-              }}
-            />
-          );
-        },
-        csvValue: (row) => {
-          // Export tags as comma-separated string for CSV
-          return row.tags && Array.isArray(row.tags) && row.tags.length > 0 ? row.tags.join(', ') : '';
         },
         enableSorting: true,
       },

@@ -11,7 +11,7 @@ import { searchExamples, searchSpans } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { scoreMetric } from '../scoring.js';
-import { getTokenUsage } from './server-span-utils.js';
+import { getSpanStatsFromAttributes } from './server-span-utils.js';
 import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
 
 interface MetricStats {
@@ -454,7 +454,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         
         if (spanResult && spanResult.hits.length > 0) {
           const rootSpan = spanResult.hits[0];
-          const tokenUsage = getTokenUsage(rootSpan);
+          const tokenUsage = getSpanStatsFromAttributes(rootSpan);
           
           // Add token count and cost as system metrics (using IDs from defaultSystemMetrics.ts)
           // 0 can be valid (e.g. a cached response)

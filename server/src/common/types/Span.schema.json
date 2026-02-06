@@ -164,19 +164,6 @@
           "type": "string",
           "description": "Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example"
         },
-        "dataset": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          ]
-        },
         "experiment": {
           "type": "string",
           "description": "Only set for spans in the `spans` index IF created during an experiment"
@@ -186,21 +173,14 @@
           "additionalProperties": true,
           "description": "Client-set annotations for the span (for things more complex than a tag). In ES mapping use flattened type."
         },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "Client-set tags for the span"
-        },
         "inputHash": {
           "type": "string",
           "description": "Hash of the input for looking up same-input spans"
         },
-        "_seen": {
-          "type": "array",
-          "items": { "type": "integer" },
-          "description": "For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch)"
+        "_childStats": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Track child stats for non-leaf spans to avoid double-counting."
         }
       },
       "required": [

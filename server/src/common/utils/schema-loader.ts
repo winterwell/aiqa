@@ -37,25 +37,26 @@ export function getTypeDefinition(schema: JsonSchema, typeName: string): any {
  */
 export function jsonSchemaToPostgresType(prop: any, fieldName: string): string {
   const type = prop.type;
-  
-  // Handle special cases
-  if (fieldName === 'id') {
-    return 'UUID PRIMARY KEY DEFAULT gen_random_uuid()';
+
+  // Handle special case fields
+  switch (fieldName) {
+    case 'id':
+      return 'UUID PRIMARY KEY DEFAULT gen_random_uuid()';
+    case 'created':
+    case 'updated':
+      return 'TIMESTAMP DEFAULT NOW()';
+    case 'members':
+      return "TEXT[] DEFAULT '{}'";
+    case 'version':
+      return 'INTEGER DEFAULT 0';
+
   }
-  
-  if (fieldName === 'created' || fieldName === 'updated') {
-    return 'TIMESTAMP DEFAULT NOW()';
-  }
-  
-  if (fieldName === 'members') {
-    return "TEXT[] DEFAULT '{}'";
-  }
-  
+
   if (fieldName.includes('_id') && fieldName !== 'id') {
     // Foreign key fields: NOT NULL will be determined by required array in schema
     return 'UUID';
   }
-  
+
   switch (type) {
     case 'string':
       if (prop.format === 'date-time') {
@@ -126,11 +127,11 @@ export function generatePostgresTable(
   if (!def || !def.properties) {
     throw new Error(`Could not find type definition for ${typeName}`);
   }
-  
+
   const columns: string[] = [];
   const columnMap = new Map<string, string>();
   const required = def.required || [];
-  
+
   // Add columns from schema
   for (const [fieldName, prop] of Object.entries(def.properties)) {
     const pgType = jsonSchemaToPostgresType(prop, fieldName);
@@ -139,12 +140,12 @@ export function generatePostgresTable(
     const notNull = isRequired && !pgType.includes('DEFAULT') && !pgType.includes('NOT NULL') ? ' NOT NULL' : '';
     columnMap.set(fieldName, `${pgType}${notNull}`);
   }
-  
+
   // Override or add additional columns (for foreign keys, etc.)
   for (const [fieldName, columnDef] of Object.entries(additionalColumns)) {
     columnMap.set(fieldName, columnDef);
   }
-  
+
   const columnCount = columnMap.size;
   if (columnCount > PG_MAX_COLUMNS) {
     const tableName = typeNameToTableName(typeName);
@@ -157,10 +158,10 @@ export function generatePostgresTable(
   for (const [fieldName, columnDef] of columnMap.entries()) {
     columns.push(`  ${toSnakeCase(fieldName)} ${columnDef}`);
   }
-  
+
   // Add constraints
   columns.push(...constraints);
-  
+
   const tableName = typeNameToTableName(typeName);
   return `CREATE TABLE IF NOT EXISTS ${tableName} (\n${columns.join(',\n')}\n)`;
 }
@@ -171,15 +172,15 @@ export function generatePostgresTable(
  */
 export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
   const type = prop.type;
-  
+
   if (fieldName === '@timestamp' || (fieldName.includes('timestamp') || fieldName.includes('created') || fieldName.includes('updated'))) {
     return { type: 'date' };
   }
-  
+
   if (fieldName.includes('_id') || fieldName === 'id') {
     return { type: 'keyword' };
   }
-  
+
   switch (type) {
     case 'string':
       // default to keyword as id-lookup is the normal case

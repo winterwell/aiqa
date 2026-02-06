@@ -10,5 +10,6 @@ export default interface Dataset {
   metrics?: Metric[];
   created: Date;
   updated: Date;
+  // version: number; updated will do
 }
 

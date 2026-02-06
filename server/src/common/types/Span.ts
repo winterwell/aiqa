@@ -8,6 +8,21 @@ export interface Feedback {
   comment?: string;
 }
 
+
+export interface SpanStats {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  totalTokens?: number;
+  /** USD */
+  cost?: number;
+  /** sum(child error counts) || 1 if this span has an error status 
+   * This is an estimate at distinct errors, where we assume that errors normally get passed up the tree in code.
+  */
+  errors?: number;
+  /** how many spans below this one in the tree? */
+  descendants?: number;
+}
 /**
  * Span type extending OpenTelemetry's ReadableSpan interface.
  * Represents a completed span that can be read and exported.
@@ -26,16 +41,18 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   experiment?: string;
   /** Client-set annotations for the span (for things more complex than a tag) */
   annotations?: Record<string, any>;
-  /** Client-set tags for the span */
-  tags?: string[];
+  /** token usage etc computed from this + descendants */
+  stats?: SpanStats;
+  /**
+   * Track child stats for non-leaf spans to avoid double-counting.
+   */
+  _childStats?: Record<string, SpanStats>;
   /** Hash of the input for looking up same-input spans */
   inputHash?: string;
   /** Start time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
   start: number;
   /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
   end: number;
-  /** For loaded parents only: child span-id hashes already incorporated into token/cost (avoids losing counts when only late-arriving spans in batch) */
-  _seen?: number[];
 }
 
 export function getSpanInput(span: Span) {
