@@ -29,6 +29,11 @@
           "type": "number",
           "description": "Epoch milliseconds"
         },
+        "stats": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Token usage stats"
+        },
         "status": {
           "type": "object",
           "properties": {
