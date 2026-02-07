@@ -1,5 +1,5 @@
 import Span from "./Span";
-import { Metric } from "./Metric.js";
+import Metric from "./Metric.js";
 
 /**
  * An Example aka an Eval

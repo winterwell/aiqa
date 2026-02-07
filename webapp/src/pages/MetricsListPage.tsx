@@ -4,7 +4,7 @@ import { Container, Row, Col, Card, CardBody, CardHeader, Table, Badge } from 'r
 import { useQuery } from '@tanstack/react-query';
 import { listDatasets } from '../api';
 import Dataset from '../common/types/Dataset';
-import { Metric } from '../common/types/Metric';
+import Metric from '../common/types/Metric';
 import Spinner from '../components/generic/Spinner';
 import { asArray } from '../common/utils/miscutils';
 

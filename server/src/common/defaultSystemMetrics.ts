@@ -1,4 +1,4 @@
-import { Metric } from './types/Metric.js';
+import Metric from './types/Metric.js';
 import { SpanStats } from './types/Span.js';
 
 

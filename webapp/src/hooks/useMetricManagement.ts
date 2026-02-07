@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Metric } from '../common/types/Metric';
+import Metric from '../common/types/Metric';
 import { addOrEditMetric, deleteMetric } from '../components/MetricModal';
 import { asArray } from '../common/utils/miscutils';
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, ModalHeader, ModalBody, ModalFooter, Form, FormGroup, Button, Label, Input } from 'reactstrap';
 import { useQuery } from '@tanstack/react-query';
-import { Metric } from '../common/types/Metric';
+import Metric from '../common/types/Metric';
 import PropInput from './generic/PropInput';
 import {useRerender} from 'rerenderer';
 import { getDefaultLLMPrompt } from '../common/llmPromptTemplate';

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { getExample, updateExample, getDataset, deleteExample } from '../api';
 import { useToast } from '../utils/toast';
 import type { Example, Span } from '../common/types';
-import { Metric } from '../common/types/Metric';
+import Metric from '../common/types/Metric';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import Tags from '../components/generic/Tags';

@@ -4,7 +4,7 @@ import { Container, Row, Col, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listExperiments, listDatasets, deleteExperiment } from '../api';
 import type Experiment from '../common/types/Experiment';
-import type { Metric } from '../common/types/Metric';
+import type Metric from '../common/types/Metric';
 import ExperimentsListMetricsDashboard from '../components/ExperimentListMetricsDashboard';
 import TableUsingAPI, { ExtendedColumnDef, PageableData } from '../components/generic/TableUsingAPI';
 import A from '../components/generic/A';

@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Container, Row, Col, Card, CardBody, CardHeader, Table, Badge, Button, Input, Modal, ModalHeader, ModalBody, ModalFooter, Alert } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getDataset, listExperiments, getExample } from '../api';
-import { Metric } from '../common/types/Metric';
+import Metric from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import { useToast } from '../utils/toast';
 import Page from '../components/generic/Page';

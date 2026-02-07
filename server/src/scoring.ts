@@ -1,4 +1,4 @@
-import { Metric } from './common/types/Metric.js';
+import Metric from './common/types/Metric.js';
 import Model from './common/types/Model.js';
 import { getDefaultLLMPrompt } from './common/llmPromptTemplate.js';
 import { getModel, listModels } from './db/db_sql.js';
