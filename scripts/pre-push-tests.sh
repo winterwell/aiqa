@@ -6,3 +6,4 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 #  check stuff builds
 cd "$ROOT/server" && pnpm run build
 cd "$ROOT/webapp" && pnpm run build
+# TODO check unit tests pass (maybe better on the github runner)
