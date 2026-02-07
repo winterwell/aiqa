@@ -34,7 +34,7 @@ import { registerDatasetRoutes } from './routes/datasets.js';
 import { registerApiKeyRoutes } from './routes/api-keys.js';
 import { registerModelRoutes } from './routes/models.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
-import versionData from './version.json';
+import { registerMiscRoutes } from './routes/misc-routes.js';
 
 const fastify = Fastify({
   logger: {
@@ -86,17 +86,6 @@ fastify.addHook('onRequest', async (request, reply) => {
   }
 });
 
-// Health check
-// Security: Public endpoint - no authentication required.
-fastify.get('/health', async () => {
-  return { status: 'ok' };
-});
-
-// Version endpoint
-// Security: Public endpoint - no authentication required.
-fastify.get('/version', async () => {
-  return versionData;
-});
 
 
 // Initialize AIQA organisation and admin user
@@ -220,6 +209,8 @@ const start = async () => {
     // Register model routes
     await registerModelRoutes(fastify);
     
+    await registerMiscRoutes(fastify);
+
     const port = parseInt(process.env.PORT || '4318');
     // Bind to 0.0.0.0 to allow external connections (not just localhost)
     await fastify.listen({ port, host: '0.0.0.0' });
