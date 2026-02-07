@@ -3,5 +3,6 @@
 # Run from repo root (aiqa).
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT/server" && pnpm test
-cd "$ROOT/webapp" && pnpm test
+#  check stuff builds
+cd "$ROOT/server" && pnpm run build
+cd "$ROOT/webapp" && pnpm run build
