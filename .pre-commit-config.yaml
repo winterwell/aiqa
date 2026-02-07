@@ -7,4 +7,4 @@ repos:
         entry: bash scripts/pre-push-tests.sh
         language: system
         pass_filenames: false
-        stages: [push]
+        stages: [pre-push]
