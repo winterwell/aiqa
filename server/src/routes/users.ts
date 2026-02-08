@@ -17,6 +17,7 @@ import { isSuperAdmin } from '../server_auth.js';
  */
 async function processPendingMembersForUser(user: User): Promise<void> {
   if (!user.email) {
+    console.warn(`processPendingMembersForUser: user ${user.id} has no email?!`);
     return;
   }
   try {

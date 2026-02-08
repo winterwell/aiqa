@@ -86,7 +86,7 @@ const ExperimentDetailsPage: React.FC = () => {
       header: 'Trace',
       accessorKey: 'trace',
       cell: ({ row }: any) => {
-        return <LinkId to={`/traces/${row.original.trace}`} id={row.original.trace} />;
+        return <LinkId to={`/organisation/${organisationId}/traces/${row.original.trace}`} id={row.original.trace} />;
       }
     },
   {

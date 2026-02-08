@@ -95,6 +95,8 @@ export interface PropagateTokenCostsDependencies {
  * 4. Spans are modified in place
  * 5. Loaded parent spans are saved here (using update). inBatch spans are NOT saved here.
  * Returns the root spans.
+ * 
+ * TODO: use a delay and a queue to reduce race conditions
  */
 export async function propagateTokenCostsToRootSpan(
   spans: Span[],

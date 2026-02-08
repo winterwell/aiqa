@@ -76,7 +76,8 @@ export async function updateOrganisation(id: string, updates: Partial<{
 	});
 }
 
-/** Add member by email: server looks up user (case-insensitive) and adds to members or pending. */
+/** Add member by email: server looks up user (case-insensitive) and adds to members or pending.
+ */
 export async function addOrganisationMemberByEmail(organisationId: string, email: string) {
 	return fetchWithAuth(`/organisation/${organisationId}/member`, {
 		method: 'POST',
@@ -219,6 +220,7 @@ function addOrganisationParam(params: URLSearchParams, organisationId: string) {
 // Span endpoints
 export async function searchSpans(args: {
 	organisationId: string;
+	sort?: string; // Comma-separated list of field:direction to sort by (e.g., 'start:desc,duration:asc')
 	isRoot?: boolean;
 	query?: string;
 	limit?: number;
@@ -226,7 +228,7 @@ export async function searchSpans(args: {
 	fields?: string; // Comma-separated list of fields, or '*' for all fields including attributes
 	exclude?: string; // Comma-separated list of fields to exclude (e.g., 'attributes.input,attributes.output')
 }) {
-	let { organisationId, isRoot = false, query, limit = 100, offset = 0, fields, exclude } = args;
+	let { organisationId, isRoot = false, query, limit = 100, offset = 0, fields, exclude, sort } = args;
 	// In a real implementation, you'd need to get an API key for this organisation
 	// For now, we'll construct the URL but note that authentication is needed
 	const params = new URLSearchParams();
@@ -240,6 +242,7 @@ export async function searchSpans(args: {
 	params.append('offset', offset.toString());
 	if (fields) params.append('fields', fields);
 	if (exclude) params.append('exclude', exclude);
+	if (sort) params.append('sort', sort);
 
 	// Note: This endpoint requires API key authentication
 	// You'll need to implement proper auth handling

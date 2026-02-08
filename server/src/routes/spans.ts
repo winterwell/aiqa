@@ -454,6 +454,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
    * - offset: optional - pagination offset (default: 0)
    * - fields: optional - comma-separated list of fields to include.
    * - exclude: optional - comma-separated list of fields to exclude.
+   * - sort: optional - comma-separated list of field:direction to sort by (e.g., 'start:desc,duration:asc')
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in Elasticsearch (searchSpans).
    * For API key authentication, organisation is automatically set from the API key.
    */
@@ -466,6 +467,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
     const query = (request.query as any).q as string | undefined;  
+    let sort = (request.query as any).sort as string | undefined;
     const limitRaw = parseInt(String((request.query as any).limit ?? 100), 10);
     const offsetRaw = parseInt(String((request.query as any).offset ?? 0), 10);
     const limit = Number.isNaN(limitRaw) || limitRaw < 1 ? 100 : limitRaw;
@@ -506,9 +508,11 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     }
 
     const searchQuery = new SearchQuery(resolvedQ);
-
+    if ( ! sort) {
+      sort = 'start:desc';
+    }
     try {
-      const result = await searchSpans(searchQuery, organisationId, limit, offset, _source_includes, _source_excludes);
+      const result = await searchSpans(searchQuery, sort, organisationId, limit, offset, _source_includes, _source_excludes);
       return {
         hits: result.hits,
         total: result.total,

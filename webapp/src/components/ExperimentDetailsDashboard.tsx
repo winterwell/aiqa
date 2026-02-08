@@ -9,6 +9,7 @@ import Histogram, { createHistogram, type HistogramDataPoint } from './generic/H
 import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
+import { prettyNumber } from '../utils/span-utils';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -178,9 +179,9 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 							</p>
 							<ul className="list-unstyled mb-0">
 								<li>Count: {count}</li>
-								<li>Min: {min.toFixed(2)} {metric.unit || ''}</li>
-								<li>Max: {max.toFixed(2)} {metric.unit || ''}</li>
-								<li>Mean: {mean.toFixed(2)} {metric.unit || ''}</li>
+								<li>Min: {prettyNumber(min)} {metric.unit || ''}</li>
+								<li>Max: {prettyNumber(max)} {metric.unit || ''}</li>
+								<li>Mean: {mean.toPrecision(3)} {metric.unit || ''}</li>
 							</ul>
 							{unmeasuredCount > 0 && (
 							<Alert color="warning" className="mb-2 p-1 small" fade={false}>

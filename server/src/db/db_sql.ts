@@ -517,7 +517,11 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 		'SELECT * FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
 		[email.trim()]
 	);
-	return result.rows[0] || null;
+	console.log(`getUserByEmail: email=${email}, result=${JSON.stringify(result.rows)}`);
+	const row0 = result.rows[0];
+	console.log(`getUserByEmail: row0=${JSON.stringify(row0)}`);
+	if ( ! row0) return null;
+	??
 }
 
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
@@ -632,6 +636,7 @@ function addMemberToOrganisationPatch(
 	userId: string,
 	removePendingEmail?: string
 ): Partial<Organisation> {
+	console.log(`addMemberToOrganisationPatch: org=${org.id}, userId=${userId}, removePendingEmail=${removePendingEmail}`);
 	const state: MemberState = {
 		members: org.members || [],
 		memberSettings: org.memberSettings || {},
@@ -644,6 +649,7 @@ function addMemberToOrganisationPatch(
  * @throws Error if organisation not found
  */
 export async function addOrganisationMember(organisationId: string, userId: string): Promise<Organisation> {
+	console.log(`addOrganisationMember: organisationId=${organisationId}, userId=${userId}`);
 	const org = await getOrganisation(organisationId);
 	if (!org) {
 		throw new Error('Organisation not found');
@@ -670,6 +676,7 @@ export async function removeOrganisationMember(organisationId: string, userId: s
 }
 
 /**
+ * TODO bug fix Why is this always going into pending?!
  * Add member by email: if user exists (case-insensitive), add to members and remove from pending;
  * otherwise add email to pending only.
  * @returns Discriminated result for the route to map to responses.
@@ -684,18 +691,21 @@ export async function addOrganisationMemberByEmail(
 	| { kind: 'addedToPending'; org: Organisation }
 	| { kind: 'notFound' }
 > {
+	console.log(`addOrganisationMemberByEmail: organisationId=${organisationId}, email=${email}`);
 	const org = await getOrganisation(organisationId);
 	if (!org) return { kind: 'notFound' };
 	const emailLower = (email || '').trim().toLowerCase();
 	if (!emailLower) return { kind: 'notFound' };
 
 	const existingUser = await getUserByEmail(email);
+	console.log(`addOrganisationMemberByEmail: existingUser=${JSON.stringify(existingUser)}`);
 	if (existingUser) {
 		if (org.members?.includes(existingUser.id)) return { kind: 'alreadyMember' };
 		const patch = addMemberToOrganisationPatch(org, existingUser.id, emailLower);
 		const updated = await updateOrganisation(organisationId, patch);
 		return { kind: 'updated', org: updated ?? org };
 	}
+	console.log(`addOrganisationMemberByEmail: email=${email} not found, adding to pending`);
 
 	if ((org.pending || []).some((e) => e.toLowerCase() === emailLower)) {
 		return { kind: 'alreadyPending' };
@@ -731,7 +741,9 @@ export async function getOrganisationMembers(organisationId: string): Promise<Us
  * @returns Array of organisation IDs the user was added to
  */
 export async function processPendingMembers(userId: string, userEmail: string): Promise<string[]> {
+	console.log(`processPendingMembers: userId=${userId}, userEmail=${userEmail}`);
 	if (!userEmail || !userId) {
+		console.warn(`processPendingMembers: userId=${userId}, userEmail=${userEmail} - missing userId or userEmail`);
 		return [];
 	}
 
@@ -746,7 +758,7 @@ export async function processPendingMembers(userId: string, userEmail: string): 
 	);
 	// Note: column name is snake_case in DB; transformOrganisation maps to pending
 	const orgsWithPendingEmail = result.rows.map(transformOrganisation);
-
+	console.log(`processPendingMembers: found ${orgsWithPendingEmail.length} organisations with pending email ${emailLower}`);
 	const addedOrgIds: string[] = [];
 
 	for (const org of orgsWithPendingEmail) {

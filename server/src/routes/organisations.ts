@@ -159,7 +159,10 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
   fastify.post('/organisation/:organisationId/member/:userId', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccess(request, reply, ['developer', 'admin'])) return;
     const { organisationId, userId } = request.params as { organisationId: string; userId: string };
-    if (!(await checkOrganisationAdminAccess(request, reply, organisationId))) return;
+    console.log(`addOrganisationMember: organisationId=${organisationId}, userId=${userId}`);
+    if (!(await checkOrganisationAdminAccess(request, reply, organisationId))) {
+      return;
+    }
     const organisation = await addOrganisationMember(organisationId, userId);
     return organisation;
   });
@@ -175,6 +178,7 @@ export async function registerOrganisationRoutes(fastify: FastifyInstance): Prom
       reply.code(400).send({ error: 'email is required' });
       return;
     }
+    console.log(`addOrganisationMemberByEmail: organisationId=${organisationId}, email=${email}`);
     const result = await addOrganisationMemberByEmail(organisationId, email);
     if (result.kind === 'notFound') {
       reply.code(404).send({ error: 'Organisation not found' });

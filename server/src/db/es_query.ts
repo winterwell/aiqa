@@ -200,19 +200,27 @@ function extractTotal(total: number | { value: number }): number {
  * @param _source_excludes - Array of field names to exclude from _source, or undefined for no exclusions.
  */
 export async function searchEntities<T>(
-  client: Client,
-  indexName: string,
-  searchQuery?: SearchQuery | string | null,
-  filters?: Record<string, string>,
-  limit: number = 100,
-  offset: number = 0,
-  _source_includes?: string[] | null,
-  _source_excludes?: string[] | null
-): Promise<{ hits: T[]; total: number }> {
+  args: {
+    client: Client,
+    indexName: string,
+    searchQuery?: SearchQuery | string | null,
+    /** @deprecated, use searchQuery instead */
+    filters?: Record<string, string>,
+    sort?: string,
+    limit?: number,
+    offset?: number,
+    _source_includes?: string[] | null,
+    _source_excludes?: string[] | null
+  }): Promise<{ hits: T[]; total: number }> {
+  let { client, indexName, searchQuery, filters, sort, limit, offset, _source_includes, _source_excludes } = args;
   if (!client) {
     throw new Error('Elasticsearch client not initialized.');
   }
-
+  if ( ! limit) limit = 100;
+  if ( ! offset) offset = 0;
+  if ( ! sort) {
+    sort = getSortField(indexName)+":desc";
+  }
   const baseQuery = searchQueryToEsQuery(searchQuery);
   const mustClauses: any[] = [];
 
@@ -221,7 +229,7 @@ export async function searchEntities<T>(
     mustClauses.push(baseQuery);
   }
 
-  // Add filters
+  // Add filters TODO merge with searchQuery
   const filterClauses = buildFilterClauses(filters);
   mustClauses.push(...filterClauses);
   
@@ -259,14 +267,18 @@ export async function searchEntities<T>(
       sourceExcludes = [...sourceExcludes, 'unindexed_attributes'];
     }
   }
-
+// string to ES sort array, e.g. 'start:desc,duration:asc' -> [{ start: { order: 'desc' } }, { duration: { order: 'asc' } }]
+  const esSort = sort.split(',').map((s: string) => {
+    const [field, direction] = s.split(':');
+    return { [field]: { order: direction } };
+  });
   // Build search request with source filtering
   const searchParams: any = {
     index: indexName,
     query: { bool: { must: mustClauses } },
     size: limit,
     from: offset,
-    sort: [{ [getSortField(indexName)]: { order: 'desc' } }]
+    sort: esSort
   };
 
   // Add source filtering if specified
@@ -276,7 +288,7 @@ export async function searchEntities<T>(
   if (sourceExcludes && sourceExcludes.length > 0) {
     searchParams._source_excludes = sourceExcludes;
   }
-
+// GET THE DATA!
   const result = await client.search<T>(searchParams);
 
   let hits = (result.hits.hits || [])

@@ -8,7 +8,7 @@
 import { Client } from '@elastic/elasticsearch';
 import Span from '../common/types/Span.js';
 import SearchQuery from '../common/SearchQuery.js';
-import { searchEntities as searchEntitiesEs } from './es_query.js';
+import { searchEntities } from './es_query.js';
 import Example from '../common/types/Example.js';
 
 let client: Client | null = null;
@@ -349,21 +349,6 @@ function isNotFoundError(error: any): boolean {
   return error.meta?.statusCode === 404;
 }
 
-/**Generic search function wrapper. This is the function for getting entities from Elasticsearch. */
-async function searchEntities<T>(
-  indexName: string,
-  searchQuery?: SearchQuery | string | null,
-  filters?: Record<string, string>,
-  limit: number = 100,
-  offset: number = 0,
-  _source_includes?: string[] | null,
-  _source_excludes?: string[] | null
-): Promise<{ hits: T[]; total: number }> {
-  if (!client) {
-    throw new Error('Elasticsearch client not initialized.');
-  }
-  return searchEntitiesEs<T>(client, indexName, searchQuery, filters, limit, offset, _source_includes, _source_excludes);
-}
 
 /**
  * Bulk insert spans into 'traces' index. Spans should have organisation set.
@@ -381,21 +366,24 @@ export async function bulkInsertSpans(spans: Span[]): Promise<{id: string}[]> {
  */
 export async function searchSpans(
   searchQuery?: SearchQuery | string | null,
+  sort?: string,
   organisationId?: string,
   limit: number = 100,
   offset: number = 0,
   _source_includes?: string[] | null,
   _source_excludes?: string[] | null
 ): Promise<{ hits: Span[]; total: number }> {    
-  return searchEntities<Span>(
-    SPAN_INDEX_ALIAS,
+  return searchEntities<Span>({
+    client: client!,
+    indexName: SPAN_INDEX_ALIAS,
     searchQuery,
-    { organisation: organisationId },
+    sort,
+    filters: { organisation: organisationId },
     limit,
     offset,
-    _source_includes,
-    _source_excludes
-  );
+    _source_includes: _source_includes,
+    _source_excludes: _source_excludes
+  });
 }
 
 /**
@@ -782,13 +770,14 @@ export async function searchExamples(
   const filters: Record<string, string> = {};
   if (organisationId) filters.organisation = organisationId;
   if (datasetId) filters.dataset = datasetId;
-  const result = await searchEntities<Example>(
-    DATASET_EXAMPLES_INDEX_ALIAS,
+  const result = await searchEntities<Example>({
+    client: client!,
+    indexName: DATASET_EXAMPLES_INDEX_ALIAS,
     searchQuery,
-    hasKeys(filters) ? filters : undefined,
+    filters: hasKeys(filters) ? filters : undefined,
     limit,
     offset
-  );
+});
   
   // Unwrap input.value structure if it exists (for backward compatibility with string inputs)
   result.hits = result.hits.map((example: any) => {

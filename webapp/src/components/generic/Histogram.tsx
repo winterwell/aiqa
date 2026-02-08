@@ -92,7 +92,9 @@ export default function Histogram({
 		return null;
 	}
 	if ( ! tickFormatter) {
-		tickFormatter = (value) => prettyNumber(value);
+		tickFormatter = (value) => {
+			return prettyNumber(value);
+		};
 	}
 
 	return (
@@ -108,6 +110,7 @@ export default function Histogram({
 					tick={{ fontSize: 10 }}
 					label={xAxisLabel ? { value: xAxisLabel, position: 'insideBottom', offset: -5 } : undefined}
 					tickFormatter={tickFormatter}
+					tickCount={Math.min(histogramData.length, 5)}
 				/>
 				<YAxis 
 					label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft' } : undefined}

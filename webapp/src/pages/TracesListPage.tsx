@@ -216,9 +216,13 @@ const TracesListPage: React.FC = () => {
     if (dateFilter) parts.push(`(${dateFilter})`);
     const combinedQuery = parts.length > 0 ? parts.join(' AND ') : '';
 
+    // TODO get sort from table sort state
+    const sort = undefined;
+
     const result = await searchSpans({
       organisationId: organisationId!,
       query: combinedQuery,
+      sort,
       isRoot: true,
       limit: 1000,
       offset: 0,
@@ -465,6 +469,15 @@ const TracesListPage: React.FC = () => {
               )}
             </span>
           );
+        },
+        enableSorting: true,
+      },
+      {
+        id: 'descendants',
+        header: 'Spans',
+        accessorFn: (row) => {
+          const descendants = row.stats?.descendants;
+          return descendants !== null ? descendants+1 : 1;
         },
         enableSorting: true,
       },
