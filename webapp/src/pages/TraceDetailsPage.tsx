@@ -523,7 +523,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
 			</div>
 			
-			{organisationId && Array.isArray(datasets) && (
+			{organisationId && Array.isArray(datasets) && (/* TODO refactor into function AddToDataset(). Check for existing dataset (span.example if made by an experiment or query example). */
 				<div style={{ marginTop: '15px', marginBottom: '15px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px' }}>
 					{datasets.length === 0 ? (
 						<Button

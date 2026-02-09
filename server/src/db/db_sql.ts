@@ -216,6 +216,8 @@ export async function createTables(): Promise<void> {
 
 // periodically delete this when all existing database tables are up to date
 async function applyMigrations(): Promise<void> {
+	// Added in 2026-02: Experiment lifecycle state.
+	await doQuery(`ALTER TABLE experiments ADD COLUMN IF NOT EXISTS status TEXT`);
 } // end applyMigrations
 
 /**
@@ -521,7 +523,8 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 	const row0 = result.rows[0];
 	console.log(`getUserByEmail: row0=${JSON.stringify(row0)}`);
 	if ( ! row0) return null;
-	??
+	// DOes this need a transform??
+	return row0;
 }
 
 export async function updateUser(id: string, updates: Partial<User>): Promise<User | null> {
@@ -940,6 +943,7 @@ export async function updateExperiment(id: string, updates: Partial<Experiment>)
 	const item: Record<string, any> = {};
 
 	if (updates.name !== undefined) item.name = updates.name;
+	if (updates.status !== undefined) item.status = updates.status;
 	if (updates.summaries !== undefined) item.summaries = JSON.stringify(updates.summaries);
 	if (updates.results !== undefined) item.results = JSON.stringify(updates.results);
 	if (updates.parameters !== undefined) item.parameters = updates.parameters !== null && updates.parameters !== undefined ? JSON.stringify(updates.parameters) : null;
@@ -986,4 +990,3 @@ export async function updateModel(id: string, updates: Partial<Model>): Promise<
 export async function deleteModel(id: string): Promise<boolean> {
 	return deleteEntity('models', id);
 }
-

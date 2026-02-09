@@ -498,7 +498,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     if (feedbackValue === 'positive' || feedbackValue === 'negative') {
       resolvedQ = SearchQuery.setPropInString(resolvedQ, 'feedback', null);
       const feedbackSpanQuery = `attributes.feedback.value:${feedbackValue}`;
-      const feedbackResult = await searchSpans(feedbackSpanQuery, organisationId, 1000, 0, ['trace'], undefined);
+      const feedbackResult = await searchSpans({searchQuery: feedbackSpanQuery, organisation: organisationId, limit: 1000, offset: 0, _source_includes: ['trace'], _source_excludes: undefined});
       const traceIds = feedbackResult.hits.map((s: Span) => s.trace).filter(Boolean) as string[];
       if (traceIds.length === 0) {
         return { hits: [], total: 0, limit, offset };
@@ -512,7 +512,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       sort = 'start:desc';
     }
     try {
-      const result = await searchSpans(searchQuery, sort, organisationId, limit, offset, _source_includes, _source_excludes);
+      const result = await searchSpans({searchQuery, sort, organisation: organisationId, limit, offset, _source_includes, _source_excludes});
       return {
         hits: result.hits,
         total: result.total,
@@ -572,14 +572,14 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
     try {
       // Get root spans with token/cost info
-      const result = await searchSpans(
+      const result = await searchSpans({
         searchQuery,
-        organisationId,
+        organisation: organisationId,
         limit,
-        0,
-        ['id', 'trace', 'name', 'start', 'end', 'stats', 'attributes.feedback'],
-        ['attributes.input', 'attributes.output', 'attributes.unindexed_attributes']
-      );
+        offset: 0,
+        _source_includes: ['id', 'trace', 'name', 'start', 'end', 'stats', 'attributes.feedback'],
+        _source_excludes: ['attributes.input', 'attributes.output', 'attributes.unindexed_attributes']
+    });
 
       const spans = result.hits;
       const MIN_DURATION_MS = 50; // Ignore traces with duration < 50ms

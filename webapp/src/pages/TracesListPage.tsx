@@ -14,6 +14,7 @@ import Page from '../components/generic/Page';
 import { updateSpan } from '../api';
 import { TrashIcon } from '@phosphor-icons/react';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
+import LinkId from '../components/LinkId';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
@@ -46,6 +47,7 @@ const REQUIRED_ATTRIBUTES = [
   'end',
   'name',
   // 'attributes',
+  'attributes.aiqa.experiment',
   'stats',
 ].join(',');
 
@@ -280,6 +282,8 @@ const TracesListPage: React.FC = () => {
   });
   const feedbackMap = traceIdsForFeedback.length > 0 && feedbackMapData ? feedbackMapData : (new Map() as FeedbackMap);
 
+  // TODO experiment ID to name lookup
+  
   // Table columns
   const columns = useMemo<ColumnDef<Span>[]>(
     () => [
@@ -313,16 +317,20 @@ const TracesListPage: React.FC = () => {
 			  return startTime ? startTime.toISOString() : '';
 			},
 			enableSorting: true,
+      enableColumnFilter: false,
 		  },
 	
 		{
         id: 'trace',
         header: 'Trace ID',
+        accessorKey: 'trace',
         cell: ({ row }) => {
           const traceId = getTraceId(row.original);
           if (!traceId) return <span>N/A</span>;
           return <code className="small">{traceId.length > 16 ? `${traceId.substring(0, 16)}...` : traceId}</code>;
         },
+        enableSorting: false,
+        enableColumnFilter: true,
       },
       {
         accessorKey: 'name',
@@ -330,6 +338,18 @@ const TracesListPage: React.FC = () => {
         cell: ({ row }) => {
           const name = (row.original as any).name || 'Unknown';
           return <span>{name}</span>;
+        },
+      },
+      { 
+        header: 'Experiment',
+        accessorFn: (span) => {
+          const experiment = span.attributes?.['aiqa.experiment'];
+          return experiment;
+        },
+        cell: ({ row }) => {
+          const experiment = row.original.attributes?.['aiqa.experiment'];
+          if (!experiment) return <span></span>;
+          return <LinkId to={`/organisation/${organisationId}/experiment/${encodeURIComponent(experiment as string)}`} id={experiment as string} />;
         },
       },
       {
@@ -345,6 +365,7 @@ const TracesListPage: React.FC = () => {
           return <span>{durationString(duration)}</span>;
         },
         enableSorting: true,
+        enableColumnFilter: false,
       },
       {
         id: 'totalTokens',
@@ -358,6 +379,7 @@ const TracesListPage: React.FC = () => {
           return <span>{tokenCount !== null ? prettyNumber(tokenCount) : 'N/A'}</span>;
         },
         enableSorting: true,
+        enableColumnFilter: false,
       },
       {
         id: 'cost',
@@ -373,6 +395,7 @@ const TracesListPage: React.FC = () => {
           return <span>{formatCost(cost)}</span>;
         },
         enableSorting: true,
+        enableColumnFilter: false,
       },
       {
         id: 'errors',
@@ -387,6 +410,7 @@ const TracesListPage: React.FC = () => {
           return <span className="text-danger">{prettyNumber(errors)}</span>;
         },
         enableSorting: true,
+        enableColumnFilter: false,
       },
       {
         id: 'component',
@@ -397,6 +421,7 @@ const TracesListPage: React.FC = () => {
                            null;
           return <span>{component || 'N/A'}</span>;
         },
+        enableColumnFilter: true,
       },
       {
         id: 'feedback',
@@ -480,6 +505,7 @@ const TracesListPage: React.FC = () => {
           return descendants !== null ? descendants+1 : 1;
         },
         enableSorting: true,
+        enableColumnFilter: false,
       },
     ],
     [organisationId, feedbackMap, feedbackInSearch, searchParams]
@@ -725,4 +751,3 @@ const TracesListPage: React.FC = () => {
 };
 
 export default TracesListPage;
-

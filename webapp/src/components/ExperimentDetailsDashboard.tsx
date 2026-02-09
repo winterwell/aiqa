@@ -9,7 +9,7 @@ import Histogram, { createHistogram, type HistogramDataPoint } from './generic/H
 import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
-import { prettyNumber } from '../utils/span-utils';
+import { durationString, prettyNumber } from '../utils/span-utils';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -153,6 +153,7 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 	unmeasuredCount: number;
 	totalResults: number;
 }) {
+	const str4num = metric.unit == "ms" ? durationString : prettyNumber;
 	return (
 		<Card>
 			<CardHeader>
@@ -179,9 +180,9 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 							</p>
 							<ul className="list-unstyled mb-0">
 								<li>Count: {count}</li>
-								<li>Min: {prettyNumber(min)} {metric.unit || ''}</li>
-								<li>Max: {prettyNumber(max)} {metric.unit || ''}</li>
-								<li>Mean: {mean.toPrecision(3)} {metric.unit || ''}</li>
+								<li>Min: {str4num(min)} {metric.unit || ''}</li>
+								<li>Max: {str4num(max)} {metric.unit || ''}</li>
+								<li>Mean: {str4num(mean)} {metric.unit || ''}</li>
 							</ul>
 							{unmeasuredCount > 0 && (
 							<Alert color="warning" className="mb-2 p-1 small" fade={false}>

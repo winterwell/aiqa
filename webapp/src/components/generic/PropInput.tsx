@@ -109,6 +109,8 @@ export default function PropInput({ label, item, prop, type, help, className, on
 	} else {
 		_Input = Input;
 	}
+	// HACK: detect class h1 and apply h1-like font style. Crude but simple and it works :)
+	const isH1TextInput = (type === undefined || type === "text") && !!className?.split(/\s+/).includes("h1");
 	const containerStyle = inline ? { display: 'flex', alignItems: 'center', gap: '0.5rem' } : undefined;
 	const labelStyle = inline ? { marginBottom: 0, marginRight: '0.5rem' } : undefined;
 	return (<div className={className} style={containerStyle}>
@@ -117,6 +119,7 @@ export default function PropInput({ label, item, prop, type, help, className, on
 			multiple={multiple} list={list} 
 			checked={type==="checkbox" ? localValue : undefined}
 			readOnly={readOnly}
+			style={isH1TextInput ? { fontSize: '2rem', fontWeight: 500, lineHeight: 1.2, height: 'auto' } : undefined}
 		/>
 		{/* <code>value: {JSON.stringify(value)}</code> */}
 	</div>);

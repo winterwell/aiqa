@@ -99,16 +99,13 @@ export interface PropagateTokenCostsDependencies {
  * TODO: use a delay and a queue to reduce race conditions
  */
 export async function propagateTokenCostsToRootSpan(
-  spans: Span[],
-  deps?: Partial<PropagateTokenCostsDependencies>
+  spans: Span[]
 ): Promise<Span[]> {
   if (spans.length === 0) return [];
   const traceIds = spans.map(span => span.trace);
   const spanIds = spans.map(span => getSpanId(span));
   const tokenStats = spans.map(span => getSpanStatsFromAttributes(span));
   console.log('propagateTokenCostsToRootSpan: traces:' + traceIds + ' spans:', spanIds, "tokenStats:", tokenStats);
-  const searchSpansFn = deps?.searchSpans || searchSpans;
-  const updateSpanFn = deps?.updateSpan || updateSpan;
 
   const organisation = spans[0].organisation;
   if (!organisation) {
@@ -143,14 +140,14 @@ export async function propagateTokenCostsToRootSpan(
     const parentId = toLoad.pop()!;
     if (spanMap.has(parentId)) continue;
     try {
-      const result = await searchSpansFn(
-        new SearchQuery(`id:${parentId}`),
+      const result = await searchSpans({
+        searchQuery: new SearchQuery(`id:${parentId}`),
         organisation,
-        1,
-        0,
-        ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
-        undefined
-      );
+        limit: 1,
+        offset: 0,
+        _source_includes: ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
+        _source_excludes: undefined
+    });
       if (result.hits.length > 0) {
         const parent = result.hits[0];
         spanMap.set(parentId, parent);
@@ -168,14 +165,14 @@ export async function propagateTokenCostsToRootSpan(
   let idsToResolveChildren = Array.from(spanIdsInBatch);
   while (idsToResolveChildren.length > 0) {
     // load child spans
-    const result = await searchSpansFn(
-      new SearchQuery(`parent:${idsToResolveChildren.join(' OR ')}`),
+    const result = await searchSpans({
+      searchQuery: new SearchQuery(`parent:${idsToResolveChildren.join(' OR ')}`),
       organisation,
-      1000,
-      0,
-      ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
-      undefined
-    );
+      limit: 1000,
+      offset: 0,
+      _source_includes: ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
+      _source_excludes: undefined
+  });
     idsToResolveChildren = [];
     for(const child of result.hits) {
       if (spanMap.has(child.id)) {
@@ -245,7 +242,7 @@ export async function propagateTokenCostsToRootSpan(
         updates._childStats = span._childStats;
       }
       console.log(`propagateTokenCostsToRootSpan: updating span ${spanId} with updates: ${JSON.stringify(updates)}`);
-      const updated = await updateSpanFn(spanId, updates, organisation);
+      const updated = await updateSpan(spanId, updates, organisation);
       if (!updated) {
         updateFailures.push(spanId);
         console.warn(`propagateTokenCostsToRootSpan: updateSpan returned null for ${spanId} (span may not exist or belong to different org)`);

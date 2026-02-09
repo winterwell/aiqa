@@ -41,9 +41,9 @@ export function createHistogram(values: number[], numBins: number = 8): Histogra
 		bins[binIndex].count++;
 	});
 	
-	// Format bin labels
+	// Use the bin mean as the label so each bar has a single representative X value.
 	return bins.map(bin => ({
-		bin: `${bin.binStart.toFixed(2)}-${bin.binEnd.toFixed(2)}`,
+		bin: prettyNumber((bin.binStart + bin.binEnd) / 2),
 		count: bin.count,
 	}));
 }
@@ -87,6 +87,8 @@ export default function Histogram({
 	tooltipLabelFormatter,
 }: HistogramProps) {
 	const histogramData = data || (values ? createHistogram(values, numBins) : []);
+	const maxXAxisTicks = 5;
+	const xAxisInterval = Math.max(Math.ceil(histogramData.length / maxXAxisTicks) - 1, 0);
 
 	if (histogramData.length === 0) {
 		return null;
@@ -106,11 +108,11 @@ export default function Histogram({
 					angle={horizontalLabels ? 0 : -45}
 					textAnchor={horizontalLabels ? 'middle' : 'end'}
 					height={horizontalLabels ? 30 : 30}
-					interval={0}
+					interval={xAxisInterval}
 					tick={{ fontSize: 10 }}
 					label={xAxisLabel ? { value: xAxisLabel, position: 'insideBottom', offset: -5 } : undefined}
 					tickFormatter={tickFormatter}
-					tickCount={Math.min(histogramData.length, 5)}
+					tickCount={maxXAxisTicks}
 				/>
 				<YAxis 
 					label={yAxisLabel ? { value: yAxisLabel, angle: -90, position: 'insideLeft' } : undefined}
@@ -123,8 +125,6 @@ export default function Histogram({
 		</ResponsiveContainer>
 	);
 }
-
-
 
 
 

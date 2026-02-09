@@ -199,8 +199,8 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
           // Find root span for this trace (parent:unset means it's a root span)
-          const traceQuery = new SearchQuery(`trace:${body.trace} parent:unset`);
-          spanResult = await searchSpans(traceQuery, organisation, 1, 0);
+          const searchQuery = new SearchQuery(`trace:${body.trace} parent:unset`);
+          spanResult = await searchSpans({searchQuery, organisation, limit: 1, offset: 0});
 
           if (spanResult.hits.length > 0) {
             break; // Found the span, exit retry loop

@@ -24,7 +24,11 @@ import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray, truncate } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
 import { getExampleInputString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
+import DatasetDetailsDashboard from '../components/DatasetDetailsDashboard';
 
+/**
+ * Page to display details of a dataset, including its metrics and examples.
+ */
 const DatasetDetailsPage: React.FC = () => {
   const { organisationId, datasetId } = useParams<{ organisationId: string; datasetId: string }>();
   const navigate = useNavigate();
@@ -36,6 +40,7 @@ const DatasetDetailsPage: React.FC = () => {
   const [isMetricModalOpen, setIsMetricModalOpen] = useState(false);
   const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
+  const [examplesData, setExamplesData] = useState<Example[]>([]);
 
   const { data: dataset, isLoading, error } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -277,6 +282,8 @@ const DatasetDetailsPage: React.FC = () => {
         </Col>
       </Row> */}
 
+      <DatasetDetailsDashboard dataset={dataset} examples={examplesData} />
+
       <Row className="mt-3">
         <Col>
           <Card>
@@ -406,6 +413,9 @@ const DatasetDetailsPage: React.FC = () => {
           </div>
           <TableUsingAPI
             loadData={loadExamplesData}
+            onDataLoaded={(data) => {
+              setExamplesData(data.hits);
+            }}
             showSearch={true}
             columns={columns}
             searchPlaceholder="Search examples..."

@@ -751,6 +751,7 @@ tap.test('create experiment', async (t) => {
     dataset: dataset.id,
     organisation: org.id,
     name: 'Test Experiment',
+    status: 'processing',
     parameters: { model: 'gpt-4', temperature: 0.7 },
     summaries: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
     results: [
@@ -765,6 +766,7 @@ tap.test('create experiment', async (t) => {
   t.equal(experiment.name, 'Test Experiment', 'should have correct name');
   t.equal(experiment.dataset, dataset.id, 'should have correct dataset');
   t.equal(experiment.organisation, org.id, 'should have correct organisation');
+  t.equal(experiment.status, 'processing', 'should have correct status');
   t.same(experiment.parameters, { model: 'gpt-4', temperature: 0.7 }, 'should have correct parameters');
   t.same(experiment.summaries, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have correct summaries');
   t.ok(Array.isArray(experiment.results), 'results should be an array');
@@ -889,6 +891,7 @@ tap.test('update experiment', async (t) => {
     dataset: dataset.id,
     organisation: org.id,
     name: 'Update Test Experiment',
+    status: 'draft',
     parameters: { model: 'gpt-4' },
     summaries: { accuracy: { average: 0.8 } },
   });
@@ -898,6 +901,7 @@ tap.test('update experiment', async (t) => {
   // Update name, parameters, and summaries
   const updated = await updateExperiment(created.id, {
     name: 'Updated Experiment Name',
+    status: 'closed',
     parameters: { model: 'gpt-4o', temperature: 0.9 },
     summaries: { accuracy: { average: 0.95, min: 0.8, max: 1.0 } },
   });
@@ -905,6 +909,7 @@ tap.test('update experiment', async (t) => {
   t.ok(updated, 'should return updated experiment');
   t.equal(updated!.id, created.id, 'should have same id');
   t.equal(updated!.name, 'Updated Experiment Name', 'should have updated name');
+  t.equal(updated!.status, 'closed', 'should have updated status');
   t.same(updated!.parameters, { model: 'gpt-4o', temperature: 0.9 }, 'should have updated parameters');
   t.same(updated!.summaries, { accuracy: { average: 0.95, min: 0.8, max: 1.0 } }, 'should have updated summaries');
   t.ok(updated!.updated.getTime() > originalUpdated.getTime(), 'updated timestamp should change');
@@ -1089,4 +1094,3 @@ tap.test('experiment full CRUD workflow', async (t) => {
   await deleteDataset(dataset.id);
   await deleteOrganisation(org.id);
 });
-

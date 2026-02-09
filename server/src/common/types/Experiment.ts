@@ -1,3 +1,4 @@
+import { LifecycleStatus } from "./LifecycleStatus";
 
 
 /** The Result from one example, with the scores for each metric */
@@ -62,5 +63,7 @@ export default interface Experiment {
   traces?: string[];
   /* one row per example, with the scores for each metric */
   results?: Result[];
+  /** closed => all results are in. */
+  status?: LifecycleStatus; 
 }
 

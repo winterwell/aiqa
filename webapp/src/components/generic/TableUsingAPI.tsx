@@ -7,10 +7,10 @@ import {
   flexRender,
   ColumnDef,
   SortingState,
+  ColumnFiltersState,
+  FilterFn,
   HeaderGroup,
-  Header,
   Row,
-  Cell,
   RowSelectionState,
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
@@ -68,6 +68,10 @@ export interface TableUsingAPIProps<T> {
    * The function to load data from the server (if not providing `data`)
    */
   loadData?: (query: string) => Promise<PageableData<T>>;
+  /**
+   * Callback fired when data is loaded from the server.
+   */
+  onDataLoaded?: (data: PageableData<T>) => void;
   columns: ExtendedColumnDef<T>[];
   showSearch?: boolean;
   searchPlaceholder?: string;
@@ -119,8 +123,10 @@ function TableUsingAPI<T extends Record<string, any>>({
   onSelectionChange,
   bulkActionsToolbar,
   getRowId,
+  onDataLoaded,
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [inputValue, setInputValue] = useState('');
@@ -131,7 +137,8 @@ function TableUsingAPI<T extends Record<string, any>>({
   const queryClient = useQueryClient();
   // data provided? use it (via a constant function, so useQuery below is not conditional)
   if (data) {
-	loadData = () => Promise.resolve(data);
+    loadData = () => Promise.resolve(data);
+    onDataLoaded?.(data); 
   }
   
   // Debounce input value to serverQuery
@@ -157,7 +164,15 @@ function TableUsingAPI<T extends Record<string, any>>({
   
   const { data: loadedData, isLoading, error: loadError } = useQuery({
     queryKey,
-    queryFn: () => loadData(serverQuery),
+    queryFn: () => {
+      const promiseData = loadData(serverQuery);
+      if (onDataLoaded) {
+        promiseData.then((data: PageableData<T>) => {
+          onDataLoaded(data);
+        });
+      }
+      return promiseData;
+    },
 	refetchInterval,
   });
   const hits = loadedData?.hits || [];
@@ -265,10 +280,18 @@ function TableUsingAPI<T extends Record<string, any>>({
     enableSorting: false,
   }), []);
 
-  // Combine columns with selection column if enabled
   const tableColumns = useMemo(() => {
     return enableRowSelection ? [selectionColumn, ...columns] : columns;
   }, [enableRowSelection, selectionColumn, columns]);
+
+  const caseInsensitiveIncludesFilterFn: FilterFn<T> = (row, columnId, filterValue: string) => {
+    const search = String(filterValue ?? '').toLowerCase();
+    if (search === '') return true;
+    const raw = row.getValue(columnId);
+    if (raw === null || raw === undefined) return false;
+    const value = String(raw).toLowerCase();
+    return value.includes(search);
+  };
 
   // Configure table with sorting and filtering
   const table = useReactTable({
@@ -277,13 +300,22 @@ function TableUsingAPI<T extends Record<string, any>>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: enableInMemoryFiltering ? getFilteredRowModel() : undefined,
+    filterFns: {
+      caseInsensitiveIncludes: caseInsensitiveIncludesFilterFn,
+    },
+    defaultColumn: {
+      filterFn: caseInsensitiveIncludesFilterFn,
+    },
+    enableColumnFilters: enableInMemoryFiltering,
     enableRowSelection: enableRowSelection,
     getRowId: getRowId,
     onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
     state: {
       sorting,
+      columnFilters: enableInMemoryFiltering ? columnFilters : [],
       globalFilter: enableInMemoryFiltering ? globalFilter : '',
       rowSelection: enableRowSelection ? rowSelection : {},
     },
@@ -331,6 +363,10 @@ function TableUsingAPI<T extends Record<string, any>>({
     setCurrentPage(newPage);
     window.scrollTo(0, 0);
   };
+
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [columnFilters]);
 
   if (isLoading && hits.length === 0) {
     return (
@@ -427,13 +463,31 @@ interface TableHeaderProps<T> {
 
 function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkActionsToolbar, hasSelectedRows, selectedRowIds, selectedRows }: TableHeaderProps<T>) {
 	const totalColumns = headers[0]?.headers.length || 0;
+  const [openFilterInputs, setOpenFilterInputs] = useState<Record<string, boolean>>({});
 	const showToolbar = bulkActionsToolbar && hasSelectedRows && selectedRowIds && selectedRows;
+  const toFilterValue = (value: string) => (value === '' ? undefined : value);
+
+  const openFilter = (columnId: string) => {
+    setOpenFilterInputs((prev) => ({ ...prev, [columnId]: true }));
+  };
+
+  const clearAndCloseFilter = (header: any) => {
+    setOpenFilterInputs((prev) => ({ ...prev, [header.id]: false }));
+    header.column.setFilterValue(undefined);
+  };
+
+  const isHeaderFilterOpen = (header: any) => {
+    const filterValue = header.column.getFilterValue();
+    return Boolean(openFilterInputs[header.id]) || Boolean(filterValue);
+  };
 	return ( <thead>
 		{headers.map((headerGroup) => (
 		  <React.Fragment key={headerGroup.id}>
 			<tr>
 			  {headerGroup.headers.map((header) => {
 				const isSelectColumn = enableRowSelection && header.id === 'select';
+          const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
+          const isFilterOpen = canFilter && isHeaderFilterOpen(header);
 				return (
 				  <th
 					key={header.id}
@@ -443,17 +497,48 @@ function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkAc
 					}}
 					onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
 				  >
-					<div className="d-flex align-items-center">
-					  {flexRender(header.column.columnDef.header, header.getContext())}
-					  {header.column.getCanSort() && !isSelectColumn && (
-						<span className="ms-2">
-						  {{
-							asc: ' ↑',
-							desc: ' ↓',
-						  }[header.column.getIsSorted() as string] ?? ' ⇅'}
-						</span>
-					  )}
-					</div>
+					<div className="d-flex align-items-center justify-content-between">
+            <div className="d-flex align-items-center">
+              {flexRender(header.column.columnDef.header, header.getContext())}
+              {header.column.getCanSort() && !isSelectColumn && (
+                <span className="ms-2">
+                  {{
+                    asc: ' ↑',
+                    desc: ' ↓',
+                  }[header.column.getIsSorted() as string] ?? ' ⇅'}
+                </span>
+              )}
+            </div>
+            {canFilter && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (isFilterOpen) {
+                    clearAndCloseFilter(header);
+                  } else {
+                    openFilter(header.id);
+                  }
+                }}
+                aria-label={isFilterOpen ? `Clear filter for ${header.id}` : `Filter ${header.id}`}
+                className="btn btn-link p-0 ms-2 text-muted"
+                style={{ lineHeight: 1 }}
+              >
+                {isFilterOpen ? <FunnelXIcon /> : <FunnelIcon />}
+              </button>
+            )}
+          </div>
+          {canFilter && isFilterOpen && (
+            <Input
+              type="search"
+              value={String(header.column.getFilterValue() ?? '')}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
+              placeholder="Filter..."
+              bsSize="sm"
+              className="mt-1"
+            />
+          )}
 				  </th>
 				);
 			  })}
@@ -471,6 +556,24 @@ function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkAc
 		))}
 	  </thead>
 	);
+}
+
+function FunnelIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" />
+    </svg>
+  );
+}
+
+function FunnelXIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 5h18l-7 8v6l-4-2v-4L3 5z" />
+      <path d="m16 9 5 5" />
+      <path d="m21 9-5 5" />
+    </svg>
+  );
 }
 
 function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClick }: { paginatedRows: Row<T>[], columns: ColumnDef<T>[], totalRows: number, flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode, onRowClick?: (row: T) => void }) {
@@ -547,4 +650,3 @@ function TablePagination({ totalPages, currentPage, handlePageChange }: { totalP
 }
 
 export default TableUsingAPI;
-

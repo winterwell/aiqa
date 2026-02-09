@@ -364,25 +364,62 @@ export async function bulkInsertSpans(spans: Span[]): Promise<{id: string}[]> {
  * @param _source_includes - Array of field names to include in _source, or undefined for all fields.
  * @param _source_excludes - Array of field names to exclude from _source, or undefined for no exclusions. You are strongly encouraged to exclude attributes and unindexed_attributes using this to avoid returning big data.
  */
+type SearchSpansParams = {
+  searchQuery?: SearchQuery | string | null;
+  sort?: string;
+  organisation?: string;
+  limit?: number;
+  offset?: number;
+  _source_includes?: string[] | null;
+  _source_excludes?: string[] | null;
+};
+
+export async function searchSpans(params: SearchSpansParams): Promise<{ hits: Span[]; total: number }>;
 export async function searchSpans(
   searchQuery?: SearchQuery | string | null,
-  sort?: string,
+  organisationId?: string,
+  limit?: number,
+  offset?: number
+): Promise<{ hits: Span[]; total: number }>;
+export async function searchSpans(
+  paramsOrSearchQuery?: SearchSpansParams | SearchQuery | string | null,
   organisationId?: string,
   limit: number = 100,
-  offset: number = 0,
-  _source_includes?: string[] | null,
-  _source_excludes?: string[] | null
-): Promise<{ hits: Span[]; total: number }> {    
+  offset: number = 0
+): Promise<{ hits: Span[]; total: number }> {
+  let searchQuery: SearchQuery | string | null | undefined;
+  let sort: string | undefined;
+  let organisation: string | undefined;
+  let sourceIncludes: string[] | null | undefined;
+  let sourceExcludes: string[] | null | undefined;
+
+  if (
+    typeof paramsOrSearchQuery === 'object' &&
+    paramsOrSearchQuery !== null &&
+    !(paramsOrSearchQuery instanceof SearchQuery)
+  ) {
+    searchQuery = paramsOrSearchQuery.searchQuery;
+    sort = paramsOrSearchQuery.sort;
+    organisation = paramsOrSearchQuery.organisation;
+    limit = paramsOrSearchQuery.limit ?? 100;
+    offset = paramsOrSearchQuery.offset ?? 0;
+    sourceIncludes = paramsOrSearchQuery._source_includes;
+    sourceExcludes = paramsOrSearchQuery._source_excludes;
+  } else {
+    searchQuery = paramsOrSearchQuery as SearchQuery | string | null | undefined;
+    organisation = organisationId;
+  }
+
   return searchEntities<Span>({
     client: client!,
     indexName: SPAN_INDEX_ALIAS,
     searchQuery,
     sort,
-    filters: { organisation: organisationId },
+    filters: { organisation },
     limit,
     offset,
-    _source_includes: _source_includes,
-    _source_excludes: _source_excludes
+    _source_includes: sourceIncludes,
+    _source_excludes: sourceExcludes
   });
 }
 
@@ -873,4 +910,3 @@ export async function closeClient(): Promise<void> {
     client = null;
   }
 }
-

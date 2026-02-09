@@ -2,6 +2,19 @@
   "$ref": "#/definitions/Experiment",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "LifecycleStatus": {
+      "description": "LifecycleStatus describes the lifecycle state of an entity or process.",
+      "enum": [
+        "draft",
+        "processing",
+        "active",
+        "closing",
+        "closed",
+        "archived",
+        "error"
+      ],
+      "type": "string"
+    },
     "Experiment": {
       "additionalProperties": false,
       "description": "An Experiment is a run of a Dataset of examples over your code, scoring the outputs. Individual results may be traced as per normal tracing.",
@@ -39,6 +52,10 @@
         },
         "summaries": {
           "description": "metric name: -> summary stats: average, min, max, variance, histogram, count"
+        },
+        "status": {
+          "description": "closed => all results are in.",
+          "$ref": "#/definitions/LifecycleStatus"
         },
         "updated": {
           "format": "date-time",
