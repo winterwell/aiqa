@@ -11,7 +11,7 @@ import A from '../components/generic/A';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { TrashIcon } from '@phosphor-icons/react';
-import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID } from '../common/defaultSystemMetrics';
+import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID, DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
   const summary = exp.summaries || {};
@@ -47,19 +47,23 @@ const ExperimentsListPage: React.FC = () => {
   }, [datasets]);
 
   // Union of metric ids from datasets referenced by experiments (first metric with each id gives display name)
-  const metricsById = useMemo(() => {
+  const metricsById: Record<string, Metric> = useMemo(() => {
     const refIds = new Set<string>(
       (Array.isArray(experimentsForDashboard) ? experimentsForDashboard : [])
         .map((e: Experiment) => e.dataset)
         .filter(Boolean)
     );
     const refDatasets = Array.isArray(datasets) ? datasets.filter((d: { id: string }) => refIds.has(d.id)) : [];
-    const byId = new Map<string, Metric>();
+    const byId: Record<string, Metric> = {};
     for (const d of refDatasets) {
       for (const m of d.metrics || []) {
-        if (m?.id && !byId.has(m.id)) byId.set(m.id, m);
+        if (m?.id && !byId[m.id]) byId[m.id] = m;
       }
     }
+    // add defaults
+    DEFAULT_SYSTEM_METRICS.forEach((m) => {
+      if (!byId[m.id]) byId[m.id] = m;
+    });
     return byId;
   }, [datasets, experimentsForDashboard]);
 
@@ -67,9 +71,14 @@ const ExperimentsListPage: React.FC = () => {
     const priorityIds = [DURATION_METRIC_ID, COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID];
     const priority: Metric[] = [];
     const rest: Metric[] = [];
-    metricsById.forEach((m) => {
-      if (priorityIds.includes(m.id)) priority.push(m);
-      else rest.push(m);
+    const allMetrics = Object.values(metricsById);
+    allMetrics.forEach((m: Metric) => {
+      if (priorityIds.includes(m.id)) {
+        priority.push(m);
+      } else {
+        // Note: deduplicated by id in metricsById
+        rest.push(m);
+      }
     });
     const ordered = [...priority.sort((a, b) => priorityIds.indexOf(a.id) - priorityIds.indexOf(b.id)), ...rest];
     return ordered.map((metric) => {
@@ -78,6 +87,7 @@ const ExperimentsListPage: React.FC = () => {
       const isCost = metric.id === COST_METRIC_ID;
       const isTokens = metric.id === TOTAL_TOKENS_METRIC_ID;
       const isSpecific = metric.id === SPECIFIC_METRIC_ID;
+      // make a column
       return {
         id: metric.id,
         header: displayName,
