@@ -138,13 +138,17 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     await bulkInsertExamples([exampleWithOrg]);
     
     // Extract span IDs from original spans (before cleaning)
-    if (Array.isArray(example.spans) && example.spans.length > 0) {
-      const spanIds = example.spans.map(getSpanId).filter(Boolean) as string[];
-      
-      // Update each span with example.id
-      for (const spanId of spanIds) {
+    if (Array.isArray(example.spans) && example.spans.length > 0) { 
+      // Update each span with example.id (if unset)
+      for (const span of example.spans) {
+        if (span.attributes?.['aiqa.example']) {
+          continue;
+        }
+        const spanId = getSpanId(span);
         try {
-          await updateSpan(spanId, { example: exampleWithOrg.id }, organisation);
+          console.log(`Updating span ${spanId} with example.id ${exampleWithOrg.id}`);
+          const newAttributes = { ...span.attributes, 'aiqa.example': exampleWithOrg.id };
+          await updateSpan(spanId, {  attributes: newAttributes }, organisation);
         } catch (error) {
           // Log but don't fail - span might not exist or might belong to different org
           console.warn(`Failed to update span ${spanId} with example.id ${exampleWithOrg.id}:`, error);

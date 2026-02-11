@@ -38,7 +38,9 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   /** Parent span ID */
   parent?: string;
   organisation: string;
-  /** Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example */
+  /** Example.id Only set if (a) an Example is created from this Span, or (b) this Span is created during an experiment running an Example 
+   * @deprecated Use attributes['aiqa.example'] instead
+  */
   example?: string;
   /** Client-set annotations for the span (for things more complex than a tag) */
   annotations?: Record<string, any>;

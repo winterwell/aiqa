@@ -231,7 +231,7 @@ function OutputsCard({ example }: { example: Example }) {
       if (!organisationId || !example.id) return { hits: [] };
       return await searchSpans({
         organisationId,
-        query: `example:${example.id}`,
+        query: `attributes.aiqa.example:${example.id}`,
         limit: 5,
         offset: 0,
         fields: '*',
