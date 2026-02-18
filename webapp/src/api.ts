@@ -356,6 +356,7 @@ export async function getExample(organisationId: string, exampleId: string) {
 export async function updateExample(organisationId: string, exampleId: string, updates: Partial<{
 	tags?: string[];
 	metrics?: any[];
+	input?: any;
 }>) {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);

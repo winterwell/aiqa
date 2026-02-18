@@ -35,7 +35,7 @@ const TopNav: React.FC = () => {
   return (
     <Navbar color="light" light expand="md" className="border-bottom top-nav-compact">
       <div className="container-fluid d-flex align-items-center">
-		<NavLink href="https://aiqa.winterwell.com" target="_blank" rel="noopener">
+		<NavLink href="/" target="_blank" rel="noopener">
 		<Logo size={28} showText={true} />
 		</NavLink>
         <Nav className="ms-auto" navbar>

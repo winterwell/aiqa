@@ -15,10 +15,11 @@ import { updateSpan } from '../api';
 import { TrashIcon } from '@phosphor-icons/react';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
 import LinkId from '../components/LinkId';
+import { GEN_AI_OPERATION_NAME } from 'src/common/constants_otel';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
-  const spanType = attributes['aiqa.span_type'];
+  const spanType = attributes[GEN_AI_OPERATION_NAME];
   if (spanType === 'feedback') {
     const feedback = attributes['feedback'];
     const value = feedback?.value || attributes['feedback.value'] as string | undefined;
@@ -53,8 +54,9 @@ const REQUIRED_ATTRIBUTES = [
 
 // Attributes we need for feedback spans
 const FEEDBACK_ATTRIBUTES = [
-  'aiqa.span_type',
+  GEN_AI_OPERATION_NAME,
   'feedback',
+  /** value: positive, negative, neutral */
   'feedback.value',
   'feedback.comment',
 ].join(',');
@@ -257,7 +259,7 @@ const TracesListPage: React.FC = () => {
       const traceIdQuery = batch.map(id => `trace:${id}`).join(' OR ');
       const feedbackResult = await searchSpans({
         organisationId: organisationId!,
-        query: `(${traceIdQuery}) AND attributes.aiqa\\.span_type:feedback`,
+        query: `(${traceIdQuery}) AND attributes.${GEN_AI_OPERATION_NAME}:feedback`,
         limit: batch.length,
         offset: 0,
         fields: FEEDBACK_ATTRIBUTES,

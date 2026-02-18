@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyLoggerInstance } from 'fastify';
 import {
   createExperiment,
   getExperiment,
@@ -8,13 +8,86 @@ import {
   getDataset,
 } from '../db/db_sql.js';
 import { getExample, searchExamples, searchSpans } from '../db/db_es.js';
-import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
+import { authenticate, AuthenticatedRequest } from '../server_auth.js';
+import { checkAccessDeveloperOrAdmin } from './route_helpers.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { scoreMetric } from '../scoring.js';
 import { getSpanStatsFromAttributes } from './server-span-utils.js';
 import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
 import { recalculateSummaryResults, updateSummaryResults } from '../experiments/summary.js';
 import { Result } from '../common/types/Experiment.js';
+import Metric from '../common/types/Metric.js';
+import Dataset from '../common/types/Dataset.js';
+import Example from '../common/types/Example.js';
+
+type MetricSource = 'dataset' | 'example';
+interface MetricWithSource {
+  metric: Metric;
+  source: MetricSource;
+}
+
+/**
+ * Extract metrics from a dataset or example, handling both array and non-array formats.
+ * Logs warnings for non-array metrics but continues processing.
+ * 
+ * @param source - Dataset or Example object containing metrics
+ * @param sourceType - Whether the source is a 'dataset' or 'example'
+ * @param logger - Fastify logger instance for warning messages
+ * @returns Array of metrics with their source type
+ */
+function extractMetrics(
+  source: Dataset | Example,
+  sourceType: MetricSource,
+  logger: FastifyLoggerInstance
+): MetricWithSource[] {
+  const metrics: MetricWithSource[] = [];
+  
+  if (!source.metrics) {
+    return metrics;
+  }
+  
+  if (Array.isArray(source.metrics)) {
+    for (const metric of source.metrics) {
+      metrics.push({ metric, source: sourceType });
+    }
+  } else {
+    logger.warn({
+      [`${sourceType}Id`]: source.id,
+      [`${sourceType}Name`]: source.name,
+      metricsType: typeof source.metrics,
+      metricsValue: source.metrics,
+    }, `${sourceType}.metrics is not an array`);
+  }
+  
+  return metrics;
+}
+
+/**
+ * Retry a function with exponential backoff.
+ * @param fn - Function to retry that returns a result
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @param initialDelayMs - Initial delay in milliseconds (default: 100)
+ * @returns The result from the function, or null if all retries failed
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  initialDelayMs = 100
+): Promise<T | null> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const result = await fn();
+    if (result !== null && result !== undefined) {
+      return result;
+    }
+    // If not found and not last attempt, wait before retrying
+    if (attempt < maxRetries - 1) {
+      const delayMs = initialDelayMs * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
+
 /**
  * Register experiment endpoints with Fastify
  */
@@ -22,7 +95,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   // Create experiment
   // Security: Authenticated users only. Organisation membership verified by authenticate middleware when organisation query param provided.
   fastify.post('/experiment', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const experiment = await createExperiment(request.body as any);
     return experiment;
   });
@@ -30,7 +103,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   // Get experiment by ID
   // Security: Authenticated users only. No organisation check - any authenticated user can view any experiment by ID.
   fastify.get('/experiment/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const experiment = await getExperiment(id);
     if (!experiment) {
@@ -43,7 +116,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   // List experiments
   // Security: Authenticated users only. Organisation membership verified by authenticate middleware. Results filtered by organisationId in database (listExperiments).
   fastify.get('/experiment', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const organisationId = (request.query as any).organisation as string | undefined;
     if (!organisationId) {
       reply.code(400).send({ error: 'organisation query parameter is required' });
@@ -58,7 +131,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   // Update experiment
   // Security: Authenticated users only. No organisation check - any authenticated user can update any experiment by ID.
   fastify.put('/experiment/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const experiment = await updateExperiment(id, request.body as any);
     if (!experiment) {
@@ -71,7 +144,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
   // Delete experiment
   // Security: Authenticated users only. No organisation check - any authenticated user can delete any experiment by ID.
   fastify.delete('/experiment/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const deleted = await deleteExperiment(id);
     if (!deleted) {
@@ -83,16 +156,15 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
   /**
    * Score an example result for an experiment. You must first create the experiment with the createExperiment endpoint.
-   * POST body: { output, trace, scores }
+   * POST body: { output, trace, scores, messages, errors, rateLimited } (Result interface + output)
    * For each metric (from dataset or example), if scores has a value, use it;
    * otherwise the server runs scoring for that metric.
-   * N
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware. Verifies experiment.organisation matches request.organisation (endpoint handler).
    */
   fastify.post('/experiment/:id/example/:exampleid/scoreAndStore', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const { id: experimentId, exampleid: exampleId } = request.params as { id: string; exampleid: string };
-    const body = request.body as { output: any; trace?: string; scores?: Record<string, number> };
+    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>, messages?: Record<string, string>, errors?: Record<string, string>, rateLimited?: boolean };
     const organisation = request.organisation!;
 
     // Validate required fields
@@ -129,38 +201,10 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     }
 
     // Collect all metrics: from dataset and example
-    const allMetrics: Array<{ metric: any; source: 'dataset' | 'example' }> = [];
-    if (dataset.metrics) {
-      if (Array.isArray(dataset.metrics)) {
-        for (const metric of dataset.metrics) {
-          allMetrics.push({ metric, source: 'dataset' });
-        }
-      } else {
-        const metricsValue = dataset.metrics as any;
-        request.log.warn({
-          datasetId: dataset.id,
-          datasetName: dataset.name,
-          metricsType: typeof metricsValue,
-          metricsValue: metricsValue,
-          metricsConstructor: metricsValue?.constructor?.name,
-        }, 'dataset.metrics is not an array');
-      }
-    }
-    if (example.metrics) {
-      if (Array.isArray(example.metrics)) {
-        for (const metric of example.metrics) {
-          allMetrics.push({ metric, source: 'example' });
-        }
-      } else {
-        const metricsValue = example.metrics as any;
-        request.log.warn({
-          exampleId: example.id,
-          metricsType: typeof metricsValue,
-          metricsValue: metricsValue,
-          metricsConstructor: metricsValue?.constructor?.name,
-        }, 'example.metrics is not an array');
-      }
-    }
+    const allMetrics = [
+      ...extractMetrics(dataset, 'dataset', request.log),
+      ...extractMetrics(example, 'example', request.log),
+    ];
 
     // Start with scores from request body (includes duration and any pre-computed scores)
     const computedScores: Record<string, number> = { ...(body.scores || {}) };
@@ -189,29 +233,14 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     // Extract token count and cost from spans if traceId is provided
     // Retry logic handles race condition: spans may still be indexing in ES after client flush
     if (body.trace) {
-      // Note: race condition: spans may not be indexed immediately after flush.
-      // So we also do a search and update when a span comes in.
       try {
+        // Find root span for this trace (parent:unset means it's a root span)
         // Retry with exponential backoff: spans may not be indexed immediately after flush
-        let spanResult = null;
-        const maxRetries = 3;
-        const initialDelayMs = 100;
-
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-          // Find root span for this trace (parent:unset means it's a root span)
+        const spanResult = await retryWithBackoff(async () => {
           const searchQuery = new SearchQuery(`trace:${body.trace} parent:unset`);
-          spanResult = await searchSpans({searchQuery, organisation, limit: 1, offset: 0});
-
-          if (spanResult.hits.length > 0) {
-            break; // Found the span, exit retry loop
-          }
-
-          // If not found and not last attempt, wait before retrying
-          if (attempt < maxRetries - 1) {
-            const delayMs = initialDelayMs * Math.pow(2, attempt);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
-          }
-        }
+          const result = await searchSpans({searchQuery, organisation, limit: 1, offset: 0});
+          return result.hits.length > 0 ? result : null;
+        });
 
         if (spanResult && spanResult.hits.length > 0) {
           const rootSpan = spanResult.hits[0];
@@ -248,6 +277,10 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         ...result.scores,
         ...computedScores,
       };
+      result.messages = {
+        ...(result.messages || {}),
+        ...(body.messages || {}),
+      };
       if (body.trace) {
         result.trace = body.trace;
       }
@@ -256,11 +289,17 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
         ...(result.errors || {}),
         ...computedErrors,
       };
+      // Merge rateLimited with truthy test to give an OR-like behaviour.
+      if (body.rateLimited) {
+        result.rateLimited = body.rateLimited;
+      }
     } else {
       // Add new result
       result = {
         example: exampleId,
         scores: computedScores,
+        messages: body.messages,
+        rateLimited: body.rateLimited,
         trace: body.trace,
       };
       if (Object.keys(computedErrors).length > 0) {
@@ -285,6 +324,6 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       return;
     }
 
-    return results[isUpdate ? existingResultIndex : results.length - 1];
+    return result;
   });
 }

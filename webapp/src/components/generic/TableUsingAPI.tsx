@@ -15,7 +15,7 @@ import {
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download } from '@phosphor-icons/react';
+import { DownloadIcon } from '@phosphor-icons/react';
 import Spinner from './Spinner';
 import './TableUsingAPI.css';
 
@@ -403,14 +403,14 @@ function TableUsingAPI<T extends Record<string, any>>({
           />
           <Button onClick={refresh} className="flex-shrink-0">Refresh</Button>
           <Button onClick={handleDownloadCSV} className="flex-shrink-0" color="secondary">
-            <Download size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
+            <DownloadIcon size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
             Download CSV
           </Button>
         </div>}
         {!showSearch && totalRows > 0 && (
           <div className="mb-3 d-flex justify-content-end">
             <Button onClick={handleDownloadCSV} className="flex-shrink-0" color="secondary">
-              <Download size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
+              <DownloadIcon size={16} className="me-1" style={{ verticalAlign: 'middle' }} />
               Download CSV
             </Button>
           </div>

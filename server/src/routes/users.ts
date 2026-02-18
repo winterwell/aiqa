@@ -103,8 +103,9 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
         
         const returnedUser = await updateUserEmailFromJwt(existingUser, newUser.email);
         await processPendingMembersForUser(returnedUser);
+        console.log(`Not creating user - Returning existing user by sub ${returnedUser.id} with email ${returnedUser.email}`);
         return returnedUser;
-      }
+      } // end if existingUsersBySub.length > 0
     }
     
     // Also check by email as fallback
@@ -125,6 +126,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
           console.log(`User with email ${newUser.email} already exists, returning existing user ${matchingUser.id}`);
           const returnedUser = await updateUserEmailFromJwt(matchingUser, newUser.email);
           await processPendingMembersForUser(returnedUser);
+          console.log(`Not creating user - Returning existing user by email ${returnedUser.id} with email ${returnedUser.email}`);
           return returnedUser;
         }
       }
@@ -173,6 +175,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       if (superAdmin) {
         user.isSuperAdmin = true;
       }
+      console.log(`GET /user/${id} - Found user ${user.id}, email: ${user.email}`);
       return user;
   });
 
@@ -221,7 +224,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
       return;
     }
     
-    console.log("updating user: "+id+" from JWT token "+JSON.stringify(jwtToken));
+    console.log("updating user: "+id+" from JWT token "+JSON.stringify(jwtToken)+" email: "+jwtToken.email);
     const updates = request.body as any;
     // Also update email from JWT if available and not explicitly provided
     const emailChanged = jwtToken.email && updates.email === undefined;

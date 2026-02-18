@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { bulkInsertSpans, searchSpans, getSpan, updateSpan, deleteSpans, getExample } from '../db/db_es.js';
 import { updateExperiment } from '../db/db_sql.js';
 import { authenticate, AuthenticatedRequest, checkAccess } from '../server_auth.js';
+import { checkAccessDeveloperOrAdmin } from './route_helpers.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Span, { getSpanId, getTraceId } from '../common/types/Span.js';
 import { addTokenCost } from '../token_cost.js';
@@ -11,7 +12,7 @@ import { getOrganisationThreshold } from '../common/subscription_defaults.js';
 import { parseOtlpProtobuf } from '../utils/otlp_protobuf.js';
 import { propagateTokenCostsToRootSpan } from './server-span-utils.js';
 import { recalculateSummaryResults } from '../experiments/summary.js';
-import { AIQA_EXPERIMENT_ID } from '../common/constants_otel.js';
+import { AIQA_EXPERIMENT_ID, GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
 
 /**
  * Convert OTLP KeyValue array to object.
@@ -295,6 +296,7 @@ async function updateExperimentsWithFreshTokenUsage(rootSpans: Span[]): Promise<
     for (const result of experiment.results) {
       if (result.trace !== rootSpan.trace) continue;
       if ( ! result.scores) result.scores = {};
+      // Note: the function says "token usage" but it can also process other stats
       for (const [metricName, score] of Object.entries(stats)) {
         if (result.scores[metricName] === score) continue;
         result.scores[metricName] = score;
@@ -459,7 +461,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
    * For API key authentication, organisation is automatically set from the API key.
    */
   fastify.get('/span', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     // For API keys, organisation is set from the API key. For JWT, use query param or request.organisation.
     const organisationId = (request.query as any).organisation as string | undefined || request.organisation;
     if (!organisationId) {
@@ -520,16 +522,13 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         offset,
       };
     } catch (error: any) {
-      if (isConnectionError(error)) {
-        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
-        return;
-      }
+      if (handleConnectionError(error, reply)) return;
       throw error;
     }
   });
 
   fastify.get('/span/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const organisation = request.organisation!;
     const { id } = request.params as { id: string };
     const span = await getSpan(id, organisation);
@@ -552,7 +551,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
    * Returns aggregated statistics including duration, tokens, cost, and feedback metrics.
    */
   fastify.get('/trace/stat', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const organisationId = (request.query as any).organisation as string | undefined || request.organisation;
     if (!organisationId) {
       reply.code(400).send({ error: 'organisation query parameter is required (JWT authentication) or organisation must be associated with API key' });
@@ -682,10 +681,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
         },
       };
     } catch (error: any) {
-      if (isConnectionError(error)) {
-        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
-        return;
-      }
+      if (handleConnectionError(error, reply)) return;
       throw error;
     }
   });
@@ -702,7 +698,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
    * Updates are scoped to the authenticated user's organisation.
    */
   fastify.put('/span/:id', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const organisation = request.organisation!;
     const { id } = request.params as { id: string };
     const updates = request.body as Partial<Span>;
@@ -725,10 +721,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
 
       return updatedSpan;
     } catch (error: any) {
-      if (isConnectionError(error)) {
-        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
-        return;
-      }
+      if (handleConnectionError(error, reply)) return;
       throw error;
     }
   });
@@ -739,7 +732,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
     reply: any,
     body: { spanIds?: string[]; traceIds?: string[] } | { spans?: string[]; traces?: string[] }
   ) {
-    if (!checkAccess(request, reply, ['developer', 'admin'])) return;
+    if (!checkAccessDeveloperOrAdmin(request, reply)) return;
     const organisation = request.organisation!;
     const spanIds = (body as any).spanIds ?? (body as any).spans;
     const traceIds = (body as any).traceIds ?? (body as any).traces;
@@ -766,10 +759,7 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
       const deletedCount = await deleteSpans(options, organisation);
       return { success: true, deleted: deletedCount };
     } catch (error: any) {
-      if (isConnectionError(error)) {
-        reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
-        return;
-      }
+      if (handleConnectionError(error, reply)) return;
       throw error;
     }
   }
@@ -802,6 +792,17 @@ export async function registerSpanRoutes(fastify: FastifyInstance): Promise<void
  */
 function isConnectionError(error: any): boolean {
   return error.name === 'ConnectionError' || error.message?.includes('ConnectionError');
+}
+
+/**
+ * Handle ConnectionError by sending 503 response, or rethrow other errors.
+ */
+function handleConnectionError(error: any, reply: any): boolean {
+  if (isConnectionError(error)) {
+    reply.code(503).send({ error: 'Elasticsearch service unavailable. Please check if Elasticsearch is running.' });
+    return true;
+  }
+  return false;
 }
 
 /**

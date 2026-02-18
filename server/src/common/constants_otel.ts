@@ -32,3 +32,9 @@ export const AIQA_EXPERIMENT_ID = 'aiqa.experiment';
  * This is set by the experiment runner.
  */
 export const AIQA_EXAMPLE_ID = 'aiqa.example';
+
+/**
+ * positive, negative, neutral
+ */
+export const FEEDBACK_VALUE = 'feedback.value';
+export const GEN_AI_OPERATION_NAME = 'gen_ai.operation.name';

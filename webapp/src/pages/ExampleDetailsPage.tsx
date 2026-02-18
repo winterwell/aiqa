@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Row, Col, Card, CardBody, CardHeader, Badge, Button } from 'reactstrap';
+import { Row, Col, Card, CardBody, CardHeader, Badge, Button, Input } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { getExample, updateExample, getDataset, deleteExample } from '../api';
 import { useToast } from '../utils/toast';
@@ -18,15 +18,82 @@ import { asArray } from '../common/utils/miscutils';
 import { getExampleInput, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
 
 // InputCard component
-function InputCard({ example }: { example: Example }) {
+function InputCard({ 
+  example, 
+  onUpdateInput 
+}: { 
+  example: Example; 
+  onUpdateInput: (input: any) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
   const inputThing = getExampleInput(example);
+  const usesInput = example.input !== undefined && example.input !== null;
+
+  const handleEdit = () => {
+    // Initialize edit value: if string, use as-is; otherwise stringify
+    if (typeof inputThing === 'string') {
+      setEditValue(inputThing);
+    } else {
+      setEditValue(JSON.stringify(inputThing, null, 2));
+    }
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    try {
+      // Try to parse as JSON first, fall back to string if it fails
+      let parsedValue: any;
+      try {
+        parsedValue = JSON.parse(editValue);
+      } catch {
+        // If JSON parsing fails, use as string
+        parsedValue = editValue;
+      }
+      onUpdateInput(parsedValue);
+      setIsEditing(false);
+    } catch (error) {
+      // This shouldn't happen, but handle gracefully
+      console.error('Error saving input:', error);
+      setIsEditing(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditValue('');
+  };
+
   return (
     <Card className="mb-3">
-      <CardHeader>
+      <CardHeader className="d-flex justify-content-between align-items-center">
         <h5>Input</h5>
+        {usesInput && !isEditing && (
+          <Button color="primary" size="sm" onClick={handleEdit}>
+            Edit
+          </Button>
+        )}
       </CardHeader>
       <CardBody>
-       
+        {isEditing ? (
+          <div>
+            <Input
+              type="textarea"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              rows={10}
+              style={{ fontFamily: 'monospace' }}
+            />
+            <div className="mt-2 d-flex gap-2">
+              <Button color="success" size="sm" onClick={handleSave}>
+                Save
+              </Button>
+              <Button color="secondary" size="sm" onClick={handleCancel}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
           <div>
             {typeof inputThing === 'string' ? (
               <TextWithStructureViewer text={inputThing} />
@@ -34,7 +101,7 @@ function InputCard({ example }: { example: Example }) {
               <JsonObjectViewer json={inputThing} textComponent={TextWithStructureViewer} />
             )}
           </div>
-  
+        )}
       </CardBody>
     </Card>
   );
@@ -344,7 +411,7 @@ const ExampleDetailsPage: React.FC = () => {
   });
 
   const updateExampleMutation = useMutation({
-    mutationFn: (updates: Partial<{ tags?: string[]; metrics?: Metric[] }>) =>
+    mutationFn: (updates: Partial<{ tags?: string[]; metrics?: Metric[]; input?: any }>) =>
       updateExample(organisationId!, exampleId!, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['example', exampleId] });
@@ -453,7 +520,10 @@ const ExampleDetailsPage: React.FC = () => {
 
       <Row className="mt-3">
         <Col md={6}>
-          <InputCard example={example} />
+          <InputCard 
+            example={example} 
+            onUpdateInput={(input) => updateExampleMutation.mutate({ input })}
+          />
           <MetricsCard
             example={example}
             datasetMetrics={dataset?.metrics || []}
