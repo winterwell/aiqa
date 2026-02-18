@@ -15,7 +15,7 @@ import { updateSpan } from '../api';
 import { TrashIcon } from '@phosphor-icons/react';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
 import LinkId from '../components/LinkId';
-import { GEN_AI_OPERATION_NAME } from 'src/common/constants_otel';
+import { GEN_AI_OPERATION_NAME } from '../common/constants_otel';
 
 const getFeedback = (span: Span): { type: 'positive' | 'negative' | 'neutral' | null; comment?: string } | null => {
   const attributes = (span as any).attributes || {};
