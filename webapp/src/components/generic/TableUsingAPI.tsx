@@ -18,6 +18,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DownloadIcon } from '@phosphor-icons/react';
 import Spinner from './Spinner';
 import './TableUsingAPI.css';
+import { asDate } from '../../common/utils/miscutils';
 
 // Select all checkbox header component
 function SelectAllCheckbox({ table }: { table: any }) {
@@ -50,6 +51,11 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
    * If not provided, falls back to accessorFn, accessorKey, or a default string conversion.
    */
   csvValue?: (row: T) => string | null | undefined;
+  /**
+   * Whether to include this column in the CSV export.
+   * If not provided, defaults to true if there is a header.
+   */
+  includeInCSV?: boolean;
 };
 
 export interface PageableData<T> {
@@ -189,7 +195,7 @@ function TableUsingAPI<T extends Record<string, any>>({
     const visibleColumns = columns.filter(col => {
       // Skip columns without headers (like action buttons)
       const header = typeof col.header === 'string' ? col.header : (col as any).id || '';
-      return header !== '';
+      return header !== '' && col.includeInCSV !== false;
     });
 
     // Get header row
@@ -201,31 +207,32 @@ function TableUsingAPI<T extends Record<string, any>>({
     // Get data rows from all filtered/sorted rows
     const rows = allRows.map(row => {
       return visibleColumns.map(col => {
+        const colType = (col as any).type;
         // Use csvValue if provided
         if ((col as ExtendedColumnDef<T>).csvValue) {
           const value = (col as ExtendedColumnDef<T>).csvValue!(row.original);
-          return escapeCSVValue(value);
+          return escapeCSVValue(formatForCSV(value, colType));
         }
         
         // Try accessorFn (may not exist on all ColumnDef variants)
         const accessorFn = (col as any).accessorFn;
         if (accessorFn) {
           const value = accessorFn(row.original, row.index);
-          return escapeCSVValue(value);
+          return escapeCSVValue(formatForCSV(value, colType));
         }
         
         // Try accessorKey (may not exist on all ColumnDef variants)
         const accessorKey = (col as any).accessorKey;
         if (accessorKey) {
           const value = (row.original as any)[accessorKey];
-          return escapeCSVValue(value);
+          return escapeCSVValue(formatForCSV(value, colType));
         }
         
         // Fallback: try to get value by column id
         const colId = (col as any).id;
         if (colId) {
           const value = (row.original as any)[colId];
-          return escapeCSVValue(value);
+          return escapeCSVValue(formatForCSV(value, colType));
         }
         
         return '';
@@ -237,6 +244,19 @@ function TableUsingAPI<T extends Record<string, any>>({
     return csvRows.map(row => row.join(',')).join('\n');
   };
 
+  // format eg dates
+  const formatForCSV = (value: any, type: string): string => {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (type === 'date') {
+      return asDate(value)?.toISOString().split('T')[0] || '';
+    }
+    return String(value);
+  };
   // Escape CSV value (handle commas, quotes, newlines)
   const escapeCSVValue = (value: any): string => {
     if (value === null || value === undefined) {

@@ -21,3 +21,14 @@ export function asArray(value: any): any[] {
   }
   return [value];
 }
+
+export function asDate(value: any): Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value;
+  }
+  // crude but handles number and many strings
+  return new Date(value);
+}

@@ -21,7 +21,7 @@ import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
-import { asArray, truncate } from '../common/utils/miscutils';
+import { asArray, truncate, asDate } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
 import { getExampleInputString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
 import DatasetDetailsDashboard from '../components/DatasetDetailsDashboard';
@@ -118,6 +118,7 @@ const DatasetDetailsPage: React.FC = () => {
       ...(dataset?.metrics ? asArray(dataset.metrics).map((metric: Metric) => ({
         id: `metric-${metric.id}`,
         header: metric.name || metric.id,
+        csvValue: (item: Example) => getExampleMetricDisplayText(item, metric.id || metric.name || ''),
         cell: ({ row }: { row: { original: Example } }) => {
           const text = getExampleMetricDisplayText(row.original, metric.id || metric.name || '');
           if (!text) return <span className="text-muted">—</span>;
@@ -129,9 +130,10 @@ const DatasetDetailsPage: React.FC = () => {
           );
         },
       })) : []),
-      {
+      { // TODO avoid specific if it is one of the dataset metrics
         id: 'specific',
         header: 'Specific',
+        csvValue: (item) => getExampleSpecificMetricText(item),
         cell: ({ row }) => {
           const specificText = getExampleSpecificMetricText(row.original);
           if (!specificText) {
@@ -153,6 +155,7 @@ const DatasetDetailsPage: React.FC = () => {
           ? new Date(row.original.created).toLocaleString()
           : <span className="text-muted">—</span>,
         enableSorting: true,
+        type: 'date',
       },
       {
         id: 'tags',
@@ -164,6 +167,7 @@ const DatasetDetailsPage: React.FC = () => {
           }
           return row.tags[0] || '';
         },
+        csvValue: (row) => row.tags?.join(' + ') || '',
         cell: ({ row }) => {
           const example = row.original;
           return (
@@ -209,6 +213,7 @@ const DatasetDetailsPage: React.FC = () => {
           );
         },
         enableSorting: false,
+        includeInCSV: false
       },
     ],
     [organisationId, queryClient, showToast, deleteExampleMutation.isPending, dataset]
