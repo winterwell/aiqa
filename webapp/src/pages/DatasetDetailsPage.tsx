@@ -95,7 +95,16 @@ const DatasetDetailsPage: React.FC = () => {
     };
   };
   const columns = useMemo<ColumnDef<Example>[]>(
-    () => [
+    () => {
+      const specificMetric = dataset?.metrics?.find((metric: Metric) => metric.id === 'specific');
+      let _columns = [
+      {
+        id: 'index',
+        header: '#',
+        accessorFn: (row, index) => index + 1,
+        enableColumnFilter: false,
+        enableSorting: false, /* just reload the page / clear other filters */
+      },
       {
         accessorKey: 'id',
         header: 'ID',
@@ -114,25 +123,26 @@ const DatasetDetailsPage: React.FC = () => {
           return;
          },
       },
-      // One column per dataset metric
-      ...(dataset?.metrics ? asArray(dataset.metrics).map((metric: Metric) => ({
-        id: `metric-${metric.id}`,
-        header: metric.name || metric.id,
-        csvValue: (item: Example) => getExampleMetricDisplayText(item, metric.id || metric.name || ''),
-        cell: ({ row }: { row: { original: Example } }) => {
-          const text = getExampleMetricDisplayText(row.original, metric.id || metric.name || '');
-          if (!text) return <span className="text-muted">—</span>;
-          const truncated = getExampleInputString(text, 80);
-          return (
-            <span className="small" title={text}>
-              {truncated}
-            </span>
-          );
-        },
-      })) : []),
-      { // TODO avoid specific if it is one of the dataset metrics
+      // // One column per dataset metric
+      // // Note: specific is handled as an always-there special column below
+      // ...(dataset?.metrics ? asArray(dataset.metrics).filter((metric: Metric) => metric.id !== 'specific').map((metric: Metric) => ({
+      //   id: `metric-${metric.id}`,
+      //   header: metric.name || metric.id,
+      //   csvValue: (item: Example) => getExampleMetricDisplayText(item, metric.id || metric.name || ''),
+      //   cell: ({ row }: { row: { original: Example } }) => {
+      //     const text = getExampleMetricDisplayText(row.original, metric.id || metric.name || '');
+      //     if (!text) return <span className="text-muted">—</span>;
+      //     const truncated = getExampleInputString(text, 80);
+      //     return (
+      //       <span className="small" title={text}>
+      //         {truncated}
+      //       </span>
+      //     );
+      //   },
+      // })) : []),
+      {
         id: 'specific',
-        header: 'Specific',
+        header: specificMetric?.name || 'Specific',
         csvValue: (item) => getExampleSpecificMetricText(item),
         cell: ({ row }) => {
           const specificText = getExampleSpecificMetricText(row.original);
@@ -215,7 +225,9 @@ const DatasetDetailsPage: React.FC = () => {
         enableSorting: false,
         includeInCSV: false
       },
-    ],
+    ]; // end _columns
+    return _columns;
+  },
     [organisationId, queryClient, showToast, deleteExampleMutation.isPending, dataset]
   ); // end columns
 
@@ -421,7 +433,7 @@ const DatasetDetailsPage: React.FC = () => {
             onDataLoaded={(data) => {
               setExamplesData(data.hits);
             }}
-            showSearch={true}
+            showSearch={false} /* column filters work as expected, overall search currently needs key:value which is unintuitive TODO flexible search*/
             columns={columns}
             searchPlaceholder="Search examples..."
             searchDebounceMs={500}
