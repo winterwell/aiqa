@@ -90,7 +90,24 @@ if [[ -z "$REPO_RESPONSE" ]] || echo "$REPO_RESPONSE" | grep -q '"error"'; then
   }")
   
   if echo "$REPO_RESULT" | grep -q '"error"'; then
-    echo "ERROR: Failed to register repository: $REPO_RESULT" >&2
+    # Check for path.repo configuration error
+    if echo "$REPO_RESULT" | grep -q 'path.repo'; then
+      echo "ERROR: Elasticsearch path.repo setting is not configured." >&2
+      echo "" >&2
+      echo "To fix this, add the following to your docker-compose.yml elasticsearch service:" >&2
+      echo "  environment:" >&2
+      echo "    - \"path.repo=/usr/share/elasticsearch/data/backups\"" >&2
+      echo "" >&2
+      echo "Then restart the container:" >&2
+      echo "  docker-compose restart elasticsearch" >&2
+      echo "" >&2
+      echo "Or if using docker directly:" >&2
+      echo "  docker restart $CONTAINER" >&2
+      echo "" >&2
+      echo "Full error: $REPO_RESULT" >&2
+    else
+      echo "ERROR: Failed to register repository: $REPO_RESULT" >&2
+    fi
     exit 1
   fi
 fi

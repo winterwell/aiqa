@@ -28,14 +28,14 @@ set -e  # Exit on error
 # fi
 
 echo "Building nginx and server containers (will rebuild if code changed)..."
-docker-compose build nginx server
+docker compose build nginx server
 
 echo "Restarting containers with new images..."
 # up -d will recreate containers if images changed (detected by build above)
 # --no-deps ensures we don't restart dependencies unnecessarily
-docker-compose up -d --no-deps nginx server
+docker compose up -d --no-deps nginx server
 
 echo "Done! Containers rebuilt and restarted."
 echo ""
 echo "Container status:"
-docker-compose ps nginx server
+docker compose ps nginx server

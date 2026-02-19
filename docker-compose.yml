@@ -34,6 +34,9 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      # Allow snapshots in the data directory (required for snapshot repository)
+      # Note: This must be set before creating snapshot repositories
+      - "path.repo=/usr/share/elasticsearch/data/backups"
     ports:
       - "9200:9200"
       - "9300:9300"
