@@ -18,7 +18,7 @@ TMP_FILE="${SNAP_FILE}.tmp"
 
 # ---- Dump (to temp), then replace on success ----
 # Use gzip to keep it small; remove | gzip if you prefer plain .sql
-sudo docker exec -i "$CONTAINER" pg_dump -U "$USER" -d "$DB" \
+docker exec -i "$CONTAINER" pg_dump -U "$USER" -d "$DB" \
   --no-owner --no-privileges \
   | gzip -c > "$TMP_FILE"
 
