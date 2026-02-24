@@ -285,7 +285,7 @@ export async function authenticate(
 		}
 		// API key authentication failed - only send error if reply hasn't been sent yet
 		if (!reply.sent) {
-			reply.code(401).send({ error: 'Invalid API key' });
+			reply.code(401).send({ error: 'Invalid API key ***' + apiKey.substring(apiKey.length - 4) });
 		}
 		return;
 	}
@@ -411,7 +411,7 @@ export async function authenticateFromGrpcMetadata(request: AuthenticatedRequest
     const apiKeyRecord = await getApiKeyByHash(hash);
     
     if (!apiKeyRecord) {
-      throw new Error('Invalid API key');
+      throw new Error('GRPC call rejected: Invalid API key ***' + apiKey.substring(apiKey.length - 4));
     }
     
     request.organisation = apiKeyRecord.organisation;

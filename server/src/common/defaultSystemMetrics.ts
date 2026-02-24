@@ -8,6 +8,8 @@ export const TOTAL_TOKENS_METRIC_ID = 'totalTokens';
 export const DURATION_METRIC_ID = 'duration';
 export const ERRORS_METRIC_ID = 'errors';
 export const SPECIFIC_METRIC_ID = 'specific';
+/** Number of spances in the trace (minus 1 for the root span - which is typically RunExample and we dont want to count it) */
+export const SPAN_COUNT_METRIC_ID = 'descendants';
 /**
  * Default system metrics that are always available for datasets.
  * These are built-in metrics that AIQA handles automatically.
@@ -43,6 +45,13 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
     unit: 'USD',
     type: 'system',
   },
+  {
+    id: SPAN_COUNT_METRIC_ID,
+    name: 'Spans',
+    description: 'Number of spans in the trace',
+    unit: 'spans',
+    type: 'system',
+  }
 ];
 
 export const SPECIFIC_METRIC: Metric = {

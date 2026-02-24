@@ -11,6 +11,7 @@ export default interface Example {
 	dataset: string;
 	organisation: string;
 	name?: string;
+	notes?: string;
 	/** Client-set tags for the Example */
 	tags?: string[];
 	 /** Client-set annotations for the Example (for things more complex than a tag) */

@@ -58,7 +58,7 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
   if (infoItems.length === 0) return null;
 
   return (
-    <ListGroup flush className="mb-3">
+    <div className="d-flex flex-column gap-2"><ListGroup flush className="mb-3">
       {infoItems.map((info, idx) => (
         <ListGroupItem key={idx}>
           <div className="d-flex align-items-center gap-2">
@@ -67,6 +67,11 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
         </ListGroupItem>
       ))}
     </ListGroup>
+    {item.description || item.notes && <div>
+      {item.description && <p>{item.description}</p>}
+      {item.notes && <p>{item.notes}</p>}
+    </div>}
+    </div>
   );
 };
 

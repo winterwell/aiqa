@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Container, Row, Col } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getExperiment, getDataset, deleteExperiment, searchExamples } from '../api';
+import { getExperiment, getDataset, deleteExperiment, searchExamples, updateExperiment } from '../api';
 import Experiment, {Result} from '../common/types/Experiment';
 import TableUsingAPI from '../components/generic/TableUsingAPI';
 import { useToast } from '../utils/toast';
@@ -13,8 +13,9 @@ import Spinner from '../components/generic/Spinner';
 import type { ExtendedColumnDef } from '../components/generic/TableUsingAPI';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { getMetricValue, getMetrics } from '../utils/metric-utils';
-import { COST_METRIC_ID, DURATION_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
+import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
 import LinkId from '../components/LinkId';
+import HelpText from '../components/generic/HelpText';
 
 
 
@@ -108,6 +109,12 @@ const ExperimentDetailsPage: React.FC = () => {
       {
         header: 'Duration',
         accessorFn: (row: Result) => {
+          return row.scores?.[DURATION_METRIC_ID]; // sort on duration ms (not string)
+        },
+        cell: ({ row }: any) => {
+          return <span>{durationString(row.original.scores?.[DURATION_METRIC_ID])}</span>;
+        },
+        csvValue: (row: Result) => {
           return durationString(row.scores?.[DURATION_METRIC_ID]);
         }
       },
@@ -124,10 +131,10 @@ const ExperimentDetailsPage: React.FC = () => {
         }
       },
       {
-        header: 'Errors',
+        header: 'Spans',
         accessorFn: (row: Result) => {
-          return row.errors? JSON.stringify(row.errors) : '';
-        }
+          return prettyNumber(row.scores?.[SPAN_COUNT_METRIC_ID]);
+        } 
       },
     ];
   // metrics
@@ -138,9 +145,22 @@ const ExperimentDetailsPage: React.FC = () => {
       header: metric.name || metric.id,
       accessorFn: (row: Result) => {
         return row.scores?.[metric.id];
+      },
+      cell: ({ row }: any) => {
+        const score = row.original.scores?.[metric.id];
+        // Is there a message?
+        const message = row.original.messages?.[metric.id];
+        if ( ! message) return <span>{score}</span>;
+        return <span title={message}>{score}</span>;
       }
     });
   }
+  columns.push({
+    header: 'Errors',
+    accessorFn: (row: Result) => {
+      return row.errors? JSON.stringify(row.errors) : '';
+    }
+  });
 
   if (isLoading) {
     return (
@@ -170,6 +190,9 @@ const ExperimentDetailsPage: React.FC = () => {
         <NameAndDeleteHeader
           label="Experiment"
           item={experiment}
+          handleNameChange={() => {
+            return updateExperiment(experimentId!, { name: experiment.name }) 
+          }}
           handleDelete={async () => {
             await deleteExperimentMutation.mutateAsync();
           }}

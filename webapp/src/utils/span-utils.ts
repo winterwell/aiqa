@@ -1,5 +1,12 @@
 import { Span } from "../common/types";
 import { getSpanId, getTraceId, getParentSpanId } from "../common/types/Span";
+import type Metric from "../common/types/Metric";
+import {
+	DURATION_METRIC_ID,
+	TOTAL_TOKENS_METRIC_ID,
+	COST_METRIC_ID,
+	SPAN_COUNT_METRIC_ID,
+} from "../common/defaultSystemMetrics";
 
 /** Pick display unit for a duration in ms. */
 function getDurationUnits(durationMs: number): 'ms' | 's' | 'm' | 'h' | 'd' {
@@ -131,6 +138,52 @@ export const getDurationMs = (span: Span): number | null => {
     if ( ! start || ! end) return null;
     return end.getTime() - start.getTime();
   };
+
+/**
+ * Extract value for a system metric from a span's stats.
+ * Returns null for custom metrics (computed during experiments, not stored on spans).
+ * TODO DRY with getMetricValue and code in ExperimentDetailsPage.tsx
+ */
+export function getSpanMetricValue(span: Span, metric: Metric): number | null {
+	const stats = span.stats;
+	if (!stats) return null;
+	const id = metric.id || metric.name;
+	if (!id) return null;
+	switch (id) {
+		case DURATION_METRIC_ID:
+			return getDurationMs(span) ?? stats.duration ?? null;
+		case TOTAL_TOKENS_METRIC_ID:
+			return stats.totalTokens ?? null;
+		case COST_METRIC_ID:
+			return stats.cost ?? null;
+		case SPAN_COUNT_METRIC_ID:
+			// Total span count = descendants + self
+			const d = stats.descendants;
+			return d != null ? d + 1 : null;
+		default:
+			return null;
+	}
+}
+
+/** Format a metric value for display based on metric.unit
+ * TODO DRY with getMetricValue and code in ExperimentDetailsPage.tsx
+ */
+export function formatMetricValue(metric: Metric, value: number | null | undefined): string {
+	if (value === null || value === undefined) return '—';
+	switch (metric.unit) {
+		case 'ms':
+			return durationString(value);
+		case 'USD':
+			return formatCost(value);
+		case 'tokens':
+		case 'spans':
+			return prettyNumber(value);
+		case 'fraction':
+			return (100 * value).toFixed(1) + '%';
+		default:
+			return prettyNumber(value) + (metric.unit ? ` ${metric.unit}` : '');
+	}
+}
 
 /**
  * Safely convert a value to a number, handling both string and number types.

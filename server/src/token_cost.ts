@@ -9,7 +9,6 @@ import {
 	GEN_AI_USAGE_CACHED_INPUT_TOKENS,
 	GEN_AI_PROVIDER_NAME,
 	GEN_AI_REQUEST_MODEL,
-	GEN_AI_MODEL_NAME,
 	GEN_AI_REQUEST_MODE,
 	GEN_AI_COST_USD,
 	GEN_AI_COST_CALCULATOR,
@@ -114,16 +113,34 @@ function inferProviderFromModel(model: string | undefined): string | null {
 }
 
 /**
- * Get token cost entry for a given provider, model, and mode
+ * For Bedrock, return model IDs to try in order: exact, then without region/version suffix,
+ * then without -YYYYMMDD so eu.anthropic.claude-3-5-sonnet-20240620-v1:0 can match anthropic.claude-3-5-sonnet.
  */
-function getTokenCostEntry(provider: string | null, model: string | undefined, mode: string = 'standard'): TokenCostEntry {
+function getModelLookupCandidates(provider: string | null, model: string | undefined): string[] {
+	if (!provider || !model) return [];
+	if (provider !== 'bedrock') return [model];
+	const withoutRegion = model.replace(/^[a-z]{2}\.(?=anthropic\.|amazon\.|ai21\.|cohere\.|meta\.|mistral\.)/i, '');
+	const withoutVersion = withoutRegion.replace(/-v\d+:\d+$/, '');
+	const candidates = [model, withoutVersion || model];
+	const withoutDate = withoutVersion.replace(/-\d{8}$/, '');
+	if (withoutDate !== withoutVersion) {
+		candidates.push(withoutDate);
+	}
+	return [...new Set(candidates.filter(Boolean))];
+}
+
+/**
+ * Get token cost entry for a given provider, model, and mode.
+ * Exported for unit tests.
+ */
+export function getTokenCostEntry(provider: string | null, model: string | undefined, mode: string = 'standard'): TokenCostEntry {
 	const costs = loadTokenCosts();
-	
-	// Try exact match first
 	if (provider && model) {
-		const key = `${provider}-${model}-${mode}`;
-		const entry = costs.get(key);
-		if (entry) return entry;
+		for (const tryModel of getModelLookupCandidates(provider, model)) {
+			const key = `${provider}-${tryModel}-${mode}`;
+			const entry = costs.get(key);
+			if (entry) return entry;
+		}
 	}
 	
 	// Fallback to gpt-4o standard
@@ -216,8 +233,7 @@ export function addTokenCost(span: Span): void {
 	// Get provider and model from span attributes
 	// attributes are from: https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/
 	let provider = attributes[GEN_AI_PROVIDER_NAME] as string | undefined;
-	const model = attributes[GEN_AI_REQUEST_MODEL] as string | undefined || 
-	              attributes[GEN_AI_MODEL_NAME] as string | undefined;
+	const model = attributes[GEN_AI_REQUEST_MODEL] as string | undefined;
 	const mode = attributes[GEN_AI_REQUEST_MODE] as string | undefined || "standard"; // non-standard attribute. Default to standard if not set.
 	
 	// If no provider, try to infer from model name

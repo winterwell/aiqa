@@ -184,8 +184,8 @@ export function jsonSchemaToEsMapping(prop: any, fieldName: string): any {
   switch (type) {
     case 'string':
       // default to keyword as id-lookup is the normal case
-      // but name, description are text searchable fields.
-      if (fieldName === 'name' || fieldName === 'description') {
+      // HACK: but name, description, notes are text searchable fields.
+      if (fieldName === 'name' || fieldName === 'description' || fieldName === 'notes') {
         return { type: 'text', fields: { keyword: { type: 'keyword' } } };
       }
       return { type: 'keyword' };

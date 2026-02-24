@@ -20,6 +20,9 @@
         "name": {
           "type": "string"
         },
+        "notes": {
+          "type": "string"
+        },
         "tags": {
           "type": "array",
           "items": {

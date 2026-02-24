@@ -30,19 +30,21 @@ export function getMetrics(dataset: Dataset): Metric[] {
  * Returns null if the value is missing, invalid, or non-numeric.
  */
 export function getMetricValue(result: { scores?: Record<string, any>; errors?: Record<string, any> }, metric: Metric): number | null {
-	// Try metric.id first, then fall back to metric.name
-	const score = result.scores?.[metric.id] ?? result.scores?.[metric.name];
-	const error = result.errors?.[metric.id] ?? result.errors?.[metric.name];
-	
-	// If there's an error, return null (caller can check errors separately)
-	if (error !== undefined && error !== null) {
-		return null;
+	// Try metric.id first, then fall back to metric.name (but do keep 0 as a valid value)
+	let score = result.scores?.[metric.id];
+	if (score===null || score===undefined) {
+		score = result.scores?.[metric.name];
 	}
+	// const error = result.errors?.[metric.id] ?? result.errors?.[metric.name];
+	// Note: errors are not currently cleared on rerun (Feb 2026), so they should not invalidate a score
+	// // If there's an error, return null (caller can check errors separately)
+	// if (error !== undefined && error !== null) {
+	// 	return null;
+	// }
 	
 	if (score === undefined || score === null) {
 		return null;
 	}
-	
 	// Convert to number if needed
 	const numericValue = typeof score === 'number' ? score : 
 		(typeof score === 'string' && !isNaN(parseFloat(score)) ? parseFloat(score) : null);
@@ -50,7 +52,6 @@ export function getMetricValue(result: { scores?: Record<string, any>; errors?: 
 	if (numericValue === null || isNaN(numericValue) || !isFinite(numericValue)) {
 		return null;
 	}
-	
 	return numericValue;
 }
 

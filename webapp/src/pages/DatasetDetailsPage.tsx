@@ -203,6 +203,11 @@ const DatasetDetailsPage: React.FC = () => {
         enableSorting: true,
       },
       {
+        id: 'notes',
+        header: 'Notes',
+        accessorKey: 'notes',
+      },
+      {
         id: 'delete',
         header: 'Delete',
         cell: ({ row }) => {

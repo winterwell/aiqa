@@ -1,3 +1,4 @@
+import Experiment from "./common/types/Experiment.js";
 import Span from "./common/types/Span.js";
 import { getTraceId } from "./common/types/Span.js";
 
@@ -204,6 +205,13 @@ export async function createExperiment(experiment: {
 	return fetchWithAuth('/experiment', {
 		method: 'POST',
 		body: JSON.stringify(experiment),
+	});
+}
+
+export async function updateExperiment(id: string, updates: Partial<Experiment>) {
+	return fetchWithAuth(`/experiment/${id}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates),
 	});
 }
 

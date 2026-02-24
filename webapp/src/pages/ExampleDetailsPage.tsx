@@ -5,17 +5,20 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { getExample, updateExample, getDataset, deleteExample } from '../api';
 import { useToast } from '../utils/toast';
 import type { Example, Span } from '../common/types';
+import type Dataset from '../common/types/Dataset';
 import Metric from '../common/types/Metric';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import Tags from '../components/generic/Tags';
 import MetricModal, { addOrEditMetric, deleteMetric } from '../components/MetricModal';
 import Page from '../components/generic/Page';
-import { getStartTime, getDurationMs, durationString, prettyNumber, formatCost } from '../utils/span-utils';
-import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { getStartTime, formatMetricValue, getSpanMetricValue } from '../utils/span-utils';
+import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC_ID } from '../common/defaultSystemMetrics';
+import { getMetrics } from '../utils/metric-utils';
 import { searchSpans } from '../api';
 import { asArray } from '../common/utils/miscutils';
 import { getExampleInput, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
+import { space } from '../common/utils/miscutils';
 
 // InputCard component
 function InputCard({ 
@@ -138,11 +141,11 @@ function MetricCardItem({
           <Badge color="info">{metric.type}</Badge>
           {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
         </div>
-        {metric.type === 'llm' && metric.prompt && (
+        {metric.type === 'llm' && (metric.prompt || metric.promptCriteria) && (
           <div className="mt-2">
             <strong className="small d-block mb-1">Prompt:</strong>
             <pre className="small bg-light p-2 mb-0" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {metric.prompt}
+              {metric.prompt || metric.promptCriteria}
             </pre>
           </div>
         )}
@@ -287,9 +290,10 @@ function MetricsCard({
 }
 
 /** Outputs: load the last 5 spans with span.example = example.id. Show a card per span, 
- * with span time, span.attributes.output, span stats (duration, tokens, cost) 
+ * with span time, span.attributes.output, and all dataset metrics (system + custom). 
+ * System metrics come from span.stats; custom metrics show "—" (computed during experiments).
  * */
-function OutputsCard({ example }: { example: Example }) {
+function OutputsCard({ example, dataset }: { example: Example; dataset: Dataset | null | undefined }) {
   const { organisationId } = useParams<{ organisationId: string }>();
   
   const { data: spansResult, isLoading } = useQuery({
@@ -308,6 +312,13 @@ function OutputsCard({ example }: { example: Example }) {
   });
 
   const spans = spansResult?.hits || [];
+  // All dataset metrics (system + custom), excluding example-specific which is not per-span.
+  // When no dataset, fall back to system metrics so we still show duration, tokens, cost, spans.
+  const datasetMetrics = useMemo(() => {
+    const all = dataset ? getMetrics(dataset) : DEFAULT_SYSTEM_METRICS;
+    return all.filter((m) => (m.id || m.name) !== SPECIFIC_METRIC_ID);
+  }, [dataset]);
+
   // Sort by start time (most recent first) and take last 5
   const sortedSpans = [...spans]
     .sort((a, b) => {
@@ -337,14 +348,12 @@ function OutputsCard({ example }: { example: Example }) {
               const spanAny = span as any;
               const output = spanAny.attributes?.output;
               const startTime = getStartTime(span);
-              const durationMs = getDurationMs(span);
-              const tokenCount = span.stats?.totalTokens || 0;
-              const cost = span.stats?.cost || 0;
 
               return (
                 <Card key={index} className="mb-3">
                   <CardBody>
-                    <div className="mb-2">
+                    <div className="mb-2 d-flex justify-content-between align-items-center">
+                      <small>Trace: <Link to={`/organisation/${organisationId}/traces/${span.trace}`}>{span.trace}</Link></small>
                       <small className="text-muted">
                         <strong>Time:</strong> {startTime ? startTime.toLocaleString() : 'N/A'}
                       </small>
@@ -359,21 +368,19 @@ function OutputsCard({ example }: { example: Example }) {
                       </div>
                     )}
                     <div className="d-flex gap-3 flex-wrap">
-                      {durationMs !== null && (
-                        <Badge color="info">
-                          Duration: {durationString(durationMs)}
-                        </Badge>
-                      )}
-                      {tokenCount !== null && (
-                        <Badge color="secondary">
-                          Tokens: {prettyNumber(tokenCount)}
-                        </Badge>
-                      )}
-                      {cost !== null && (
-                        <Badge color="success">
-                          Cost: {formatCost(cost)}
-                        </Badge>
-                      )}
+                      {datasetMetrics.map((metric) => {
+                        const value = getSpanMetricValue(span, metric);
+                        const display = formatMetricValue(metric, value);
+                        return (
+                          <Badge
+                            key={metric.id || metric.name || 'unknown'}
+                            color={value != null ? 'info' : 'secondary'}
+                            className="text-nowrap"
+                          >
+                            {metric.name || metric.id}: {display}
+                          </Badge>
+                        );
+                      })}
                     </div>
                   </CardBody>
                 </Card>
@@ -492,7 +499,7 @@ const ExampleDetailsPage: React.FC = () => {
 
   return (
     <Page
-      header="Example Details"
+      header={space("Example Details", example.name) /* TODO row-number from dataset */}
       back={backUrl}
       backLabel="Dataset"
       item={example}
@@ -548,7 +555,7 @@ const ExampleDetailsPage: React.FC = () => {
           />
         </Col>
         <Col md={6}>
-          <OutputsCard example={example} />
+          <OutputsCard example={example} dataset={dataset} />
         </Col>
       </Row>
 

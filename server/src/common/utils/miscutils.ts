@@ -32,3 +32,8 @@ export function asDate(value: any): Date | null {
   // crude but handles number and many strings
   return new Date(value);
 }
+
+/** Convenience for join with space, filtering out falsy */
+export function space(...things: any[]): string {
+  return things.filter(x => x).join(" ");
+}

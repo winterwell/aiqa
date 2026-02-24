@@ -17,7 +17,6 @@ export const GEN_AI_COST_CALCULATOR = 'gen_ai.costcalculator';
 // Provider and model attributes
 export const GEN_AI_PROVIDER_NAME = 'gen_ai.provider.name';
 export const GEN_AI_REQUEST_MODEL = 'gen_ai.request.model';
-export const GEN_AI_MODEL_NAME = 'gen_ai.model.name';
 export const GEN_AI_REQUEST_MODE = 'gen_ai.request.mode';
 
 // AIQA-specific attributes
