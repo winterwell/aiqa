@@ -271,7 +271,7 @@ export default function TraceDetailsContent({
     <>
       <Row>
         <Col md={4} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
-          <h3>Span Tree</h3>
+          <h3>Span Tree ({spanTree?.span?.stats?.descendants + 1} spans)</h3>
           <div style={{ marginBottom: '10px' }}>
             <Input
               type="text"

@@ -168,7 +168,7 @@ export async function propagateTokenCostsToRootSpan(
     const result = await searchSpans({
       searchQuery: new SearchQuery(`parent:${idsToResolveChildren.join(' OR ')}`),
       organisation,
-      limit: 1000,
+      limit: 5000, // This is a high limit! Larger span trees than this can be considered as unsupported
       offset: 0,
       _source_includes: ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
       _source_excludes: undefined
@@ -180,11 +180,12 @@ export async function propagateTokenCostsToRootSpan(
       }
       spanMap.set(child.id, child);
       const parentSpan = spanMap.get(child.parent);
-      if (parentSpan?._childStats?.[child.id]) {
-        console.log(`propagateTokenCostsToRootSpan: child ${child.id} - parent ${parentSpan.id} already has stats, skipping fetch`);
-      } else {
-        idsToResolveChildren.push(child.id);
-      }
+      // if (parentSpan?._childStats?.[child.id]) {
+      //   console.log(`propagateTokenCostsToRootSpan: child ${child.id} - parent ${parentSpan.id} already has stats, skipping fetch`);
+      // Commented out due to bug: if the child has updated with later counts, then this parent's snapshot of _childStats will be stale.
+      // } else {
+      idsToResolveChildren.push(child.id);
+      // }
     }
   }
 

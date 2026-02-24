@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { Button, FormGroup, Input, Label } from 'reactstrap';
+import { Button, FormGroup, Input, Label, Row, Col } from 'reactstrap';
 import { createExampleFromSpans, createDataset, listDatasets } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId, getParentSpanId } from '../common/types/Span.js';
@@ -446,6 +446,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 	const error = getDisplayError(span);
 	const durationMs = getDurationMs(span);
 	const tokenCount = span.stats?.totalTokens || 0;
+	const descendants = span.stats?.descendants || 0;
 	const cost = span.stats?.cost || 0;
 	const { showToast } = useToast();
 	const queryClient = useQueryClient();
@@ -513,15 +514,20 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 
 	return (
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
-			<div style={{ marginBottom: '15px' }}>
-				<div><strong>Span ID:</strong> {spanId}</div>
-				{span.name && <div><strong>Name:</strong> {span.name}</div>}
-				{span.example && <div><strong>Example:</strong> {span.example}</div>}
-				<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
-				<div><strong>Duration:</strong> {durationString(durationMs)}</div>
-				{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
-				{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
-			</div>
+			<Row>
+				<Col>
+					<div><strong>Span ID:</strong> {spanId}</div>
+					{span.name && <div><strong>Name:</strong> {span.name}</div>}
+					{span.example && <div><strong>Example:</strong> {span.example}</div>}
+					<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
+				</Col>
+				<Col>
+					<div><strong>Duration:</strong> {durationString(durationMs)}</div>
+					{descendants > 0 && <div><strong>Descendants:</strong> {descendants}</div>}
+					{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
+					{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}
+				</Col>
+			</Row>
 			
 			{organisationId && Array.isArray(datasets) && (/* TODO refactor into function AddToDataset(). Check for existing dataset (span.example if made by an experiment or query example). */
 				<div style={{ marginTop: '15px', marginBottom: '15px', padding: '10px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '4px' }}>
