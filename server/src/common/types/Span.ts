@@ -13,6 +13,7 @@ export interface SpanStats {
   inputTokens?: number;
   outputTokens?: number;
   cachedInputTokens?: number;
+  cacheCreationTokens?: number;
   totalTokens?: number;
   /** USD */
   cost?: number;

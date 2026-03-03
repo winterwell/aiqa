@@ -16,6 +16,7 @@ import { getMetricValue, getMetrics } from '../utils/metric-utils';
 import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
 import LinkId from '../components/LinkId';
 import HelpText from '../components/generic/HelpText';
+import Tags from 'src/components/generic/Tags';
 
 
 
@@ -93,9 +94,9 @@ const ExperimentDetailsPage: React.FC = () => {
   {
         header: 'Example',
         accessorKey: 'example',
-        accessorFn: (row: any) => {
+        accessorFn: (row: Result) => {
           // TODO efficiently load the example names
-          const eid = row.original.example;
+          const eid = row.example;
           const example = examples?.[eid];
           return example?.name || eid;
         },
@@ -155,6 +156,19 @@ const ExperimentDetailsPage: React.FC = () => {
       }
     });
   }
+  columns.push({
+    header: 'Tags',
+    accessorFn: (row: Result) => {
+      const eid = row.example;
+      const example = examples?.[eid];
+      return example?.name || eid;
+    },
+    cell: ({ row }: any) => {
+      const eid = row.original.example;
+      const example = examples?.[eid];
+      return <span>{example?.tags?.join(' + ') || ''}</span>;
+    }
+  });
   columns.push({
     header: 'Errors',
     accessorFn: (row: Result) => {

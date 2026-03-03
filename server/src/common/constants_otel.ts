@@ -8,7 +8,8 @@
 export const GEN_AI_USAGE_TOTAL_TOKENS = 'gen_ai.usage.total_tokens';
 export const GEN_AI_USAGE_INPUT_TOKENS = 'gen_ai.usage.input_tokens';
 export const GEN_AI_USAGE_OUTPUT_TOKENS = 'gen_ai.usage.output_tokens';
-export const GEN_AI_USAGE_CACHED_INPUT_TOKENS = 'gen_ai.usage.cached_input_tokens';
+export const GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS = 'gen_ai.usage.cache_creation.input_tokens';
+export const GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = 'gen_ai.usage.cache_read.input_tokens';
 
 // Cost attributes (non-standard)
 export const GEN_AI_COST_USD = 'gen_ai.cost.usd';

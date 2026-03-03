@@ -6,10 +6,10 @@ import type Dataset from '../common/types/Dataset';
 import type Metric from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
-import { asArray, space } from '../common/utils/miscutils';
+import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
-import { durationString, prettyNumber } from '../utils/span-utils';
+import { formatMetricValue } from '../utils/span-utils';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -153,21 +153,6 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 	unmeasuredCount: number;
 	totalResults: number;
 }) {
-	const str4num = n => {
-		const ns = prettyNumber(n);
-		switch (metric.unit) {
-			case 'ms':
-				return durationString(n);
-			case 'fraction':
-				return (100 * n).toFixed(1) + '%';
-			case 'USD':
-				return "$" + ns;
-			case 'string':
-				return ns;
-			default:
-				return space(ns, metric.unit);
-		};
-	};
 	return (
 		<Card>
 			<CardHeader>
@@ -194,9 +179,9 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 							</p>
 							<ul className="list-unstyled mb-0">
 								<li>Count: {count}</li>
-								<li>Min: {str4num(min)}</li>
-								<li>Max: {str4num(max)}</li>
-								<li>Mean: {str4num(mean)}</li>
+								<li>Min: {formatMetricValue(metric, min)}</li>
+								<li>Max: {formatMetricValue(metric, max)}</li>
+								<li>Mean: {formatMetricValue(metric, mean)}</li>
 							</ul>
 							{unmeasuredCount > 0 && (
 							<Alert color="warning" className="mb-2 p-1 small" fade={false}>

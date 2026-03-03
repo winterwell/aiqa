@@ -30,6 +30,7 @@ const ExperimentsListPage: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<Experiment[]>([]);
+  const [dashboardSelectedExperiments, setDashboardSelectedExperiments] = useState<Experiment[]>([]);
 
   const { data: experimentsForDashboard } = useQuery({
     queryKey: ['experiments', organisationId, 'dashboard'],
@@ -45,6 +46,16 @@ const ExperimentsListPage: React.FC = () => {
     if (!datasets || !Array.isArray(datasets)) return new Map<string, string>();
     return new Map(datasets.map((d: { id: string; name: string }) => [d.id, d.name]));
   }, [datasets]);
+
+  const dashboardExperiments: Experiment[] = useMemo(
+    () =>
+      dashboardSelectedExperiments.length > 0
+        ? dashboardSelectedExperiments
+        : Array.isArray(experimentsForDashboard)
+          ? experimentsForDashboard
+          : [],
+    [dashboardSelectedExperiments, experimentsForDashboard]
+  );
 
   // Union of metric ids from datasets referenced by experiments (first metric with each id gives display name)
   const metricsById: Record<string, Metric> = useMemo(() => {
@@ -197,7 +208,7 @@ const ExperimentsListPage: React.FC = () => {
         </Col>
       </Row>
 
-      <ExperimentsListMetricsDashboard experiments={Array.isArray(experimentsForDashboard) ? experimentsForDashboard : []} />
+      <ExperimentsListMetricsDashboard experiments={dashboardExperiments} />
 
       <Row className="mt-3">
         <Col>
@@ -209,6 +220,7 @@ const ExperimentsListPage: React.FC = () => {
             getRowId={(row) => row.id}
             onRowClick={(row) => navigate(`/organisation/${organisationId}/experiment/${row.id}`)}
             enableRowSelection={true}
+            onSelectionChange={(_, rows) => setDashboardSelectedExperiments(rows)}
             bulkActionsToolbar={(ids, rows) => (
               <Button color="danger" size="sm" onClick={() => handleBulkDelete(ids, rows)} title="Delete selected experiments">
                 <TrashIcon size={16} className="me-1" />

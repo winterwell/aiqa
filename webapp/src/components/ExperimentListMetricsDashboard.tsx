@@ -9,6 +9,7 @@ import type Experiment from '../common/types/Experiment';
 import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import { asArray } from '../common/utils/miscutils';
 import DashboardStrip from './DashboardStrip';
+import { formatMetricValue } from '../utils/span-utils';
 
 type ScatterDataPoint = {
 	x: number;
@@ -250,6 +251,13 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 	ignoredCount: number;
 	color: string;
 }) {
+	const values = data.map(point => point.y);
+	const count = values.length;
+	const mean = count > 0 ? values.reduce((sum, val) => sum + val, 0) / count : 0;
+	const stdDev = count > 1
+		? Math.sqrt(values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / count)
+		: 0;
+
 	return (
 		<Card>
 			<CardHeader>
@@ -317,6 +325,12 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 						</ResponsiveContainer>
 						<p className="text-muted small mt-2 mb-0">
 							{data.length} data point{data.length !== 1 ? 's' : ''} shown
+						</p>
+						<p className="text-muted small mb-1">
+							<strong>Mean:</strong> {formatMetricValue(metric, mean)}{' '}
+							<span className="ms-2">
+								<strong>Std dev:</strong> {formatMetricValue(metric, stdDev)}
+							</span>
 						</p>
 						{ignoredCount > 0 && (
 							<p color="warning" className="mb-2 small">

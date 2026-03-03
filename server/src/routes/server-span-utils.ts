@@ -6,7 +6,8 @@ import {
   GEN_AI_USAGE_INPUT_TOKENS,
   GEN_AI_USAGE_OUTPUT_TOKENS,
   GEN_AI_USAGE_TOTAL_TOKENS,
-  GEN_AI_USAGE_CACHED_INPUT_TOKENS,
+  GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+  GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
   GEN_AI_COST_USD,
 } from '../common/constants_otel.js';
 
@@ -37,6 +38,7 @@ function addTokenStats(a: SpanStats, b: SpanStats): SpanStats {
     inputTokens: _add(a.inputTokens, b.inputTokens),
     outputTokens: _add(a.outputTokens, b.outputTokens),
     cachedInputTokens: _add(a.cachedInputTokens, b.cachedInputTokens),
+    cacheCreationTokens: _add(a.cacheCreationTokens, b.cacheCreationTokens),
     totalTokens: _add(a.totalTokens, b.totalTokens),
     cost: _add(a.cost, b.cost),
     errors: _add(a.errors, b.errors),
@@ -69,7 +71,8 @@ export function getSpanStatsFromAttributes(span: Span): SpanStats {
   return {
     inputTokens: toNumber(attrs[GEN_AI_USAGE_INPUT_TOKENS]),
     outputTokens: toNumber(attrs[GEN_AI_USAGE_OUTPUT_TOKENS]),
-    cachedInputTokens: toNumber(attrs[GEN_AI_USAGE_CACHED_INPUT_TOKENS]),
+    cachedInputTokens: toNumber(attrs[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS]),
+    cacheCreationTokens: toNumber(attrs[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS]),
     totalTokens: toNumber(attrs[GEN_AI_USAGE_TOTAL_TOKENS]),
     cost: toNumber(attrs[GEN_AI_COST_USD]),
     errors,
@@ -261,17 +264,27 @@ export async function propagateTokenCostsToRootSpan(
   return rootSpans;
 } // end of propagateTokenCostsToRootSpan
 
+/** Result of processSpan: stats for the span and the latest end time in its subtree (for effective duration). */
+interface ProcessSpanResult {
+  stats: SpanStats;
+  /** Max of span.end and all descendants' end (epoch ms). Used to compute trace duration when children end after parent. */
+  treeEnd: number;
+}
+
 /**
  * Recursively process a span and all its children, updating the span's token usage stats.
+ * Also computes treeEnd so root span duration can reflect full subtree (fixes SDKs that end parent before children).
  * - TODO Set usage on span = own + sum(children), using _seen to avoid having to load all spans from database, 
  * and also avoid double-counting.
  */
-const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpans: Set<string>, modifiedSpans: Set<Span>): SpanStats | null => {
+const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpans: Set<string>, modifiedSpans: Set<Span>): ProcessSpanResult | null => {
   const spanId = getSpanId(span);
   if (!spanId) return null;
   if (processedSpans.has(spanId)) { // paranoia against a malicious user creating a cycle
     console.warn(`propagateTokenCostsToRootSpan: span ${spanId} processed multiple times, possible cycle or duplicate`);
-    return getSpanStatsFromAttributes(span);
+    const ownStats = getSpanStatsFromAttributes(span);
+    const end = typeof span.end === 'number' ? span.end : 0;
+    return { stats: ownStats, treeEnd: end };
   }
   processedSpans.add(spanId);
 console.log(`processSpan: span ${spanId} ...`);
@@ -280,17 +293,19 @@ console.log(`processSpan: span ${spanId} ...`);
 
   const children = childrenMap.get(spanId) || [];
   console.log(`processSpan: span ${spanId} has children: ${children.map(child => getSpanId(child)).join(',')}`);
-  
-  // update child stats
+
+  // Latest end in subtree (self + descendants). Handles async SDKs where child ends after parent.
+  let treeEnd = typeof span.end === 'number' ? span.end : 0;
   for (const child of children) {
-    const childUsage = processSpan(child, childrenMap, processedSpans, modifiedSpans);
+    const childResult = processSpan(child, childrenMap, processedSpans, modifiedSpans);
     const childId = getSpanId(child);
     if (!childId) {
       console.warn(`propagateTokenCostsToRootSpan: Missing id from child span ${child}`);
       continue;
     }
-    if (childUsage) {
-      childStatsMap[childId] = childUsage;
+    if (childResult) {
+      childStatsMap[childId] = childResult.stats;
+      if (childResult.treeEnd > treeEnd) treeEnd = childResult.treeEnd;
     }
   }
   // sum over children
@@ -307,6 +322,12 @@ console.log(`processSpan: span ${spanId} ...`);
   // descendants includes the children 
   totalUsage.descendants = _add(childTotalStats.descendants, Object.keys(childStatsMap).length);
 
+  // When a child ends after this span (common with async SDKs e.g. Go OTel), use subtree end for duration so trace stats are correct.
+  const spanEnd = typeof span.end === 'number' ? span.end : 0;
+  totalUsage.duration = (treeEnd > spanEnd)
+    ? treeEnd - span.start
+    : (span.stats?.duration ?? (spanEnd && span.start ? spanEnd - span.start : undefined));
+
   // modified?
   // Note: counts can only ever increase, so if totals match, then the child stats match too
   if (!isEqual(span.stats, totalUsage)) {
@@ -316,7 +337,7 @@ console.log(`processSpan: span ${spanId} ...`);
   } else {
     console.log(`No change for: span ${spanId} stats match, skipping update totalUsage: ${JSON.stringify(totalUsage)}`);
   }
-  return totalUsage;
+  return { stats: totalUsage, treeEnd };
 }; // end of processSpan()
 
 
@@ -330,8 +351,10 @@ function isEqual(a: SpanStats, b: SpanStats): boolean {
   return a.inputTokens === b.inputTokens &&
     a.outputTokens === b.outputTokens &&
     a.cachedInputTokens === b.cachedInputTokens &&
+    a.cacheCreationTokens === b.cacheCreationTokens &&
     a.totalTokens === b.totalTokens &&
     a.cost === b.cost &&
     a.errors === b.errors &&
-    a.descendants === b.descendants;
+    a.descendants === b.descendants &&
+    a.duration === b.duration;
 }

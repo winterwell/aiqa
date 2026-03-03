@@ -19,6 +19,7 @@ import { Result } from '../common/types/Experiment.js';
 import Metric from '../common/types/Metric.js';
 import Dataset from '../common/types/Dataset.js';
 import Example from '../common/types/Example.js';
+import {is} from '../common/utils/miscutils.js';
 
 type MetricSource = 'dataset' | 'example';
 interface MetricWithSource {
@@ -207,21 +208,21 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     ];
 
     // Start with scores from request body (includes duration and any pre-computed scores)
-    const computedScores: Record<string, number> = { ...(body.scores || {}) };
-    const computedErrors: Record<string, string> = {};
+    const scores: Record<string, number> = { ...(body.scores || {}) };
+    const computedErrors: Record<string, string> = body.errors || {};
 
     // Compute scores for each metric. Key by metric.id (fallback name) so we match client-sent scores and webapp lookup.
     for (const { metric } of allMetrics) {
       const metricKey = metric.id || metric.name;
 
-      // If score is already provided in request body, skip computation
-      if (metricKey in computedScores) {
+      // If score is already provided in request body, skip computation, and clear any old error for this metric
+      if (is(scores[metricKey])) {
         continue;
       }
 
       // Otherwise, compute the score
       try {
-        computedScores[metricKey] = await scoreMetric(organisation, metric, body.output, example);
+        scores[metricKey] = await scoreMetric(organisation, metric, body.output, example);
       } catch (error) {
         // Record error for this metric but continue processing other metrics
         const message = error instanceof Error ? error.message : String(error);
@@ -249,10 +250,10 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
           // Add token count and cost as system metrics (using IDs from defaultSystemMetrics.ts)
           // 0 can be valid (e.g. a cached response)
           if (tokenUsage.totalTokens >= 0) {
-            computedScores[GEN_AI_USAGE_TOTAL_TOKENS] = tokenUsage.totalTokens;
+            scores[GEN_AI_USAGE_TOTAL_TOKENS] = tokenUsage.totalTokens;
           }
           if (tokenUsage.cost >= 0) {
-            computedScores[GEN_AI_COST_USD] = tokenUsage.cost;
+            scores[GEN_AI_COST_USD] = tokenUsage.cost;
           }
         } else {
           // Spans not found after retries - log but don't fail (token info is optional)
@@ -275,7 +276,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       result = results[existingResultIndex];
       result.scores = {
         ...result.scores,
-        ...computedScores,
+        ...scores,
       };
       result.messages = {
         ...(result.messages || {}),
@@ -284,11 +285,15 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       if (body.trace) {
         result.trace = body.trace;
       }
-      // Merge errors, keeping existing ones unless overwritten
+      // Merge errors, keeping existing ones unless overwritten 
       result.errors = {
         ...(result.errors || {}),
         ...computedErrors,
       };
+      // clear errors for scores that are now set
+      for (const metricKey in scores) {
+        delete result.errors[metricKey];
+      }
       // Merge rateLimited with truthy test to give an OR-like behaviour.
       if (body.rateLimited) {
         result.rateLimited = body.rateLimited;
@@ -297,7 +302,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       // Add new result
       result = {
         example: exampleId,
-        scores: computedScores,
+        scores: scores,
         messages: body.messages,
         rateLimited: body.rateLimited,
         trace: body.trace,
@@ -312,7 +317,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
     // For new results, use rolling update. For updates, recalculate from all results to ensure accuracy.
     const updatedSummaries = isUpdate
       ? recalculateSummaryResults(results)
-      : updateSummaryResults(experiment.summaries, computedScores);
+      : updateSummaryResults(experiment.summaries, scores);
 
     // Update experiment with new results and summary
     const updatedExperiment = await updateExperiment(experimentId, {

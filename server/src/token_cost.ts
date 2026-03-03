@@ -6,12 +6,13 @@ import {
 	GEN_AI_USAGE_INPUT_TOKENS,
 	GEN_AI_USAGE_OUTPUT_TOKENS,
 	GEN_AI_USAGE_TOTAL_TOKENS,
-	GEN_AI_USAGE_CACHED_INPUT_TOKENS,
+	GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
 	GEN_AI_PROVIDER_NAME,
 	GEN_AI_REQUEST_MODEL,
 	GEN_AI_REQUEST_MODE,
 	GEN_AI_COST_USD,
 	GEN_AI_COST_CALCULATOR,
+	GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
 } from './common/constants_otel.js';
 
 interface TokenCostEntry {
@@ -113,20 +114,40 @@ function inferProviderFromModel(model: string | undefined): string | null {
 }
 
 /**
- * For Bedrock, return model IDs to try in order: exact, then without region/version suffix,
- * then without -YYYYMMDD so eu.anthropic.claude-3-5-sonnet-20240620-v1:0 can match anthropic.claude-3-5-sonnet.
+ * Get possible model keys to try for lookup, in priority order.
+ *
+ * For most providers this is just the raw `model`.
+ *
+ * For Bedrock we generate a small set of normalized variants:
+ * - raw ID
+ * - without region prefix (e.g. `eu.`)
+ * - additionally without version suffix (e.g. `-v1:0`)
+ * - additionally without date suffix (e.g. `-20240620`)
+ *
+ * This lets variants like
+ *   eu.anthropic.claude-3-5-sonnet-20240620-v1:0
+ * match base CSV rows such as
+ *   bedrock,anthropic.claude-3-5-sonnet,standard,...
  */
-function getModelLookupCandidates(provider: string | null, model: string | undefined): string[] {
-	if (!provider || !model) return [];
+function getModelKeysForLookup(provider: string | null, model: string | undefined): string[] {
+	if (!model) return [];
 	if (provider !== 'bedrock') return [model];
+
+	const keys = new Set<string>();
+	keys.add(model);
+
+	// Bedrock model IDs can be "eu.anthropic.claude-3-5-sonnet-20240620-v1:0"
+	// -> try without region, version suffix, and date suffix.
 	const withoutRegion = model.replace(/^[a-z]{2}\.(?=anthropic\.|amazon\.|ai21\.|cohere\.|meta\.|mistral\.)/i, '');
+	keys.add(withoutRegion);
+
 	const withoutVersion = withoutRegion.replace(/-v\d+:\d+$/, '');
-	const candidates = [model, withoutVersion || model];
-	const withoutDate = withoutVersion.replace(/-\d{8}$/, '');
-	if (withoutDate !== withoutVersion) {
-		candidates.push(withoutDate);
-	}
-	return [...new Set(candidates.filter(Boolean))];
+	keys.add(withoutVersion);
+
+	const withoutDate = withoutVersion.replace(/-\d{8}(?=$)/, '');
+	keys.add(withoutDate);
+
+	return Array.from(keys);
 }
 
 /**
@@ -135,8 +156,11 @@ function getModelLookupCandidates(provider: string | null, model: string | undef
  */
 export function getTokenCostEntry(provider: string | null, model: string | undefined, mode: string = 'standard'): TokenCostEntry {
 	const costs = loadTokenCosts();
+	
+	// Try a small set of candidate model keys (for Bedrock region/version/date variants)
 	if (provider && model) {
-		for (const tryModel of getModelLookupCandidates(provider, model)) {
+		for (const tryModel of getModelKeysForLookup(provider, model)) {
+			if (!tryModel) continue;
 			const key = `${provider}-${tryModel}-${mode}`;
 			const entry = costs.get(key);
 			if (entry) return entry;
@@ -167,29 +191,30 @@ export function getTokenCostEntry(provider: string | null, model: string | undef
 /**
  * Calculate cost in dollars based on token usage and cost entry
  */
-function calculateCost(
+// exported for unit tests
+export function calculateCost(
 	inputTokens: number,
 	outputTokens: number,
 	cachedInputTokens: number,
 	costEntry: TokenCostEntry
 ): number {
-	// Costs are in millions of tokens per dollar
-	// So cost per token = 1 / (cost_in_Mtkn * 1,000,000)
-	// Handle division by zero: if cost is 0, tokens are free
-	const inputCost = (inputTokens && costEntry.input_Mtkn > 0) 
-		? inputTokens / (costEntry.input_Mtkn * 1000000) 
+	// Costs are in dollars per million tokens.
+	// So cost per token = cost_in_Mtkn / 1,000,000.
+	// Handle zero rates: if cost is 0, those tokens are free.
+	const inputCost = (inputTokens && costEntry.input_Mtkn > 0)
+		? (inputTokens * costEntry.input_Mtkn) / 1_000_000
 		: 0;
 	
 	// Cached input: use cached rate if > 0, otherwise fall back to input rate, or 0 if both are 0
-	const cachedInputMtkn = costEntry.cached_input_Mtkn > 0 
-		? costEntry.cached_input_Mtkn 
+	const cachedInputMtkn = costEntry.cached_input_Mtkn > 0
+		? costEntry.cached_input_Mtkn
 		: (costEntry.input_Mtkn > 0 ? costEntry.input_Mtkn : 0);
 	const cachedInputCost = (cachedInputTokens && cachedInputMtkn > 0)
-		? cachedInputTokens / (cachedInputMtkn * 1000000)
+		? (cachedInputTokens * cachedInputMtkn) / 1_000_000
 		: 0;
-	
+	// TODO cache creation cost
 	const outputCost = (outputTokens && costEntry.output_Mtkn > 0)
-		? outputTokens / (costEntry.output_Mtkn * 1000000)
+		? (outputTokens * costEntry.output_Mtkn) / 1_000_000
 		: 0;
 	
 	return inputCost + cachedInputCost + outputCost;
@@ -205,8 +230,8 @@ export function addTokenCost(span: Span): void {
 	const inputTokens = toNumber(attributes[GEN_AI_USAGE_INPUT_TOKENS]);
 	const outputTokens = toNumber(attributes[GEN_AI_USAGE_OUTPUT_TOKENS]);
 	const totalTokens = toNumber(attributes[GEN_AI_USAGE_TOTAL_TOKENS]);
-	const cachedInputTokens = toNumber(attributes[GEN_AI_USAGE_CACHED_INPUT_TOKENS]) ?? 0;
-	
+	const cachedInputTokens = toNumber(attributes[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS]) ?? 0;
+	const cacheCreationTokens = toNumber(attributes[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS]) ?? 0; // TODO
 	// If no token usage at all, return early
 	if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
 		return;

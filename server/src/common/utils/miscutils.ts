@@ -1,4 +1,6 @@
+
 export function is(value: any): boolean {
+  // Hm: should this check for NaN if value is a number?
   return value !== null && value !== undefined;
 }
 

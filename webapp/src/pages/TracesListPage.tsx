@@ -429,7 +429,8 @@ const TracesListPage: React.FC = () => {
         id: 'feedback',
         header: () => (
           <span>
-            Feedback{' '}
+            Feedback
+            {/* {' '}
             <span
               className={`small ${feedbackInSearch === null ? 'fw-bold' : 'text-muted'}`}
               style={{ cursor: 'pointer' }}
@@ -449,7 +450,7 @@ const TracesListPage: React.FC = () => {
               style={{ cursor: 'pointer' }}
               onClick={() => setSearchWithFeedback(feedbackInSearch === 'negative' ? null : 'negative')}
               title={feedbackInSearch === 'negative' ? 'Clear filter' : 'Filter: thumbs down only'}
-            >👎</span>
+            >👎</span> */}
           </span>
         ),
         accessorFn: (row) => {
