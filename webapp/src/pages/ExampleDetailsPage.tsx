@@ -499,12 +499,13 @@ const ExampleDetailsPage: React.FC = () => {
 
   return (
     <Page
-      header={space("Example Details", example.name) /* TODO row-number from dataset */}
+      header="Example Details"
       back={backUrl}
       backLabel="Dataset"
       item={example}
       itemType="Example"
       onDelete={() => deleteExampleMutation.mutateAsync()}
+      showEditorFor={['name', 'notes', 'tags']}
     >
       <Row>
         <Col>

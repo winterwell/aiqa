@@ -24,7 +24,7 @@ tap.test('getTokenCostEntry - unknown provider+model falls back to openai-gpt-4o
 
 tap.test('calculateCost', t => {
 	const entry = getTokenCostEntry('bedrock', 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', 'standard');
-	const cost = calculateCost(366, 112, 2656, entry);
+	const cost = calculateCost(366, 112, 2656, 0, entry);
 	console.log('entry', entry);
 	console.log('cost', cost);
 	t.equal(cost, 0.0035748, 'should calculate cost correctly');

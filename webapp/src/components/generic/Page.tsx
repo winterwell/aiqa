@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { Container, Row, Col, ListGroup, ListGroupItem, Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
 import CopyButton from './CopyButton';
 import { useToast } from '../../utils/toast';
+import NameAndDeleteHeader from './NameAndDeleteHeader';
+import { updateExample } from '../../api';
+import PropInput from './PropInput';
 
 interface PageItem {
   id?: string;
@@ -13,7 +16,9 @@ interface PageItem {
 
 interface ItemInfoProps {
   item: PageItem;
+  itemType: string;
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+  showEditorFor?: string[]; // Optional list of properties to show editor for
 }
 
 const formatDate = (date: string | Date | undefined): string | null => {
@@ -21,9 +26,9 @@ const formatDate = (date: string | Date | undefined): string | null => {
   return new Date(date).toLocaleString();
 };
 
-const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
+const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEditorFor }) => {
   const infoItems: Array<{ label: string; value: React.ReactNode }> = [];
-
+  const showEditorForNotes = showEditorFor && "notes" in showEditorFor;
   if (item.id) {
     infoItems.push({
       label: 'ID',
@@ -57,6 +62,18 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
 
   if (infoItems.length === 0) return null;
 
+  const apiSave = itemType && {
+    Example: (updates: any) => updateExample(item.organisationId, item.id, updates),
+  }[itemType];
+  const saveItem = (props: string[]) => {
+    const updates: any = {};
+    props.forEach(prop => {
+      updates[prop] = item[prop];
+    });
+    apiSave(updates);
+    showToast(`${props.join(", ")} saved`);
+  };
+
   return (
     <div className="d-flex flex-column gap-2"><ListGroup flush className="mb-3">
       {infoItems.map((info, idx) => (
@@ -67,9 +84,9 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, showToast }) => {
         </ListGroupItem>
       ))}
     </ListGroup>
-    {item.description || item.notes && <div>
+    {showEditorForNotes && <PropInput type="textarea" item={item} prop="notes" onChange={(e) => saveItem(["notes"])} />}
+    {item.description && <div>
       {item.description && <p>{item.description}</p>}
-      {item.notes && <p>{item.notes}</p>}
     </div>}
     </div>
   );
@@ -84,9 +101,11 @@ interface PageProps {
   itemType?: string; // Type of item, e.g. "Example"
   onDelete?: () => void | Promise<void>; // Optional delete handler
   children: React.ReactNode;
+  /** TODO name editing support here instead of NameAndDeleteHeader?? */
+  showEditorFor?: string[]; // Optional list of properties to show editor for
 }
 
-const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, children }) => {
+const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, children, showEditorFor }) => {
   const { showToast } = useToast();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -122,6 +141,11 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, on
 
   const showDeleteButton = itemType === 'Example' && onDelete;
 
+  // TODO
+  // if (showEditorFor && "name" in showEditorFor) {
+  //   header = <NameAndDeleteHeader label={itemType} item={item} handleNameChange={() => {}} handleDelete={onDelete} />
+  // }
+
   return (
     <Container className="page">
       <Row>
@@ -140,7 +164,7 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, on
               </Button>
             )}
           </div>
-          {item && <ItemInfo item={item} showToast={showToast} />}
+          {item && <ItemInfo item={item} itemType={itemType} showToast={showToast} showEditorFor={showEditorFor} />}
         </Col>
       </Row>
       {children}

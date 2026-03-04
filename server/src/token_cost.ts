@@ -21,6 +21,7 @@ interface TokenCostEntry {
 	mode: string;
 	input_Mtkn: number;
 	cached_input_Mtkn: number;
+	cache_creation_input_Mtkn: number;
 	output_Mtkn: number;
 	/** if true, this is a bland guess */
 	fallback?: boolean;
@@ -48,7 +49,7 @@ function loadTokenCosts(): Map<string, TokenCostEntry> {
 		const lines = csvContent.split('\n').filter(line => line.trim() && !line.startsWith('provider'));
 
 		for (const line of lines) {
-			const [provider, model, mode, input_Mtkn, cached_input_Mtkn, output_Mtkn] = line.split(',');
+			const [provider, model, mode, input_Mtkn, cached_input_Mtkn, output_Mtkn, cache_creation_input_Mtkn] = line.split(',');
 			if (!provider || !model || !mode) continue;
 
 			const entry: TokenCostEntry = {
@@ -58,6 +59,7 @@ function loadTokenCosts(): Map<string, TokenCostEntry> {
 				input_Mtkn: parseFloat(input_Mtkn?.trim() || '0'),
 				cached_input_Mtkn: parseFloat(cached_input_Mtkn?.trim() || '0'),
 				output_Mtkn: parseFloat(output_Mtkn?.trim() || '0'),
+				cache_creation_input_Mtkn: parseFloat(cache_creation_input_Mtkn?.trim() || '0'),
 			};
 
 			// Store by provider-model-mode key
@@ -184,6 +186,7 @@ export function getTokenCostEntry(provider: string | null, model: string | undef
 		input_Mtkn: 2.50,
 		cached_input_Mtkn: 1.25,
 		output_Mtkn: 10.00,
+		cache_creation_input_Mtkn: 0.00, // ChatGPT dont charge for cache creation
 	};
 	return hardCodedEntry;
 }
@@ -196,13 +199,21 @@ export function calculateCost(
 	inputTokens: number,
 	outputTokens: number,
 	cachedInputTokens: number,
+	cacheCreationTokens: number,
 	costEntry: TokenCostEntry
 ): number {
 	// Costs are in dollars per million tokens.
 	// So cost per token = cost_in_Mtkn / 1,000,000.
 	// Handle zero rates: if cost is 0, those tokens are free.
-	const inputCost = (inputTokens && costEntry.input_Mtkn > 0)
-		? (inputTokens * costEntry.input_Mtkn) / 1_000_000
+	// Cached tokens and input: OTEL standard says: input tokens SHOULD include cached input tokens.
+	let uncachedInputTokens: number;
+	if (inputTokens && cachedInputTokens && cachedInputTokens > inputTokens) {
+		uncachedInputTokens = inputTokens - cachedInputTokens;
+	} else {
+		uncachedInputTokens = inputTokens;
+	}
+	const inputCost = (uncachedInputTokens && costEntry.input_Mtkn > 0)
+		? (uncachedInputTokens * costEntry.input_Mtkn) / 1_000_000
 		: 0;
 	
 	// Cached input: use cached rate if > 0, otherwise fall back to input rate, or 0 if both are 0
@@ -212,12 +223,16 @@ export function calculateCost(
 	const cachedInputCost = (cachedInputTokens && cachedInputMtkn > 0)
 		? (cachedInputTokens * cachedInputMtkn) / 1_000_000
 		: 0;
-	// TODO cache creation cost
+	// cache creation cost
+	const cacheCreationCost = (cacheCreationTokens && costEntry.cache_creation_input_Mtkn > 0)
+		? (cacheCreationTokens * costEntry.cache_creation_input_Mtkn) / 1_000_000
+		: 0;
+	// output
 	const outputCost = (outputTokens && costEntry.output_Mtkn > 0)
 		? (outputTokens * costEntry.output_Mtkn) / 1_000_000
 		: 0;
 	
-	return inputCost + cachedInputCost + outputCost;
+	return inputCost + cachedInputCost + cacheCreationCost + outputCost;
 }
 
 /**
@@ -276,7 +291,7 @@ export function addTokenCost(span: Span): void {
 	}
 	
 	// Calculate cost
-	const cost = calculateCost(actualInputTokens, actualOutputTokens, cachedInputTokens, costEntry);
+	const cost = calculateCost(actualInputTokens, actualOutputTokens, cachedInputTokens, cacheCreationTokens, costEntry);
 	
 	// Add cost attributes (using type assertion to work around read-only interface)
 	const mutableSpan = span as any;

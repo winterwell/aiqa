@@ -1,6 +1,7 @@
 import Experiment from "./common/types/Experiment.js";
 import Span from "./common/types/Span.js";
 import { getTraceId } from "./common/types/Span.js";
+import Example from "./common/types/Example.js";
 
 export const API_BASE_URL = import.meta.env.VITE_AIQA_SERVER_URL || 'http://localhost:4318';
 
@@ -361,11 +362,7 @@ export async function getExample(organisationId: string, exampleId: string) {
 	return fetchWithAuth(`/example/${encodeURIComponent(exampleId)}?${params.toString()}`);
 }
 
-export async function updateExample(organisationId: string, exampleId: string, updates: Partial<{
-	tags?: string[];
-	metrics?: any[];
-	input?: any;
-}>) {
+export async function updateExample(organisationId: string, exampleId: string, updates: Partial<Example>) {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);
 	return fetchWithAuth(`/example/${encodeURIComponent(exampleId)}?${params.toString()}`, {
