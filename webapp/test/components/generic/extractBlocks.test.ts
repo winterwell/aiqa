@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractBlocks, extractBlockJson } from './extractBlocks';
+import { extractBlocks, extractBlockJson } from '../../../src/components/generic/extractBlocks';
 
 describe('extractBlocks', () => {
 	it('returns single text block for plain text', () => {
