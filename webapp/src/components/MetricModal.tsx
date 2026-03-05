@@ -7,6 +7,7 @@ import {useRerender} from 'rerenderer';
 import { getDefaultLLMPrompt } from '../common/llmPromptTemplate';
 import { listModels } from '../api';
 import Model from '../common/types/Model';
+import Example from '../common/types/Example';
 
 interface MetricModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface MetricModalProps {
   initialMetric?: Partial<Metric>;
   isEditing: boolean;
   organisationId?: string;
+  example?: Example;
 }
 
 const MetricModal: React.FC<MetricModalProps> = ({
@@ -24,6 +26,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
   initialMetric,
   isEditing,
   organisationId,
+  example,
 }) => {
   const [metric, setMetric] = useState<Partial<Metric>>(initialMetric || {});
   const {rerender} = useRerender();
@@ -86,6 +89,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               type="text"
               placeholder="e.g., Latency"
               onChange={rerender}
+              readOnly={!!example}
             />
             <PropInput 
               item={metric} 
@@ -93,6 +97,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               type="text" 
               placeholder="e.g., latency (this can be short and human-readable)" 
               onChange={rerender} 
+              readOnly={!!example}
             />
           </FormGroup>
           <FormGroup>
@@ -104,10 +109,34 @@ const MetricModal: React.FC<MetricModalProps> = ({
               type="select"
               options={['javascript', 'llm', 'number']}
               onChange={handleTypeChange}
+              readOnly={!!example}
+            />
+          </FormGroup>
+          <FormGroup>
+            <PropInput
+              label="Specific (the criteria are set per-example)"
+              item={metric}
+              prop="specific"
+              type="checkbox"
+              onChange={rerender}
+              readOnly={!!example}
             />
           </FormGroup>
           {metric.type === 'llm' && (
             <>
+              {(!metric.specific || example) && <FormGroup>
+                <PropInput
+                  label="Prompt Criteria"
+                  required
+                  item={metric}
+                  prop="promptCriteria"
+                  type="textarea"
+                  rows={12}
+                  placeholder="Enter the prompt for LLM evaluation"
+                  onChange={rerender}
+                />
+              </FormGroup>}
+              {metric.specific && !example && <p>The criteria should be set per-example.</p>}
               <FormGroup>
                 <Label>
                   Model {metric.parameters?.model && <span>*</span>}
@@ -129,19 +158,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
                   )}
                 </Input>
               </FormGroup>
-              <FormGroup>
-                <PropInput
-                  label="Prompt Criteria"
-                  required
-                  item={metric}
-                  prop="promptCriteria"
-                  type="textarea"
-                  rows={12}
-                  placeholder="Enter the prompt for LLM evaluation"
-                  onChange={rerender}
-                />
-              </FormGroup>
-            </>
+              </>/* end: if llm */
           )}
           {metric.type === 'javascript' && (
             <FormGroup>
@@ -165,6 +182,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               type="text"
               placeholder="e.g., ms, USD, tokens, fraction"
               onChange={rerender}
+              readOnly={!!example}
             />
           </FormGroup>
           <FormGroup>
@@ -175,6 +193,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
               type="text"
               placeholder="Optional description"
               onChange={rerender}
+              readOnly={!!example}
             />
           </FormGroup>
         </ModalBody>

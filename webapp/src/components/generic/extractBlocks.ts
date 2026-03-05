@@ -193,6 +193,7 @@ export function extractBlockJson(text: string, startPos: number): JsonExtraction
 /**
  * Extract blocks from text that may contain XML tags or JSON objects/arrays.
  * Blocks must start on a new line.
+ * If text is "json" or "xml", then strip the wrapping quotes.
  * 
  * @param text - The text to parse
  * @returns Array of blocks with type 'text', 'xml', or 'json'
@@ -204,8 +205,10 @@ export function extractBlocks(text: string): Block[] {
 	if (text == null) {
 		return [{type: 'text', text: '', id: 0}];
 	}
-	const textStr = String(text);
-	
+	let textStr = String(text);
+	if (textStr.startsWith('"') && textStr.endsWith('"')) {
+		textStr = textStr.slice(1, -1);
+	}
 	// Blocks MUST start on a new line. This is a deliberate design limitation to avoid false-positive detection of blocks in the middle of text.
 	// Look for xml blocks which start a line with <tag and end with </tag> 
 	// or json blocks	

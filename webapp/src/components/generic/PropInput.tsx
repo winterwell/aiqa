@@ -113,17 +113,30 @@ export default function PropInput({ label, item, prop, type, help, className, on
 	const isH1TextInput = (type === undefined || type === "text") && !!className?.split(/\s+/).includes("h1");
 	const containerStyle = inline ? { display: 'flex', alignItems: 'center', gap: '0.5rem' } : undefined;
 	const labelStyle = inline ? { marginBottom: 0, marginRight: '0.5rem' } : undefined;
+	const $label = <Label style={labelStyle}>{label} {required && <span>*</span>} {help && <HelpText label={prop}>{help}</HelpText>}</Label>;
+	if (type === "checkbox") {
+		return (<div className={className} style={containerStyle}>
+			<_Input value={displayValue} 
+			className="me-1"
+			onChange={_onChange} 
+			type={type} {...rest} 
+			placeholder={placeholder} 
+				multiple={multiple} list={list} 
+				checked={localValue}
+				readOnly={readOnly}
+				style={isH1TextInput ? { fontSize: '2rem', fontWeight: 500, lineHeight: 1.2, height: 'auto' } : undefined} />
+			{$label}
+			</div>);
+	} // end: if checkbox
 	return (<div className={className} style={containerStyle}>
-		<Label style={labelStyle}>{label} {required && <span>*</span>} {help && <HelpText label={prop}>{help}</HelpText>}</Label>		
+		{$label}		
 		<_Input value={displayValue} onChange={_onChange} type={type} {...rest} placeholder={placeholder} 
 			multiple={multiple} list={list} 
-			checked={type==="checkbox" ? localValue : undefined}
 			readOnly={readOnly}
 			style={isH1TextInput ? { fontSize: '2rem', fontWeight: 500, lineHeight: 1.2, height: 'auto' } : undefined}
 		/>
-		{/* <code>value: {JSON.stringify(value)}</code> */}
 	</div>);
-}
+} // end: PropInput
 
 // multiple isn't great - oh well
 function InputSelect({ value, onChange, options, multiple, list, readOnly, ...rest }: {

@@ -6,7 +6,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { getDataset, listExperiments, searchExamples, updateDataset, createExampleFromInput, updateExample, deleteExample } from '../api';
 import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
-import Metric from '../common/types/Metric';
+import Metric, { isExampleSpecificMetric } from '../common/types/Metric';
 import { getSpanId } from '../common/types';
 import { getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
@@ -20,10 +20,10 @@ import NameAndDeleteHeader from '../components/generic/NameAndDeleteHeader';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import MetricCard from '../components/dashboard/MetricCard';
-import { DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
 import { asArray, truncate, asDate } from '../common/utils/miscutils';
 import { Trash } from '@phosphor-icons/react';
-import { getExampleInputString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
+import { getTruncatedDisplayString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
 import DatasetDetailsDashboard from '../components/DatasetDetailsDashboard';
 
 /**
@@ -94,145 +94,137 @@ const DatasetDetailsPage: React.FC = () => {
       total: result.total,
     };
   };
+  const exampleSpecificMetrics = useMemo(() => {
+    const esms = dataset?.metrics?.filter(isExampleSpecificMetric) || [];
+    if ( !esms.find(m => m.id === SPECIFIC_METRIC.id)) {
+      esms.push(SPECIFIC_METRIC);
+    }
+    return esms.sort((a, b) => a.name?.localeCompare(b.name || '') || 0);
+  }, [dataset?.metrics]);
+
   const columns = useMemo<ColumnDef<Example>[]>(
     () => {
-      const specificMetric = dataset?.metrics?.find((metric: Metric) => metric.id === 'specific');
       let _columns = [
-      {
-        id: 'index',
-        header: '#',
-        accessorFn: (row, index) => index + 1,
-        enableColumnFilter: false,
-        enableSorting: false, /* just reload the page / clear other filters */
-      },
-      {
-        accessorKey: 'id',
-        header: 'ID',
-        cell: ({ row }) => (
-          <code className="small">{row.original.id?.substring(0, 16)}...</code>
-        ),
-      },
-      {
-        id: 'name',
-        header: 'Name',
-        accessorFn: (example: Example) => {
-          if (example.name) return example.name;
-          if (example.input) return truncate(example.input, 100);
-          const span = getFirstSpan(example);
-          if (span?.name) return truncate(span.name, 100);
-          return;
-         },
-      },
-      // // One column per dataset metric
-      // // Note: specific is handled as an always-there special column below
-      // ...(dataset?.metrics ? asArray(dataset.metrics).filter((metric: Metric) => metric.id !== 'specific').map((metric: Metric) => ({
-      //   id: `metric-${metric.id}`,
-      //   header: metric.name || metric.id,
-      //   csvValue: (item: Example) => getExampleMetricDisplayText(item, metric.id || metric.name || ''),
-      //   cell: ({ row }: { row: { original: Example } }) => {
-      //     const text = getExampleMetricDisplayText(row.original, metric.id || metric.name || '');
-      //     if (!text) return <span className="text-muted">—</span>;
-      //     const truncated = getExampleInputString(text, 80);
-      //     return (
-      //       <span className="small" title={text}>
-      //         {truncated}
-      //       </span>
-      //     );
-      //   },
-      // })) : []),
-      {
-        id: 'specific',
-        header: specificMetric?.name || 'Specific',
-        csvValue: (item) => getExampleSpecificMetricText(item),
-        cell: ({ row }) => {
-          const specificText = getExampleSpecificMetricText(row.original);
-          if (!specificText) {
-            return <span className="text-muted">—</span>;
-          }
-          const truncated = getExampleInputString(specificText, 100);
-          return (
-            <span className="small" title={specificText}>
-              {truncated}
-            </span>
-          );
+        {
+          id: 'index',
+          header: '#',
+          accessorFn: (row, index) => index + 1,
+          enableColumnFilter: false,
+          enableSorting: false, /* just reload the page / clear other filters */
         },
-      },
-      {
-        id: 'created',
-        header: 'Created',
-        accessorFn: (row) => (row.created ? new Date(row.created).getTime() : 0),
-        cell: ({ row }) => row.original.created
-          ? new Date(row.original.created).toLocaleString()
-          : <span className="text-muted">—</span>,
-        enableSorting: true,
-        type: 'date',
-      },
-      {
-        id: 'tags',
-        header: 'Tags',
-        accessorFn: (row) => {
-          // Sort by first tag alphabetically, or empty string if no tags
-          if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
-            return '';
-          }
-          return row.tags[0] || '';
+        {
+          accessorKey: 'id',
+          header: 'ID',
+          cell: ({ row }) => (
+            <code className="small">{row.original.id?.substring(0, 16)}...</code>
+          ),
         },
-        csvValue: (row) => row.tags?.join(' + ') || '',
-        cell: ({ row }) => {
-          const example = row.original;
-          return (
-            <Tags
-              compact={true}
-              tags={example.tags}
-              setTags={async (newTags) => {
-                try {
-                  if (example.id && organisationId) {
-                    await updateExample(organisationId, example.id, {
-                      tags: newTags,
-                    });
-                    queryClient.invalidateQueries({ queryKey: ['table-data'] });
+        {
+          id: 'name',
+          header: 'Name',
+          accessorFn: (example: Example) => {
+            if (example.name) return example.name;
+            if (example.input) return truncate(example.input, 100);
+            const span = getFirstSpan(example);
+            if (span?.name) return truncate(span.name, 100);
+            return;
+          },
+        },
+        // example specific metrics
+        ...exampleSpecificMetrics.map((specificMetric) => ({
+          id: specificMetric.id,
+          header: specificMetric.name || specificMetric.id,
+          csvValue: (item) => getExampleSpecificMetricText(item, specificMetric.id),
+          cell: ({ row }) => {
+            const specificText = getExampleSpecificMetricText(row.original, specificMetric.id);
+            if (!specificText) {
+              return <span className="text-muted">—</span>;
+            }
+            const truncated = getTruncatedDisplayString(specificText, 100);
+            return (
+              <span className="small" title={specificText}>
+                {truncated}
+              </span>
+            );
+          },
+          minWidth: 150,
+        })), // end example specific metrics
+        {
+          id: 'created',
+          header: 'Created',
+          accessorFn: (row) => (row.created ? new Date(row.created).getTime() : 0),
+          cell: ({ row }) => row.original.created
+            ? new Date(row.original.created).toLocaleString()
+            : <span className="text-muted">—</span>,
+          enableSorting: true,
+          type: 'date',
+        },
+        {
+          id: 'tags',
+          header: 'Tags',
+          accessorFn: (row) => {
+            // Sort by first tag alphabetically, or empty string if no tags
+            if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
+              return '';
+            }
+            return row.tags[0] || '';
+          },
+          csvValue: (row) => row.tags?.join(' + ') || '',
+          cell: ({ row }) => {
+            const example = row.original;
+            return (
+              <Tags
+                compact={true}
+                tags={example.tags}
+                setTags={async (newTags) => {
+                  try {
+                    if (example.id && organisationId) {
+                      await updateExample(organisationId, example.id, {
+                        tags: newTags,
+                      });
+                      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+                    }
+                  } catch (error) {
+                    console.error('Failed to update example tags:', error);
+                    showToast(`Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
                   }
-                } catch (error) {
-                  console.error('Failed to update example tags:', error);
-                  showToast(`Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-                }
-              }}
-            />
-          );
+                }}
+              />
+            );
+          },
+          enableSorting: true,
         },
-        enableSorting: true,
-      },
-      {
-        id: 'notes',
-        header: 'Notes',
-        accessorKey: 'notes',
-      },
-      {
-        id: 'delete',
-        header: 'Delete',
-        cell: ({ row }) => {
-          const example = row.original;
-          return (
-            <Button
-              color="danger"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent row click navigation
-                setExampleToDelete(example);
-                setDeleteModalOpen(true);
-              }}
-              disabled={deleteExampleMutation.isPending}
-            >
-              <Trash size={16} />
-            </Button>
-          );
+        {
+          id: 'notes',
+          header: 'Notes',
+          accessorKey: 'notes',
         },
-        enableSorting: false,
-        includeInCSV: false
-      },
-    ]; // end _columns
-    return _columns;
-  },
+        {
+          id: 'delete',
+          header: 'Delete',
+          cell: ({ row }) => {
+            const example = row.original;
+            return (
+              <Button
+                color="danger"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation(); // Prevent row click navigation
+                  setExampleToDelete(example);
+                  setDeleteModalOpen(true);
+                }}
+                disabled={deleteExampleMutation.isPending}
+              >
+                <Trash size={16} />
+              </Button>
+            );
+          },
+          enableSorting: false,
+          includeInCSV: false
+        },
+      ]; // end _columns
+      return _columns;
+    },
     [organisationId, queryClient, showToast, deleteExampleMutation.isPending, dataset]
   ); // end columns
 
@@ -267,6 +259,7 @@ const DatasetDetailsPage: React.FC = () => {
   }
 
   const datasetExperiments = experiments || [];
+  const userMetrics = asArray(dataset.metrics) as Metric[];
 
   return (
     <Page
@@ -281,28 +274,6 @@ const DatasetDetailsPage: React.FC = () => {
       backLabel="Datasets"
       item={dataset}
     >
-      {/* TODO but not yet <Row className="">
-        <Col>
-          <ListGroup flush>
-            <ListGroupItem>
-              <PropInput 
-                item={dataset} 
-                prop="description" 
-                type="text"
-                onChange={() => {
-                  updateDatasetMutation.mutate({ description: dataset.description });
-                }}
-              />
-            </ListGroupItem>
-            <ListGroupItem>
-              <Tags
-                tags={dataset.tags || []}
-                setTags={(tags) => updateDatasetMutation.mutate({ tags })}
-              />
-            </ListGroupItem>
-          </ListGroup>
-        </Col>
-      </Row> */}
 
       <DatasetDetailsDashboard dataset={dataset} examples={examplesData} />
 
@@ -324,78 +295,24 @@ const DatasetDetailsPage: React.FC = () => {
                 {/* Default system metrics - always shown, no edit buttons */}
                 {DEFAULT_SYSTEM_METRICS.map((metric, index) => (
                   <Col md={6} lg={4} key={`system-${index}`} className="mb-3">
-                    <Card>
-                      <CardBody>
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <h6 className="mb-0">{metric.name}</h6>
-                        </div>
-                        {metric.description && (
-                          <p className="text-muted small mb-1">{metric.description}</p>
-                        )}
-                        <div className="d-flex gap-2 flex-wrap">
-                          <Badge color="info">{metric.type}</Badge>
-                          {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
-                        </div>
-                      </CardBody>
-                    </Card>
+                    <DatasetMetricCard metric={metric} />
                   </Col>
                 ))}
                 {/* User-defined metrics - with edit buttons */}
-                {(() => {
-                  const userMetrics = asArray(dataset.metrics) as Metric[];
-                  return userMetrics.length > 0 && userMetrics.map((metric, index) => (
+                {userMetrics.map((metric, index) =>
                   <Col md={6} lg={4} key={`user-${index}`} className="mb-3">
-                    <Card>
-                      <CardBody>
-                        <div className="d-flex justify-content-between align-items-start mb-2">
-                          <h6 className="mb-0">{metric.name}</h6>
-                          <div className="d-flex gap-1">
-                            <Button
-                              color="primary"
-                              size="sm"
-                              onClick={() => {
-                                setEditingMetricIndex(index);
-                                setEditingMetric(metric);
-                                setIsMetricModalOpen(true);
-                              }}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              color="danger"
-                              size="sm"
-                              onClick={() => {
-                                const currentMetrics = asArray(dataset.metrics) as Metric[];
-                                const updatedMetrics = currentMetrics.filter((_, i) => i !== index);
-                                updateDatasetMutation.mutate({ metrics: updatedMetrics });
-                              }}
-                            >
-                              ×
-                            </Button>
-                          </div>
-                        </div>
-                        {metric.description && (
-                          <p className="text-muted small mb-1">{metric.description}</p>
-                        )}
-                        <div className="d-flex gap-2 flex-wrap">
-                          <Badge color="info">{metric.type}</Badge>
-                          {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
-                        </div>
-                        {metric.parameters && Object.keys(metric.parameters).length > 0 && (
-                          <details className="mt-2">
-                            <summary className="small text-muted" style={{ cursor: 'pointer' }}>
-                              Parameters
-                            </summary>
-                            <pre className="small bg-light p-2 mt-1 mb-0">
-                              {JSON.stringify(metric.parameters, null, 2)}
-                            </pre>
-                          </details>
-                        )}
-                      </CardBody>
-                    </Card>
+                    <DatasetMetricCard metric={metric} onEdit={() => {
+                      setEditingMetricIndex(index);
+                      setEditingMetric(metric);
+                      setIsMetricModalOpen(true);
+                    }}
+                      onDelete={() => {
+                        const currentMetrics = asArray(dataset.metrics) as Metric[];
+                        const updatedMetrics = currentMetrics.filter((_, i) => i !== index);
+                        updateDatasetMutation.mutate({ metrics: updatedMetrics });
+                      }} />
                   </Col>
-                  ));
-                })()}
+                )}
               </Row>
               {(() => {
                 const userMetrics = asArray(dataset.metrics) as Metric[];
@@ -425,9 +342,9 @@ const DatasetDetailsPage: React.FC = () => {
         <Col>
           <div className="d-flex justify-content-between align-items-center mb-3">
             <h5>Examples</h5>
-            <Button 
-              color="primary" 
-              size="sm" 
+            <Button
+              color="primary"
+              size="sm"
               onClick={() => setIsAddExampleModalOpen(true)}
             >
               + Add Simple Example
@@ -484,8 +401,8 @@ const DatasetDetailsPage: React.FC = () => {
           <p className="text-danger">This action cannot be undone.</p>
         </ModalBody>
         <ModalFooter>
-          <Button 
-            color="danger" 
+          <Button
+            color="danger"
             onClick={() => {
               if (exampleToDelete?.id) {
                 deleteExampleMutation.mutate(exampleToDelete.id);
@@ -503,6 +420,52 @@ const DatasetDetailsPage: React.FC = () => {
     </Page>
   );
 };
+
+
+function DatasetMetricCard({ metric, onEdit, onDelete }: { metric: Metric, onEdit?: () => void, onDelete?: () => void }) {
+  return (<Card>
+    <CardBody>
+      <div className="d-flex justify-content-between align-items-start mb-2">
+        <h6 className="mb-0">{metric.name}</h6>
+        {(onEdit || onDelete) && <div className="d-flex gap-1">
+          {onEdit && <Button
+            color="primary"
+            size="sm"
+            onClick={onEdit}
+
+          >
+            Edit
+          </Button>}
+          {onDelete && <Button
+            color="danger"
+            size="sm"
+            onClick={onDelete}
+          >
+            ×
+          </Button>}
+        </div>}
+      </div>
+      {metric.description && (
+        <p className="text-muted small mb-1">{metric.description}</p>
+      )}
+      <div className="d-flex gap-2 flex-wrap">
+        <Badge color="info">{metric.type}</Badge>
+        {metric.unit && <Badge color="secondary">{metric.unit}</Badge>}
+        {metric.specific && <Badge color="info">Specific</Badge>}
+      </div>
+      {metric.parameters && Object.keys(metric.parameters).length > 0 && (
+        <details className="mt-2">
+          <summary className="small text-muted" style={{ cursor: 'pointer' }}>
+            Parameters
+          </summary>
+          <pre className="small bg-light p-2 mt-1 mb-0">
+            {JSON.stringify(metric.parameters, null, 2)}
+          </pre>
+        </details>
+      )}
+    </CardBody>
+  </Card>)
+} // end: DatasetMetricCard
 
 export default DatasetDetailsPage;
 

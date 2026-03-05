@@ -41,8 +41,9 @@ export function getExampleInput(example: Example): any {
  * Get a string representation of the input, truncated to maxLength characters.
  * If input is a string, truncate it directly.
  * If input is an object, stringify it first, then truncate.
+ * TODO DRY - we must have another util for to-string and one for truncation
  */
-export function getExampleInputString(input: any, maxLength: number = 100): string {
+export function getTruncatedDisplayString(input: any, maxLength: number = 100): string {
   if (input === undefined || input === null) {
     return '';
   }
@@ -69,8 +70,8 @@ export function getExampleInputString(input: any, maxLength: number = 100): stri
  * Get the text content from the "specific" metric in Example.metrics.
  * Returns the prompt (for LLM type) or code (for javascript type), or empty string if not found.
  */
-export function getExampleSpecificMetricText(example: Example): string {
-  return getExampleMetricDisplayText(example, SPECIFIC_METRIC.id);
+export function getExampleSpecificMetricText(example: Example, metricId: string = SPECIFIC_METRIC.id): string {
+  return getExampleMetricDisplayText(example, metricId);
 }
 
 /**

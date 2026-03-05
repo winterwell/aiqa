@@ -60,5 +60,6 @@ export const SPECIFIC_METRIC: Metric = {
   description: 'Output rules for this example',
   unit: 'string',
   type: 'llm',
+  specific: true,
 };
 

@@ -9,10 +9,12 @@ export default interface Metric {
   unit?: string;
   /**how is this metric calculated?
    * number: a number the user should calculate themselves
-   * llm: LLM as judge, e.g. "this answer should be a joke about cats"
+   * llm: LLM as judge, e.g. "this answer should be a joke about cats" or "this answer should be helpful"
    * system: a built in metric AIQA handles eg token count, duration, etc
   */
   type: 'javascript' | 'llm' | 'number' | 'contains' | 'equals' | 'not_contains' | 'not_equals' | 'similar' | 'system';
+  /** true if the criteria are set per-example */
+  specific?: boolean;
   provider?: 'openai' | 'anthropic' | 'google' | 'azure' | 'bedrock' | 'other';
   model?: string;
   /** for LLM-as-judge */
@@ -23,4 +25,8 @@ export default interface Metric {
   /** for type:contains|equals|not_contains|not_equals */
   value?: string
   parameters?: Record<string, any>;
+}
+
+export function isExampleSpecificMetric(metric: Metric): boolean {
+  return metric && (metric.id === 'specific' || metric.specific);
 }

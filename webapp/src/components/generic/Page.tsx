@@ -4,7 +4,6 @@ import { Container, Row, Col, ListGroup, ListGroupItem, Button, Modal, ModalHead
 import CopyButton from './CopyButton';
 import { useToast } from '../../utils/toast';
 import NameAndDeleteHeader from './NameAndDeleteHeader';
-import { updateExample } from '../../api';
 import PropInput from './PropInput';
 
 interface PageItem {
@@ -19,6 +18,7 @@ interface ItemInfoProps {
   itemType: string;
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   showEditorFor?: string[]; // Optional list of properties to show editor for
+  onUpdate?: (updates: Partial<PageItem>) => void | Promise<void>; // Optional update handler
 }
 
 const formatDate = (date: string | Date | undefined): string | null => {
@@ -26,9 +26,9 @@ const formatDate = (date: string | Date | undefined): string | null => {
   return new Date(date).toLocaleString();
 };
 
-const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEditorFor }) => {
+const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEditorFor, onUpdate }) => {
   const infoItems: Array<{ label: string; value: React.ReactNode }> = [];
-  const showEditorForNotes = showEditorFor && "notes" in showEditorFor;
+  const showEditorForNotes = showEditorFor?.includes("notes");
   if (item.id) {
     infoItems.push({
       label: 'ID',
@@ -62,35 +62,24 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEdit
 
   if (infoItems.length === 0) return null;
 
-  const apiSave = itemType && {
-    Example: (updates: any) => updateExample(item.organisationId, item.id, updates),
-  }[itemType];
-  const saveItem = (props: string[]) => {
-    const updates: any = {};
-    props.forEach(prop => {
-      updates[prop] = item[prop];
-    });
-    apiSave(updates);
-    showToast(`${props.join(", ")} saved`);
-  };
-
   return (
-    <div className="d-flex flex-column gap-2"><ListGroup flush className="mb-3">
-      {infoItems.map((info, idx) => (
-        <ListGroupItem key={idx}>
-          <div className="d-flex align-items-center gap-2">
-            <strong>{info.label}:</strong> {info.value}
-          </div>
-        </ListGroupItem>
-      ))}
-    </ListGroup>
-    {showEditorForNotes && <PropInput type="textarea" item={item} prop="notes" onChange={(e) => saveItem(["notes"])} />}
-    {item.description && <div>
-      {item.description && <p>{item.description}</p>}
-    </div>}
+    <div className="d-flex flex-row gap-4 w-100">
+      <ListGroup flush className="mb-3 flex-grow-1">
+        {infoItems.map((info, idx) => (
+          <ListGroupItem key={idx}>
+            <div className="d-flex align-items-center gap-2">
+              <strong>{info.label}:</strong> {info.value}
+            </div>
+          </ListGroupItem>
+        ))}
+      </ListGroup>
+      {showEditorForNotes && <PropInput readOnly={!onUpdate} className="flex-grow-1" type="textarea" item={item} prop="notes" onChange={e => onUpdate({ notes: e.target.value })} />}
+      {item.description && <div>
+        {item.description && <p>{item.description}</p>}
+      </div>}
     </div>
   );
-};
+}; // end: ItemInfo
 
 interface PageProps {
   /** This is placed within an h1 tag */
@@ -100,19 +89,20 @@ interface PageProps {
   item?: PageItem;
   itemType?: string; // Type of item, e.g. "Example"
   onDelete?: () => void | Promise<void>; // Optional delete handler
+  onUpdate?: (updates: Partial<PageItem>) => void | Promise<void>; // Optional update handler
   children: React.ReactNode;
   /** TODO name editing support here instead of NameAndDeleteHeader?? */
   showEditorFor?: string[]; // Optional list of properties to show editor for
 }
 
-const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, children, showEditorFor }) => {
+const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, onUpdate, children, showEditorFor }) => {
   const { showToast } = useToast();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const renderBackLink = () => {
     if (!back) return null;
-    
+
     if (typeof back === 'string') {
       const backText = backLabel ? `← Back to ${backLabel}` : '← Back';
       return (
@@ -121,13 +111,13 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, on
         </Link>
       );
     }
-    
+
     return <div className="mb-3">{back}</div>;
   };
 
   const handleDelete = async () => {
     if (!onDelete) return;
-    
+
     setIsDeleting(true);
     try {
       await onDelete();
@@ -164,7 +154,7 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, on
               </Button>
             )}
           </div>
-          {item && <ItemInfo item={item} itemType={itemType} showToast={showToast} showEditorFor={showEditorFor} />}
+          {item && <ItemInfo item={item} itemType={itemType} showToast={showToast} showEditorFor={showEditorFor} onUpdate={onUpdate} />}
         </Col>
       </Row>
       {children}

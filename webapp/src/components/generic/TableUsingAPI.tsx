@@ -12,6 +12,7 @@ import {
   HeaderGroup,
   Row,
   RowSelectionState,
+  Cell,
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -607,24 +608,29 @@ function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClic
 					onClick={() => onRowClick?.(row.original)}
 					style={onRowClick ? { cursor: 'pointer' } : undefined}
 				  >
-					{cells.map((cell) => {
-					  const isSelectColumn = cell.column.id === 'select';
-					  const rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
-					  return (
-						<td 
-						  key={cell.id}
-						  onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
-						>
-						  {rendered}
-						</td>
-					  );
-					})}
+					{cells.map((cell) => <TableCell key={cell.id} cell={cell} />)}
 				  </tr>
 				);
 			})}
 		</tbody>
 	);
 }
+
+function TableCell<T>({ cell }: { cell: Cell<T, any> }) {
+    const isSelectColumn = cell.column.id === 'select';
+    const rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
+    const columnDef = cell.column.columnDef as any;
+    const style = columnDef.minWidth ? { minWidth: columnDef.minWidth } : undefined;
+    return (
+    <td 
+      key={cell.id}
+      onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
+      style={style}
+    >
+      {rendered}
+    </td>
+    );
+  }
 
 function TablePagination({ totalPages, currentPage, handlePageChange }: { totalPages: number, currentPage: number, handlePageChange: (page: number) => void }) {
 	if (totalPages <= 1) return null;

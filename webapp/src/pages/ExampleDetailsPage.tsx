@@ -113,12 +113,15 @@ function InputCard({
 // MetricCardItem component - reusable card for displaying a single metric
 function MetricCardItem({
   metric,
+  example,
   onEdit,
   onDelete,
 }: {
   metric: Metric;
+  /** If set, this is an example-specific metric on an example */
+  example?: Example;
   onEdit: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <Card className="mb-2">
@@ -129,9 +132,9 @@ function MetricCardItem({
             <Button color="primary" size="sm" onClick={onEdit}>
               Edit
             </Button>
-            <Button color="danger" size="sm" onClick={onDelete}>
+            {onDelete && <Button color="danger" size="sm" onClick={onDelete}>
               ×
-            </Button>
+            </Button>}
           </div>
         </div>
         {metric.description && (
@@ -170,21 +173,21 @@ function MetricCardItem({
       </CardBody>
     </Card>
   );
-}
+} // end: MetricCardItem
 
 // MetricsCard component
 function MetricsCard({
   example,
   datasetMetrics,
-  onAddMetric,
+  // onAddMetric,
   onEditMetric,
-  onDeleteMetric,
+  // onDeleteMetric,
 }: {
   example: Example;
   datasetMetrics: Metric[] | null | undefined;
-  onAddMetric: () => void;
-  onEditMetric: (index: number, metric: Partial<Metric>) => void;
-  onDeleteMetric: (index: number) => void;
+  // onAddMetric: () => void;
+  onEditMetric: (index: number, metric: Partial<Metric>, example?: Example) => void;
+  // onDeleteMetric: (index: number) => void;
 }) {
   // Combine system metrics with dataset metrics
   const allDatasetMetrics = useMemo(() => {
@@ -202,87 +205,50 @@ function MetricsCard({
     return Array.from(metricMap.values());
   }, [datasetMetrics]);
 
-  // Get custom example metrics (not in dataset, and not the "specific" metric which is shown separately)
-  const customExampleMetrics = useMemo(() => {
-    if (!example.metrics) return [];
-    const metricsArray = asArray(example.metrics) as Metric[];
-    if (metricsArray.length === 0) return [];
-    const datasetMetricIds = new Set(allDatasetMetrics.map(m => m.id || m.name || ''));
-    return metricsArray.filter(m => 
-      m.id !== 'specific' && !datasetMetricIds.has(m.id || m.name || '')
-    );
+  // specific metrics - Keep the Example ones, copy in blanks from allDatasetMetrics
+  const specificMetrics = useMemo(() => {
+    const metricsArray = example.metrics ? asArray(example.metrics) as Metric[] : [];
+    // copy in non-duplicate dataset metrics
+    allDatasetMetrics.forEach(metric => {
+      if (metric.id === 'specific' || metric.specific) {
+        if (!metricsArray.find(m => m.id === metric.id)) {
+          metricsArray.push({...metric});
+        }
+      }
+    });
+    return metricsArray.filter(m => m.id === 'specific' || m.specific) || [];
   }, [example.metrics, allDatasetMetrics]);
 
-  // Get the "specific" metric separately
-  const specificMetric = useMemo(() => {
-    if (!example.metrics) return null;
-    const metricsArray = asArray(example.metrics) as Metric[];
-    return metricsArray.find(m => m.id === 'specific') || null;
-  }, [example.metrics]);
-
-  // Get the index of the specific metric in example.metrics
-  const specificMetricIndex = useMemo(() => {
-    if (!example.metrics || !specificMetric) return -1;
-    const metricsArray = asArray(example.metrics) as Metric[];
-    return metricsArray.findIndex(m => m.id === 'specific');
-  }, [example.metrics, specificMetric]);
-
-  const datasetMetricsText = allDatasetMetrics.map(m => m.name || m.id || 'Unknown').join(', ');
+  const datasetMetricsText = allDatasetMetrics.filter(m => !m.specific).map(m => m.name || m.id || 'Unknown').join(', ');
 
   return (
     <Card>
       <CardHeader className="d-flex justify-content-between align-items-center">
         <h5>Metrics</h5>
-        <Button color="primary" size="sm" onClick={onAddMetric}>
+        {/* <Button color="primary" size="sm" onClick={onAddMetric}>
           + Add Metric
-        </Button>
+        </Button> */}
       </CardHeader>
       <CardBody>
         {allDatasetMetrics.length > 0 && (
           <div className="mb-3">
-            <strong>Dataset metrics:</strong> <span className="text-muted">{datasetMetricsText}</span>
+            <strong>General metrics:</strong> <span className="text-muted">{datasetMetricsText}</span>
           </div>
         )}
-        {specificMetric && (
-          <div className="mb-3">
-            <strong className="mb-2 d-block">Example Specific:</strong>
+          <strong className="mb-2 d-block">Example specific criteria:</strong>
+        {specificMetrics.map(specificMetric => (
+          <div className="mb-2">
             <MetricCardItem
               metric={specificMetric}
               onEdit={() => {
-                onEditMetric(specificMetricIndex, {
+                onEditMetric(allDatasetMetrics.findIndex(m => m.id === specificMetric.id), {
                   ...specificMetric,
                   name: specificMetric.name || 'Example Specific',
-                });
+                }, example);
               }}
-              onDelete={() => onDeleteMetric(specificMetricIndex)}
+              // onDelete={() => onDeleteMetric(specificMetricIndex)}
             />
-          </div>
-        )}
-        {customExampleMetrics.length > 0 && (
-          <div>
-            <strong className="mb-2 d-block">Custom metrics on this example:</strong>
-            {customExampleMetrics.map((metric, index) => {
-              // Find the actual index in example.metrics array
-              const actualIndex = example.metrics!.findIndex(m => 
-                (m.id || m.name) === (metric.id || metric.name)
-              );
-              return (
-                <MetricCardItem
-                  key={index}
-                  metric={metric}
-                  onEdit={() => {
-                    onEditMetric(actualIndex, {
-                      ...metric,
-                    });
-                  }}
-                  onDelete={() => onDeleteMetric(actualIndex)}
-                />
-              );
-            })}
-          </div>
-        )}
-        {customExampleMetrics.length === 0 && allDatasetMetrics.length === 0 && !specificMetric && (
-          <p className="text-muted">No metrics defined. Click "Add Metric" to create one.</p>
+          </div>)
         )}
       </CardBody>
     </Card>
@@ -404,7 +370,7 @@ const ExampleDetailsPage: React.FC = () => {
   const [isMetricModalOpen, setIsMetricModalOpen] = useState(false);
   const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
-
+ 
   const { data: example, isLoading, error } = useQuery({
     queryKey: ['example', exampleId],
     queryFn: () => getExample(organisationId!, exampleId!),
@@ -418,7 +384,7 @@ const ExampleDetailsPage: React.FC = () => {
   });
 
   const updateExampleMutation = useMutation({
-    mutationFn: (updates: Partial<{ tags?: string[]; metrics?: Metric[]; input?: any }>) =>
+    mutationFn: (updates: Partial<Example>) =>
       updateExample(organisationId!, exampleId!, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['example', exampleId] });
@@ -505,6 +471,7 @@ const ExampleDetailsPage: React.FC = () => {
       item={example}
       itemType="Example"
       onDelete={() => deleteExampleMutation.mutateAsync()}
+      onUpdate={updates => updateExampleMutation.mutate(updates as Partial<Example>)}
       showEditorFor={['name', 'notes', 'tags']}
     >
       <Row>
@@ -535,23 +502,10 @@ const ExampleDetailsPage: React.FC = () => {
           <MetricsCard
             example={example}
             datasetMetrics={dataset?.metrics || []}
-            onAddMetric={() => {
-              setEditingMetricIndex(null);
-              setEditingMetric(undefined);
-              setIsMetricModalOpen(true);
-            }}
             onEditMetric={(index, metric) => {
               setEditingMetricIndex(index);
               setEditingMetric(metric);
               setIsMetricModalOpen(true);
-            }}
-            onDeleteMetric={(index) => {
-              const metricsArray = asArray(example.metrics) as Metric[];
-              if (index >= 0 && index < metricsArray.length) {
-                const metricToDelete = metricsArray[index];
-                const updatedMetrics = deleteMetric(metricToDelete, metricsArray);
-                updateExampleMutation.mutate({ metrics: updatedMetrics });
-              }
             }}
           />
         </Col>
@@ -562,6 +516,7 @@ const ExampleDetailsPage: React.FC = () => {
 
       <MetricModal
         isOpen={isMetricModalOpen}
+        example={example}
         toggle={() => {
           setIsMetricModalOpen(false);
           setEditingMetricIndex(null);
