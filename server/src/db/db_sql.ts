@@ -198,6 +198,29 @@ export async function createTables(): Promise<void> {
 	`);
 	
 
+	// Archive tables
+	await doQuery(`
+		CREATE TABLE IF NOT EXISTS datasets_archive (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			dataset_id UUID NOT NULL,
+			organisation UUID NOT NULL,
+			data JSONB NOT NULL,
+			archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			UNIQUE(dataset_id, archived_at)
+		)
+	`);
+	await doQuery(`
+		CREATE TABLE IF NOT EXISTS archive_version (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			dataset_id UUID NOT NULL,
+			organisation UUID NOT NULL,
+			archived_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
+	`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_datasets_archive_dataset_id ON datasets_archive(dataset_id, archived_at)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_archive_version_dataset_id ON archive_version(dataset_id, archived_at)`);
+
 	// Create indexes
 		await doQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_organisation ON api_keys(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_organisation_accounts_organisation ON organisation_accounts(organisation)`);
