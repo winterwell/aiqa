@@ -4,6 +4,7 @@
  */
 
 import { getClient, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from './db_es.js';
+import { DATASET_EXAMPLES_ARCHIVE_INDEX } from './db_archive.js';
 import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/utils/schema-loader.js';
 
 /** Most code should use the SPAN_INDEX_ALIAS. Only init code needs the actual index name. */
@@ -222,6 +223,13 @@ export async function createIndices(): Promise<void> {
   const exampleMappings = generateExampleMappings();
   await createIndex(SPAN_INDEX, spanMappings);
   await createIndex(DATASET_EXAMPLES_INDEX, exampleMappings);
+  // Archive index uses the same mappings as the examples index plus archived_at/deleted
+  const archiveMappings = {
+    ...exampleMappings,
+    archived_at: { type: 'date' },
+    deleted: { type: 'boolean' },
+  };
+  await createIndex(DATASET_EXAMPLES_ARCHIVE_INDEX, archiveMappings);
   await ensureAlias(SPAN_INDEX, SPAN_INDEX_ALIAS);
   await ensureAlias(DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS);
   await applyMigrations();
