@@ -16,6 +16,7 @@ type ScatterDataPoint = {
 	y: number;
 	experimentId: string;
 	date: string;
+	experimentName?: string;
 };
 
 type MetricDataResult = {
@@ -93,12 +94,19 @@ function processOneMetricData(metric: Metric, experiments: Experiment[], dataset
 			(typeof metricValue === 'string' && !isNaN(parseFloat(metricValue)) ? parseFloat(metricValue) : null);
 
 		if (numericValue !== null && !isNaN(numericValue) && isFinite(numericValue)) {
-			const date = new Date(exp.created);
+			// Ensure we always have a valid numeric X value for the chart.
+			// Paranoia: If the experiment's created date is missing or invalid, fall back to "now"
+			// so that points are still rendered rather than silently dropped by Recharts.
+			const createdDate = exp.created instanceof Date ? exp.created : new Date(exp.created as any);
+			const timestamp = createdDate.getTime();
+			const safeDate = Number.isFinite(timestamp) ? createdDate : new Date();
+
 			data.push({
-				x: date.getTime(), // Use timestamp for X axis
+				x: safeDate.getTime(), // Use timestamp for X axis
 				y: numericValue,
 				experimentId: exp.id,
-				date: date.toLocaleString(),
+				date: safeDate.toLocaleString(),
+				experimentName: exp.name,
 			});
 		} else {
 			ignoredCount++;
@@ -304,37 +312,40 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 									cursor={{ strokeDasharray: '3 3' }}
 									content={({ active, payload }) => {
 										if (active && payload && payload[0]) {
-											const data = payload[0].payload;
+											const point = payload[0].payload as ScatterDataPoint;
+											const experimentLabel = point.experimentName || point.experimentId;
 											return (
 												<div className="bg-white p-2 border rounded shadow-sm">
-													<p className="mb-1"><strong>{metric.name}</strong></p>
-													<p className="mb-1 small">Value: {data.y} {metric.unit || ''}</p>
-													<p className="mb-0 small">Date: {data.date}</p>
+													<p className="mb-1"><strong>{experimentLabel}</strong></p>
+													<p className="mb-1 small">Value: {point.y} {metric.unit || ''}</p>
+													<p className="mb-0 small">Date: {point.date}</p>
 												</div>
 											);
 										}
 										return null;
 									}}
 								/>
-								<Scatter name={metric.name} data={data} fill={color}>
-									{data.map((entry, i) => (
-										<Cell key={`cell-${i}`} fill={color} />
-									))}
-								</Scatter>
+								<Scatter
+									name={metric.name}
+									data={data}
+									fill={color}
+									shape={(props: any) => {
+										const { cx, cy } = props;
+										return <circle cx={cx} cy={cy} r={4} fill={color} />;
+									}}
+								/>
 							</ScatterChart>
 						</ResponsiveContainer>
 						<p className="text-muted small mt-2 mb-0">
 							{data.length} data point{data.length !== 1 ? 's' : ''} shown
 						</p>
 						<p className="text-muted small mb-1">
-							<strong>Mean:</strong> {formatMetricValue(metric, mean)}{' '}
-							<span className="ms-2">
-								<strong>Std dev:</strong> {formatMetricValue(metric, stdDev)}
-							</span>
+							<strong>Mean:</strong> {formatMetricValue(metric, mean)}<br/>
+							<strong>Std dev:</strong> {formatMetricValue(metric, stdDev)}
 						</p>
 						{ignoredCount > 0 && (
 							<p color="warning" className="mb-2 small">
-								{ignoredCount} experiment{ignoredCount !== 1 ? 's' : ''} had missing or non-numeric values and were ignored.
+								{ignoredCount} experiment{ignoredCount !== 1 ? 's' : ''} had missing values and were skipped.
 							</p>
 						)}
 					</>
