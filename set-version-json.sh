@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Bump this version when you make a change to the codebase
-VERSION="0.8.5"
+# VERSION is read from VERSION.txt so we have a single source of truth for releases
+VERSION=$(cat VERSION.txt | tr -d '[:space:]')
 
 # Ideally this should be auto-run (fiddly with git hooks)
 

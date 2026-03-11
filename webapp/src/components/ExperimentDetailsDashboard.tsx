@@ -171,8 +171,9 @@ function MetricDataCard({ metric, histogram, min, max, mean, count, unmeasuredCo
 					</Alert>
 				) : (
 					<>
-						
-						<Histogram data={histogram} />
+						<div className="w-100" style={{ marginLeft: "-10px", marginRight: "-10px" /* use the card padding to give the chart more width */}}>
+							<Histogram data={histogram} width="100%" height={200} />
+						</div>
 						<div className="mt-3">
 							<p className="mb-1">
 								<strong>Statistics:</strong>

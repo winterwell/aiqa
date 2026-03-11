@@ -39,7 +39,8 @@ const OrganisationPage: React.FC = () => {
   const { data: allOrganisations, isLoading: isLoadingOrgs } = useQuery({
     queryKey: ['organisations'],
     queryFn: () => listOrganisations(),
-    enabled: shouldCheckOrganisations,
+    // Always load organisations once we know the user, so we can e.g. show "Add organisation"
+    enabled: !!dbUser?.id,
   });
 
   // Fetch OrganisationAccount
@@ -52,7 +53,7 @@ const OrganisationPage: React.FC = () => {
   // Check if user is super admin (member of AIQA organisation)
   const isSuperAdmin = allOrganisations?.some(org => org.name === 'AIQA') || false;
 
-  if (isLoading || isLoadingUser || (shouldCheckOrganisations && isLoadingOrgs)) {
+  if (isLoading || isLoadingUser || (!organisationId && isLoadingOrgs)) {
     return (
       <Page header="Organisation">
         <div className="text-center">
@@ -99,8 +100,19 @@ const OrganisationPage: React.FC = () => {
     );
   }
 
+  const canAddOrganisation =
+    !!dbUser?.id &&
+    allOrganisations &&
+    allOrganisations.length === 1 &&
+    allOrganisations[0].id === organisation.id;
+
   return (
     <Page header={organisation.name} item={organisation}>
+      {canAddOrganisation && (
+        <div className="d-flex justify-content-end mb-3">
+          <CreateOrganisationButton dbUserId={dbUser!.id} />
+        </div>
+      )}
       <Row className="mt-4">
         <Col md={6}>
           <Card>

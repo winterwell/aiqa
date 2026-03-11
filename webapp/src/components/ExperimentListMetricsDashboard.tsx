@@ -289,7 +289,7 @@ function MetricDataCard({ metric, data, ignoredCount, color }: {
 					<>
 						<ResponsiveContainer width="100%" height={300}>
 							<ScatterChart
-								margin={{ top: 20, right: 20, bottom: 20, left: 20 }}
+								margin={{ top: 20, right: 0, bottom: 20, left: 0 }}
 							>
 								<CartesianGrid strokeDasharray="3 3" />
 								<XAxis

@@ -193,6 +193,23 @@ export function getTokenCostEntry(provider: string | null, model: string | undef
 
 /**
  * Calculate cost in dollars based on token usage and cost entry
+ *
+ * Token semantics:
+ * - gen_ai.usage.input_tokens SHOULD include cached input tokens (OpenTelemetry spec).
+ * - For OpenAI, `prompt_tokens` already includes cached tokens, and cached tokens are
+ *   exposed separately via `prompt_tokens_details.cached_tokens`.
+ *   See https://platform.openai.com/docs/guides/prompt-caching and
+ *   https://platform.openai.com/docs/api-reference/chat/object#chat/object/usage.
+ * - For Bedrock, `inputTokens` excludes `cacheReadInputTokens`, so we rely on the client
+ *   to set:
+ *     gen_ai.usage.input_tokens = inputTokens + cacheReadInputTokens
+ *     gen_ai.usage.cache_read.input_tokens = cacheReadInputTokens
+ *     gen_ai.usage.cache_creation.input_tokens = cacheCreationInputTokens
+ *   See https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html.
+ *
+ * This function assumes:
+ * - `inputTokens` may already include cached tokens (OpenAI or client-adjusted Bedrock).
+ * - `cachedInputTokens` is the subset of input tokens that came from cache reads.
  */
 // exported for unit tests
 export function calculateCost(
@@ -205,12 +222,13 @@ export function calculateCost(
 	// Costs are in dollars per million tokens.
 	// So cost per token = cost_in_Mtkn / 1,000,000.
 	// Handle zero rates: if cost is 0, those tokens are free.
-	// Cached tokens and input: OTEL standard says: input tokens SHOULD include cached input tokens.
-	let uncachedInputTokens: number;
-	if (inputTokens && cachedInputTokens && cachedInputTokens > inputTokens) {
-		uncachedInputTokens = inputTokens - cachedInputTokens;
-	} else {
-		uncachedInputTokens = inputTokens;
+	// Cached tokens and input:
+	// - OTEL standard says: input tokens SHOULD include cached input tokens.
+	// - We assume `inputTokens` includes both cached and uncached input.
+	//   So uncachedInputTokens = inputTokens - cachedInputTokens, clamped at 0.
+	let uncachedInputTokens = inputTokens;
+	if (inputTokens !== undefined && cachedInputTokens !== undefined) {
+		uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
 	}
 	const inputCost = (uncachedInputTokens && costEntry.input_Mtkn > 0)
 		? (uncachedInputTokens * costEntry.input_Mtkn) / 1_000_000

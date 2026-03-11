@@ -27,8 +27,13 @@ export default function TextWithStructureViewer({text, depth = 2}: {text: string
 }
 
 function format(text: string) {
-	return text.replace(/\r?\n/g, '<br />');
-}
+	// detect some markdown and convert
+	// html line-breaks
+	text = text.replace(/\r?\n/g, '<br />');
+	// html encoded line-breaks
+	text = text.replace(/\\n/g, '<br />');	
+	return text;
+}  
 
 /**
  * Show potentially big text
@@ -49,7 +54,7 @@ function TextViewer({ text, depth = 2 }: { text: string, depth?: number }) {
 				{expanded ? (
 					<div dangerouslySetInnerHTML={{ __html: format(text) }} style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }} />
 				) : (
-					<div dangerouslySetInnerHTML={{ __html: format(text.slice(0, 1000)) + '...' }} style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0 }} />
+					<div dangerouslySetInnerHTML={{ __html: format(text.slice(0, 1000)) + '...' }} style={{ wordBreak: 'break-all', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0, maxHeight:'250px', overflowY: 'hidden' }} />
 				)}
 			</div>
 		);
