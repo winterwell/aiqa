@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import { bulkInsertExamples, searchExamples, getExample, updateExample, deleteExample, updateSpan } from '../db/db_es.js';
+import { getArchivedExamples, getArchivedExample } from '../db/db_archive.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import SearchQuery from '../common/SearchQuery.js';
 import Example from '../common/types/Example.js';
@@ -171,6 +172,21 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
     const datasetId = (request.query as any).dataset as string | undefined;
     const limit = parseInt((request.query as any).limit || '100');
     const offset = parseInt((request.query as any).offset || '0');
+    const atTime = (request.query as any).atTime as string | undefined;
+
+    if (atTime) {
+      const atDate = new Date(atTime);
+      if (isNaN(atDate.getTime())) {
+        reply.code(400).send({ error: 'Invalid atTime format (expected ISO 8601)' });
+        return;
+      }
+      if (!datasetId) {
+        reply.code(400).send({ error: 'dataset parameter is required when using atTime' });
+        return;
+      }
+      const result = await getArchivedExamples(datasetId, organisationId, atDate, limit, offset);
+      return { hits: result.hits, total: result.total, limit, offset };
+    }
 
     const searchQuery = parseSearchQuery(request);
     const result = await searchExamples(searchQuery, organisationId, datasetId, limit, offset);
@@ -193,6 +209,22 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       return;
     }
     const { id } = request.params as { id: string };
+    const atTime = (request.query as any).atTime as string | undefined;
+
+    if (atTime) {
+      const atDate = new Date(atTime);
+      if (isNaN(atDate.getTime())) {
+        reply.code(400).send({ error: 'Invalid atTime format (expected ISO 8601)' });
+        return;
+      }
+      const archived = await getArchivedExample(id, organisationId, atDate);
+      if (!archived) {
+        send404(reply, 'Example archive');
+        return;
+      }
+      return archived;
+    }
+
     const example = await getExample(id, organisationId);
     if (!example) {
       send404(reply, 'Example');
