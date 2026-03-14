@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/generic/ConfirmDialog';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { TrashIcon } from '@phosphor-icons/react';
 import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID, DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import Page from '../components/generic/Page';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
   const summary = exp.summaries || {};
@@ -199,14 +200,7 @@ const ExperimentsListPage: React.FC = () => {
   };
 
   return (
-    <Container className="mt-4">
-      <Row>
-        <Col>
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h1>Experiment Results</h1>
-          </div>
-        </Col>
-      </Row>
+    <Page fluid={true} header="Experiment Results">
 
       <ExperimentsListMetricsDashboard experiments={dashboardExperiments} />
 
@@ -239,7 +233,7 @@ const ExperimentsListPage: React.FC = () => {
           />
         </Col>
       </Row>
-    </Container>
+    </Page>
   );
 };
 
