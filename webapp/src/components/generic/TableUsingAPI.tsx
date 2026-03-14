@@ -13,6 +13,7 @@ import {
   Row,
   RowSelectionState,
   Cell,
+  Header,
 } from '@tanstack/react-table';
 import { Input, Table, Pagination, PaginationItem, PaginationLink, Card, CardBody, Button } from 'reactstrap';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -63,6 +64,11 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
   hidden?: boolean;
   style?: React.CSSProperties;
 };
+/* convenience for typing columnDef as ExtendedColumnDef<any> */
+export function isHidden(columnDef: ColumnDef<any>) {
+  const extendedColumnDef = columnDef as ExtendedColumnDef<any>;
+  return extendedColumnDef?.hidden;
+}
 
 export interface PageableData<T> {
   hits: T[];
@@ -510,7 +516,7 @@ function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkAc
 		{headers.map((headerGroup) => (
 		  <React.Fragment key={headerGroup.id}>
 			<tr>
-			  {headerGroup.headers.filter(header => !header.column?.columnDef?.hidden).map((header) => {
+			  {headerGroup.headers.filter(h => !isHidden(h.column.columnDef)).map((header) => {
 				const isSelectColumn = enableRowSelection && header.id === 'select';
           const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
           const isFilterOpen = canFilter && isHeaderFilterOpen(header);
