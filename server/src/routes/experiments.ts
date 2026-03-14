@@ -7,7 +7,7 @@ import {
   deleteExperiment,
   getDataset,
 } from '../db/db_sql.js';
-import { getExample, searchExamples, searchSpans } from '../db/db_es.js';
+import { getExample, searchExamples, searchSpans, updateSpan } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import { checkAccessDeveloperOrAdmin } from './route_helpers.js';
 import SearchQuery from '../common/SearchQuery.js';
@@ -254,6 +254,24 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
           }
           if (tokenUsage.cost >= 0) {
             scores[GEN_AI_COST_USD] = tokenUsage.cost;
+          }
+
+          // Also mirror metric scores onto the root span as attributes (if not already set)
+          // This allows trace queries and dashboards to access experiment metrics directly from the root trace span.
+          const existingAttributes: Record<string, any> = rootSpan.attributes || {};
+          const updatedAttributes: Record<string, any> = { ...existingAttributes };
+          let hasNewAttributes = false;
+
+          for (const [metricKey, value] of Object.entries(scores)) {
+            const attrKey = `aiqa.metric.${metricKey}`;
+            if (existingAttributes[attrKey] === undefined && value !== undefined && value !== null) {
+              updatedAttributes[attrKey] = value;
+              hasNewAttributes = true;
+            }
+          }
+
+          if (hasNewAttributes && rootSpan.id) {
+            await updateSpan(rootSpan.id, { attributes: updatedAttributes }, organisation);
           }
         } else {
           // Spans not found after retries - log but don't fail (token info is optional)

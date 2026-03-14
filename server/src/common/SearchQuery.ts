@@ -83,95 +83,142 @@ SearchQuery._init = (sq: SearchQuery) => {
 }
 
 
-SearchQuery.parse = (sq: SearchQuery) => {
-	// HACK just space separate and crude key:value for now!
-	let bits = sq.query.split(" ");
-	let bits2: any[] = [];
+/**
+ * Tokenize query string: "(", ")", "AND", "OR", or term (field:value / word).
+ * Quoted values are merged so key:"val ue" becomes one term.
+ */
+function tokenize(query: string): string[] {
+	const tokens: string[] = [];
+	const segments = query.trim().split(/\s+/).filter(Boolean);
 	let i = 0;
-	let op = SearchQuery.AND;
-	// If both AND and OR are present, use AND as top-level (AND has higher precedence)
-	const hasOR = bits.includes("OR");
-	const hasAND = bits.includes("AND");
-	if (hasOR && !hasAND) {
-		op = SearchQuery.OR;
-	} else if (hasAND) {
-		op = SearchQuery.AND;
-	}
-	
-	while (i < bits.length) {
-		let bit = bits[i];
-		// Strip leading and trailing parentheses from tokens
-		// This handles cases like "(trace:value" or "value)" or "(value)"
-		while (bit.startsWith('(')) {
-			bit = bit.slice(1);
+	while (i < segments.length) {
+		let seg = segments[i];
+		// Emit leading '(' as separate tokens
+		while (seg.startsWith('(')) {
+			tokens.push('(');
+			seg = seg.slice(1);
 		}
-		while (bit.endsWith(')')) {
-			bit = bit.slice(0, -1);
+		// Emit trailing ')' as separate tokens
+		let trailingParens = 0;
+		while (seg.endsWith(')')) {
+			trailingParens++;
+			seg = seg.slice(0, -1);
 		}
-		
-		// Skip operator tokens (both AND and OR, regardless of which is the top-level op)
-		if (bit === SearchQuery.AND || bit === SearchQuery.OR) {
-			i++;
-			continue;
-		}
-		let kv = bit.match(/^([a-zA-Z_0-9.]+):(.+)/);
-		if (kv) {
-			// Found a field:value pair
-			let value = kv[2];
-			// If value starts with a quote, collect tokens until we find the closing quote
-			if (value.startsWith('"')) {
-				let j = i + 1;
-				// Collect following tokens until we find the closing quote
-				while (j < bits.length && !value.endsWith('"')) {
-					let nextBit = bits[j];
-					// Strip trailing parentheses from tokens before adding to quoted value
-					while (nextBit.endsWith(')')) {
-						nextBit = nextBit.slice(0, -1);
-					}
-					value += ' ' + nextBit;
-					j++;
-				}
-				// Remove quotes from the value
-				if (value.startsWith('"') && value.endsWith('"')) {
-					value = value.slice(1, -1);
-				}
-				bits2.push({[kv[1]]: value});
-				i = j;
-			} else {
-				// Value doesn't start with quote, so it's just this token (no spaces in unquoted values)
-				bits2.push({[kv[1]]: value});
+		// Check for quoted value: key:"...
+		const quotedMatch = seg.match(/^([a-zA-Z_0-9.]+):"(.*)$/);
+		if (quotedMatch) {
+			const key = quotedMatch[1];
+			let value = quotedMatch[2];
+			if (!value.endsWith('"')) {
 				i++;
+				while (i < segments.length) {
+					const next = segments[i];
+					value += ' ' + next.replace(/\)+$/, '');
+					if (next.endsWith('"')) break;
+					i++;
+				}
 			}
-		} else {
-			bits2.push(bit);
-			i++;
+			if (value.startsWith('"')) value = value.slice(1);
+			if (value.endsWith('"')) value = value.slice(0, -1);
+			tokens.push(key + ':' + value);
+		} else if (seg) {
+			tokens.push(seg);
 		}
+		while (trailingParens--) tokens.push(')');
+		i++;
 	}
-	
-	/**
-	 * Return the expression tree, which is a nested array
-	 * E.g. "a OR (b AND near:c)" --> ["OR", "a", ["AND", "b", ["near", "c"]]]
-	 */
-	sq.tree = [op, ...bits2];
+	return tokens;
+}
+
+/**
+ * Parse with AND/OR precedence and parentheses. OR has lowest precedence.
+ * Returns tree: [op, ...operands] or single term {key:value} / string.
+ */
+function parseExpression(tokens: string[]): any {
+	function parsePrimary(): any {
+		if (tokens.length === 0) return null;
+		const t = tokens[0];
+		if (t === '(') {
+			tokens.shift();
+			const expr = parseOr();
+			if (tokens[0] === ')') tokens.shift();
+			return expr;
+		}
+		return parseTerm();
+	}
+	function parseTerm(): any {
+		if (tokens.length === 0) return null;
+		const t = tokens.shift()!;
+		const kv = t.match(/^([a-zA-Z_0-9.]+):(.+)$/);
+		if (kv) {
+			const value = kv[2];
+			return { [kv[1]]: value };
+		}
+		return t;
+	}
+	function parseAnd(): any {
+		let left = parsePrimary();
+		// Consume explicit AND or implicit AND (adjacent terms)
+		while (tokens.length > 0 && tokens[0] !== ')' && tokens[0] !== SearchQuery.OR) {
+			if (tokens[0] === SearchQuery.AND) tokens.shift();
+			const right = parsePrimary();
+			if (right != null) left = [SearchQuery.AND, left, right];
+		}
+		return left;
+	}
+	function parseOr(): any {
+		let left = parseAnd();
+		while (tokens.length > 0 && tokens[0] === SearchQuery.OR) {
+			tokens.shift();
+			const right = parseAnd();
+			if (right != null) left = [SearchQuery.OR, left, right];
+		}
+		return left;
+	}
+	return parseOr();
+}
+
+SearchQuery.parse = (sq: SearchQuery) => {
+	const tokens = tokenize(sq.query);
+	if (tokens.length === 0) {
+		sq.tree = [SearchQuery.AND];
+		return;
+	}
+	let tree = parseExpression(tokens);
+	// Normalise single term to [AND, term] so tree is always [op, ...operands]
+	if (tree != null && typeof tree === 'object' && !Array.isArray(tree)) {
+		sq.tree = [SearchQuery.AND, tree];
+	} else if (tree != null && typeof tree === 'string') {
+		sq.tree = [SearchQuery.AND, tree];
+	} else if (Array.isArray(tree) && tree.length > 0) {
+		sq.tree = tree;
+	} else {
+		sq.tree = [SearchQuery.AND];
+	}
 }
 
 
+/** Find first occurrence of propName in tree (recursive). */
+function findPropInTree(tree: any, propName: string): string | null {
+	if (tree && typeof tree === 'object' && !Array.isArray(tree) && propName in tree) {
+		return tree[propName];
+	}
+	if (Array.isArray(tree)) {
+		for (let i = 1; i < tree.length; i++) {
+			const v = findPropInTree(tree[i], propName);
+			if (v != null) return v;
+		}
+	}
+	return null;
+}
+
 /**
- * Convenience method.
- * IF propName occurs at the top-level, then return the value
- * @param {!SearchQuery} sq
- * @param {!string} propName 
- * @returns {?string}
+ * Return the value for propName if it appears in the query (first occurrence).
+ * Searches the whole tree, not just top-level.
  */
 SearchQuery.prop = (sq: SearchQuery, propName: string): string | null => {
 	SearchQuery._init(sq);
-	let props = sq.tree!.filter(bit => Object.keys(bit).includes(propName));
-	// ??What to return if prop:value is present but its complex??
-	if (props.length > 1) console.warn("SearchQuery.prop multiple values!", props, sq);
-	if (props.length) {
-		return props[0][propName];
-	}
-	return null;
+	return findPropInTree(sq.tree, propName);
 }
 
 
@@ -222,20 +269,28 @@ SearchQuery.setProp = (sq: SearchQuery | string | null, propName: string, propVa
 }
 
 
-/**
- * 
- * @param {SearchQuery} sq
- * @param {String} propName
- * @returns {String}
- */
+/** Remove all key:value nodes with propName from tree (recursive). Flattens single-child AND/OR. */
+function treeWithoutProp(tree: any, propName: string): any {
+	if (tree && typeof tree === 'object' && !Array.isArray(tree) && propName in tree) {
+		return null; // drop this node
+	}
+	if (typeof tree === 'string') return tree;
+	if (!Array.isArray(tree)) return tree;
+	const op = tree[0];
+	const filtered = tree.slice(1)
+		.map((bit: any) => treeWithoutProp(bit, propName))
+		.filter((b: any) => b != null);
+	if (filtered.length === 0) return null;
+	if (filtered.length === 1) return filtered[0];
+	return [op, ...filtered];
+}
+
 const snipProp = (sq: SearchQuery, propName: string): string => {
 	assMatch(sq, SearchQuery);
 	SearchQuery._init(sq);
 	assMatch(propName, String);
-	// Cut out the old value (use the parse tree to handle quoting)
-	let tree2 = sq.tree!.filter(bit => ! is((bit as any)[propName]));
-	let newq = unparse(tree2);
-	return newq;
+	const tree2 = treeWithoutProp(sq.tree, propName);
+	return tree2 != null ? unparse(Array.isArray(tree2) ? tree2 : [SearchQuery.AND, tree2]) : '';
 };
 
 
@@ -388,25 +443,32 @@ export const propFromString = SearchQuery.propFromString;
 export const setPropInString = SearchQuery.setPropInString;
 
 /**
- * Convert a parse tree back into a query string
- * @param {Object[]|string} tree 
- * @returns {string}
+ * Convert a parse tree back into a query string.
+ * Wraps nested subexpressions in parens when they use a different operator.
  */
 const unparse = (tree: any): string => {
-	// a search term?
-	if (typeof(tree)==='string') return tree;
-	// key:value?
-	if ( ! tree.length) {
-		let keys = Object.keys(tree);
+	if (typeof tree === 'string') return tree;
+	// key:value object
+	if (typeof tree === 'object' && !Array.isArray(tree)) {
+		const keys = Object.keys(tree);
 		assert(keys.length === 1);
-		return keys[0]+":"+tree[keys[0]];
+		return keys[0] + ':' + tree[keys[0]];
 	}
-	if (tree.length===1) return tree[0]; // just a sole keyword
-	let op = tree[0];
-	let bits = tree.slice(1);
-	// TODO bracketing
-	let ubits = bits.map(unparse);
-	return ubits.join(" "+op+" ");
+	if (!Array.isArray(tree) || tree.length === 0) return '';
+	if (tree.length === 1) return unparse(tree[0]);
+	const op = tree[0];
+	const bits = tree.slice(1).filter((b: any) => b != null);
+	if (bits.length === 0) return '';
+	if (bits.length === 1) return unparse(bits[0]);
+	const ubits = bits.map((bit: any) => {
+		const s = unparse(bit);
+		// Wrap in parens if nested array with different op (so re-parse preserves structure)
+		if (Array.isArray(bit) && bit.length > 1 && bit[0] !== op) {
+			return '(' + s + ')';
+		}
+		return s;
+	});
+	return ubits.join(' ' + op + ' ');
 };
 
 

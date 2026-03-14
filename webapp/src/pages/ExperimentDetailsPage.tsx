@@ -17,8 +17,17 @@ import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TOTAL_TOKENS_
 import LinkId from '../components/LinkId';
 import HelpText from '../components/generic/HelpText';
 import Tags from 'src/components/generic/Tags';
+import { getTruncatedDisplayString, getExampleInput } from '../utils/example-utils';
+import { getSpanOutput } from '../common/types/Span';
+import { useRootSpansForTraces } from '../hooks/useSpanData';
 
+const TRACE_OUTPUT_MAX_LEN = 100;
 
+/** Truncated output string for a trace; looks up from pre-loaded outputByTrace map (root span output, same as ExampleDetailsPage). */
+function getTraceOutput(traceId?: string, outputByTrace?: Map<string, string>): string {
+  if (!traceId) return '';
+  return outputByTrace?.get(traceId) ?? '';
+}
 
 const ExperimentDetailsPage: React.FC = () => {
   const { organisationId, experimentId } = useParams<{
@@ -69,7 +78,7 @@ const ExperimentDetailsPage: React.FC = () => {
         limit: 1000,
         offset: 0,
       });
-      console.log('e4id result', result);
+      // console.log('e4id result', result);
       const e4id = {};
       for (const example of result.hits) {
         e4id[example.id] = example;
@@ -78,18 +87,38 @@ const ExperimentDetailsPage: React.FC = () => {
     }
   });
 
-  console.log('examples', examples);
+  // console.log('examples', examples);
+
+  const traceIds = useMemo(
+    () => [...new Set((experiment?.results ?? []).map((r) => r.trace).filter(Boolean))] as string[],
+    [experiment?.results]
+  );
+  const { data: rootSpansMap } = useRootSpansForTraces(organisationId, traceIds, {
+    fields: 'attributes.output',
+    enabled: traceIds.length > 0,
+  });
+  const outputByTrace = useMemo(() => {
+    const m = new Map<string, string>();
+    rootSpansMap?.forEach((span, tid) => {
+      const out = getTruncatedDisplayString(getSpanOutput(span), TRACE_OUTPUT_MAX_LEN);
+      if (out) m.set(tid, out);
+    });
+    return m;
+  }, [rootSpansMap]);
 
   // columns: result id, duration, cost, totalTokens, errors, ...other metrics
   // Get the metrics from the dataset
   // This must be computed before any early returns to satisfy Rules of Hooks
+  const notTooBigStyle: React.CSSProperties = { maxWidth: '200px', maxHeight: '100px', textOverflow: 'ellipsis', overflow: 'hidden', wordBreak: 'break-all', overflowWrap: 'anywhere' };
+  const smallIdStyle: React.CSSProperties = { fontSize: '0.8rem', maxWidth: '150px', textOverflow: 'ellipsis', overflow: 'hidden', wordBreak: 'break-all', overflowWrap: 'anywhere' };
   const columns : ExtendedColumnDef<Result>[] = [
     {
       header: 'Trace',
       accessorKey: 'trace',
       cell: ({ row }: any) => {
         return <LinkId to={`/organisation/${organisationId}/traces/${row.original.trace}`} id={row.original.trace} />;
-      }
+      },
+      style: smallIdStyle,
     },
   {
         header: 'Example',
@@ -103,9 +132,36 @@ const ExperimentDetailsPage: React.FC = () => {
         cell: ({ row }: any) => {
           const eid = row.original.example;
           const example = examples?.[eid];
-          console.log('example', eid, example, "e4id", examples);
-          return <LinkId to={`/organisation/${organisationId}/example/${row.original.example}`} name={example?.name || example?.input} id={eid} />;
-        }
+          return <LinkId to={`/organisation/${organisationId}/example/${row.original.example}`} name={eid} id={eid} />;
+        },
+        style: smallIdStyle,
+      },
+      {
+        header: 'Input',
+        style: notTooBigStyle,
+        accessorFn: (row: Result) => {
+          console.log('Input for row?', row);
+          const example = examples?.[row.example];
+          return getTruncatedDisplayString(getExampleInput(example), TRACE_OUTPUT_MAX_LEN);
+        },
+        cell: ({ row }: any) => {
+          const exampleId = row.original.example;
+          const example = examples?.[row.original.example];
+          // console.log('Input for row?', exampleId, row, example);
+          const raw = getExampleInput(example);
+          const display = getTruncatedDisplayString(raw, TRACE_OUTPUT_MAX_LEN);
+          if (!display) return <span className="text-muted">—</span>;
+          return <span className="small" title={typeof raw === 'string' ? raw : JSON.stringify(raw)}>{display}</span>;
+        },
+      },
+      {
+        header: 'Output',
+        style: notTooBigStyle,
+        accessorFn: (result: Result) => getTraceOutput(result.trace, outputByTrace),
+        cell: ({ row }: any) => {
+          const display = getTraceOutput(row.original.trace, outputByTrace);
+          return display ? <span className="small" title={display}>{display}</span> : <span className="text-muted">—</span>;
+        },
       },
       {
         header: 'Duration',
@@ -155,7 +211,19 @@ const ExperimentDetailsPage: React.FC = () => {
         return <span title={message}>{score}</span>;
       }
     });
-  }
+    // add a hidden column for the metric messages
+    columns.push({
+      header: 'Message for ' + metric.name || metric.id,
+      accessorFn: (row: Result) => {
+        return row.messages?.[metric.id];
+      },
+      cell: ({ row }: any) => {
+        return <span>{row.original.messages?.[metric.id]}</span>;
+      },
+      hidden: true,
+      includeInCSV: true
+    });
+  } // end for (const metric of metrics)
   columns.push({
     header: 'Tags',
     accessorFn: (row: Result) => {
@@ -171,6 +239,7 @@ const ExperimentDetailsPage: React.FC = () => {
   });
   columns.push({
     header: 'Errors',
+    style: notTooBigStyle,
     accessorFn: (row: Result) => {
       return row.errors? JSON.stringify(row.errors) : '';
     }
@@ -200,6 +269,7 @@ const ExperimentDetailsPage: React.FC = () => {
 
   return (
     <Page
+      fluid={true}
       header={
         <NameAndDeleteHeader
           label="Experiment"

@@ -168,7 +168,9 @@ export async function registerExampleRoutes(fastify: FastifyInstance): Promise<v
       reply.code(400).send({ error: 'organisation query parameter is required and user must be a member' });
       return;
     }
-    const datasetId = (request.query as any).dataset as string | undefined;
+    // Accept both 'dataset' (webapp) and 'dataset_id' (Go/JS clients)
+    const q = request.query as Record<string, unknown>;
+    const datasetId = (q.dataset ?? q.dataset_id) as string | undefined;
     const limit = parseInt((request.query as any).limit || '100');
     const offset = parseInt((request.query as any).offset || '0');
 

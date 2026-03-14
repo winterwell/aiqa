@@ -29,6 +29,7 @@ const MetricModal: React.FC<MetricModalProps> = ({
   example,
 }) => {
   const [metric, setMetric] = useState<Partial<Metric>>(initialMetric || {});
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(!example);
   const {rerender} = useRerender();
 
   // Fetch models for this organisation
@@ -42,8 +43,9 @@ const MetricModal: React.FC<MetricModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setMetric(initialMetric || {});
+      setShowAdvanced(!example);
     }
-  }, [isOpen, initialMetric]);
+  }, [isOpen, initialMetric, example]);
 
   const handleTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const type = e.target.value as 'javascript' | 'llm' | 'number';
@@ -75,6 +77,8 @@ const MetricModal: React.FC<MetricModalProps> = ({
     onSave(metric);
   };
 
+  const fullControls = !example || showAdvanced;
+
   return (
     <Modal isOpen={isOpen} toggle={toggle}>
       <ModalHeader toggle={toggle}>
@@ -82,46 +86,69 @@ const MetricModal: React.FC<MetricModalProps> = ({
       </ModalHeader>
       <Form onSubmit={handleSubmit}>
         <ModalBody>
-          <FormGroup>
-            <PropInput
-              item={metric}
-              prop="name"
-              type="text"
-              placeholder="e.g., Latency"
-              onChange={rerender}
-              readOnly={!!example}
-            />
-            <PropInput 
-              item={metric} 
-              prop="id" 
-              type="text" 
-              placeholder="e.g., latency (this can be short and human-readable)" 
-              onChange={rerender} 
-              readOnly={!!example}
-            />
-          </FormGroup>
-          <FormGroup>
-            <PropInput
-              label="Type"
-              required
-              item={metric}
-              prop="type"
-              type="select"
-              options={['javascript', 'llm', 'number']}
-              onChange={handleTypeChange}
-              readOnly={!!example}
-            />
-          </FormGroup>
-          <FormGroup>
-            <PropInput
-              label="Specific (the criteria are set per-example)"
-              item={metric}
-              prop="specific"
-              type="checkbox"
-              onChange={rerender}
-              readOnly={!!example}
-            />
-          </FormGroup>
+          {example && (
+            <>
+              <p className="text-muted small">
+                Set example-specific criteria below. 
+                Dataset-level metric settings are inherited.
+              </p>
+              <FormGroup check className="mb-3">
+                <Label check>
+                  <Input
+                    type="checkbox"
+                    checked={showAdvanced}
+                    onChange={(e) => setShowAdvanced(e.target.checked)}
+                  />{' '}
+                  Show all controls (override dataset-level settings for this example)
+                </Label>
+              </FormGroup>
+            </>
+          )}
+
+          {fullControls && (
+            <>
+              <FormGroup>
+                <PropInput
+                  item={metric}
+                  prop="name"
+                  type="text"
+                  placeholder="e.g., Latency"
+                  onChange={rerender}
+                  readOnly={!!example}
+                />
+                <PropInput 
+                  item={metric} 
+                  prop="id" 
+                  type="text" 
+                  placeholder="e.g., latency (this can be short and human-readable)" 
+                  onChange={rerender} 
+                  readOnly={!!example}
+                />
+              </FormGroup>
+              <FormGroup>
+                <PropInput
+                  label="Type"
+                  required
+                  item={metric}
+                  prop="type"
+                  type="select"
+                  options={['javascript', 'llm', 'number']}
+                  onChange={handleTypeChange}
+                  readOnly={!!example}
+                />
+              </FormGroup>
+              <FormGroup>
+                <PropInput
+                  label="Specific (the criteria are set per-example)"
+                  item={metric}
+                  prop="specific"
+                  type="checkbox"
+                  onChange={rerender}
+                  readOnly={!!example}
+                />
+              </FormGroup>
+            </>
+          )}
           {metric.type === 'llm' && (
             <>
               {(!metric.specific || example) && <FormGroup>
@@ -137,65 +164,71 @@ const MetricModal: React.FC<MetricModalProps> = ({
                 />
               </FormGroup>}
               {metric.specific && !example && <p>The criteria should be set per-example.</p>}
-              <FormGroup>
-                <Label>
-                  Model {metric.parameters?.model && <span>*</span>}
-                </Label>
-                <Input
-                  type="select"
-                  value={metric.parameters?.model || metric.parameters?.modelId || ''}
-                  onChange={handleModelChange}
-                >
-                  <option value="">Blank (local api-key or code)</option>
-                  {modelsLoading ? (
-                    <option disabled>Loading models...</option>
-                  ) : (
-                    models?.map((model: Model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name} {model.version ? `(${model.version})` : ''} - {model.provider}
-                      </option>
-                    ))
-                  )}
-                </Input>
-              </FormGroup>
+              {fullControls && (
+                <FormGroup>
+                  <Label>
+                    Model {metric.parameters?.model && <span>*</span>}
+                  </Label>
+                  <Input
+                    type="select"
+                    value={metric.parameters?.model || metric.parameters?.modelId || ''}
+                    onChange={handleModelChange}
+                  >
+                    <option value="">Blank (local api-key or code)</option>
+                    {modelsLoading ? (
+                      <option disabled>Loading models...</option>
+                    ) : (
+                      models?.map((model: Model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} {model.version ? `(${model.version})` : ''} - {model.provider}
+                        </option>
+                      ))
+                    )}
+                  </Input>
+                </FormGroup>
+              )}
               </>/* end: if llm */
           )}
-          {metric.type === 'javascript' && (
-            <FormGroup>
-              <PropInput
-                label="Code"
-                required
-                item={metric}
-                prop="code"
-                type="textarea"
-                rows={5}
-                placeholder="Enter JavaScript code for evaluation"
-                onChange={rerender}
-              />
-            </FormGroup>
+          {fullControls && (
+            <>
+              {metric.type === 'javascript' && (
+                <FormGroup>
+                  <PropInput
+                    label="Code"
+                    required
+                    item={metric}
+                    prop="code"
+                    type="textarea"
+                    rows={5}
+                    placeholder="Enter JavaScript code for evaluation"
+                    onChange={rerender}
+                  />
+                </FormGroup>
+              )}
+              <FormGroup>
+                <PropInput
+                  label="Unit"
+                  item={metric}
+                  prop="unit"
+                  type="text"
+                  placeholder="e.g., ms, USD, tokens, fraction"
+                  onChange={rerender}
+                  readOnly={!!example}
+                />
+              </FormGroup>
+              <FormGroup>
+                <PropInput
+                  label="Description"
+                  item={metric}
+                  prop="description"
+                  type="text"
+                  placeholder="Optional description"
+                  onChange={rerender}
+                  readOnly={!!example}
+                />
+              </FormGroup>
+            </>
           )}
-          <FormGroup>
-            <PropInput
-              label="Unit"
-              item={metric}
-              prop="unit"
-              type="text"
-              placeholder="e.g., ms, USD, tokens, fraction"
-              onChange={rerender}
-              readOnly={!!example}
-            />
-          </FormGroup>
-          <FormGroup>
-            <PropInput
-              label="Description"
-              item={metric}
-              prop="description"
-              type="text"
-              placeholder="Optional description"
-              onChange={rerender}
-              readOnly={!!example}
-            />
-          </FormGroup>
         </ModalBody>
         <ModalFooter>
           <Button color="secondary" onClick={toggle} type="button">

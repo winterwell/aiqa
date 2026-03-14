@@ -57,6 +57,11 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
    * If not provided, defaults to true if there is a header.
    */
   includeInCSV?: boolean;
+  /**
+   * Set to true to hide this column in the table. Use-case: for a column that is csv-only.
+   */
+  hidden?: boolean;
+  style?: React.CSSProperties;
 };
 
 export interface PageableData<T> {
@@ -505,7 +510,7 @@ function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkAc
 		{headers.map((headerGroup) => (
 		  <React.Fragment key={headerGroup.id}>
 			<tr>
-			  {headerGroup.headers.map((header) => {
+			  {headerGroup.headers.filter(header => !header.column?.columnDef?.hidden).map((header) => {
 				const isSelectColumn = enableRowSelection && header.id === 'select';
           const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
           const isFilterOpen = canFilter && isHeaderFilterOpen(header);
@@ -618,14 +623,19 @@ function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClic
 
 function TableCell<T>({ cell }: { cell: Cell<T, any> }) {
     const isSelectColumn = cell.column.id === 'select';
-    const rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
+    let rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
     const columnDef = cell.column.columnDef as any;
-    const style = columnDef.minWidth ? { minWidth: columnDef.minWidth } : undefined;
+    if (columnDef.hidden) return null;
+    let style = columnDef.style;
+    if (style && (style.maxWidth || style.maxHeight)) {
+      rendered = <div style={style}>{rendered}</div>;
+      style = undefined;
+    }
     return (
     <td 
       key={cell.id}
       onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
-      style={style}
+      style={columnDef.style}
     >
       {rendered}
     </td>

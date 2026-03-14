@@ -2,12 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, Table, Badge, Button, Input, Modal, ModalHeader, ModalBody, ModalFooter, Alert } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getDataset, listExperiments, getExample } from '../api';
+import { getDataset, listExperiments, getExample, updateExample } from '../api';
 import Metric from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import { useToast } from '../utils/toast';
 import Page from '../components/generic/Page';
 import { asArray } from '../common/utils/miscutils';
+import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 
 interface TraceWithMetric {
   traceId: string;
@@ -30,6 +31,11 @@ const MetricDetailsPage: React.FC = () => {
   const [groundTruthModalOpen, setGroundTruthModalOpen] = useState(false);
   const [selectedTrace, setSelectedTrace] = useState<TraceWithMetric | null>(null);
   const [groundTruthValue, setGroundTruthValue] = useState<string>('');
+  const [scoringActive, setScoringActive] = useState(false);
+  const [currentScoringIndex, setCurrentScoringIndex] = useState<number | null>(null);
+  const [currentUserScore, setCurrentUserScore] = useState<number | null>(null);
+  const [scoringError, setScoringError] = useState<string | null>(null);
+  const [savingScore, setSavingScore] = useState(false);
 
   const { data: dataset, isLoading: datasetLoading } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -105,113 +111,183 @@ const MetricDetailsPage: React.FC = () => {
     
     return tracesWithMetric.map(trace => {
       const example = examplesData.find((e: any) => e?.id === trace.exampleId);
+      let humanScore: number | undefined;
+
+      // Pull any existing human judgement for this metric from annotations
+      if (example?.annotations && metricName) {
+        const rawScore = example.annotations[metricName];
+        if (rawScore !== undefined && rawScore !== null) {
+          const numeric = typeof rawScore === 'number' ? rawScore : parseFloat(String(rawScore));
+          if (!Number.isNaN(numeric)) {
+            humanScore = numeric;
+          }
+        }
+      }
+
       return {
         ...trace,
         traceId: example?.trace ?? '',
+        groundTruth: humanScore ?? trace.groundTruth,
       };
     });
-  }, [tracesWithMetric, examplesData]);
+  }, [tracesWithMetric, examplesData, metricName]);
 
   const isLLMMetric = metric?.type === 'llm';
   const traceCount = tracesWithTraceIds.length;
 
-  // For confusion matrix: analyze metric values
+  // For confusion matrix: analyze metric values vs human judgements in 5 buckets over [0,1]
   const confusionMatrixData = useMemo(() => {
     if (!isLLMMetric || tracesWithTraceIds.length === 0) return null;
-    
-    const values = tracesWithTraceIds.map(t => {
-      const val = typeof t.metricValue === 'number' ? t.metricValue : parseFloat(String(t.metricValue));
-      return isNaN(val) ? null : val;
-    }).filter((v): v is number => v !== null);
-    
-    if (values.length === 0) return null;
-    
-    // Check if values can be treated as binary (only 2 distinct values)
-    const uniqueValues = new Set(values);
-    const isBinary = uniqueValues.size === 2;
-    
-    if (isBinary) {
-      const [val1, val2] = Array.from(uniqueValues).sort((a, b) => a - b);
-      const groundTruths = tracesWithTraceIds
-        .filter(t => t.groundTruth !== undefined)
-        .map(t => {
-          const gt = typeof t.groundTruth === 'number' ? t.groundTruth : parseFloat(String(t.groundTruth));
-          return isNaN(gt) ? null : gt;
-        })
-        .filter((v): v is number => v !== null);
-      
-      if (groundTruths.length === 0) return null;
-      
-      const uniqueGT = new Set(groundTruths);
-      if (uniqueGT.size !== 2) return null;
-      
-      const [gt1, gt2] = Array.from(uniqueGT).sort((a, b) => a - b);
-      
-      // Build confusion matrix
-      let tp = 0, fp = 0, fn = 0, tn = 0;
-      
-      tracesWithTraceIds.forEach(trace => {
-        const val = typeof trace.metricValue === 'number' ? trace.metricValue : parseFloat(String(trace.metricValue));
-        const gt = trace.groundTruth !== undefined 
-          ? (typeof trace.groundTruth === 'number' ? trace.groundTruth : parseFloat(String(trace.groundTruth)))
-          : null;
-        
-        if (isNaN(val) || gt === null || isNaN(gt)) return;
-        
-        const predictedHigh = val === val2;
-        const actualHigh = gt === gt2;
-        
-        if (predictedHigh && actualHigh) tp++;
-        else if (predictedHigh && !actualHigh) fp++;
-        else if (!predictedHigh && actualHigh) fn++;
-        else tn++;
-      });
-      
-      return { type: 'binary', tp, fp, fn, tn, val1, val2, gt1, gt2 };
-    } else {
-      // Use 5 bands
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const range = max - min;
-      const bandSize = range / 5;
-      
-      const bands = Array.from({ length: 5 }, (_, i) => ({
-        min: min + i * bandSize,
-        max: min + (i + 1) * bandSize,
-        label: `${(min + i * bandSize).toFixed(1)}-${(min + (i + 1) * bandSize).toFixed(1)}`,
-      }));
-      
-      // Count ground truths
-      const groundTruths = tracesWithTraceIds
-        .filter(t => t.groundTruth !== undefined)
-        .map(t => {
-          const gt = typeof t.groundTruth === 'number' ? t.groundTruth : parseFloat(String(t.groundTruth));
-          return isNaN(gt) ? null : gt;
-        })
-        .filter((v): v is number => v !== null);
-      
-      if (groundTruths.length === 0) return { type: 'bands', bands, matrix: null };
-      
-      // Build confusion matrix for bands
-      const matrix: number[][] = Array(5).fill(null).map(() => Array(5).fill(0));
-      
-      tracesWithTraceIds.forEach(trace => {
-        const val = typeof trace.metricValue === 'number' ? trace.metricValue : parseFloat(String(trace.metricValue));
-        const gt = trace.groundTruth !== undefined 
-          ? (typeof trace.groundTruth === 'number' ? trace.groundTruth : parseFloat(String(trace.groundTruth)))
-          : null;
-        
-        if (isNaN(val) || gt === null || isNaN(gt)) return;
-        
-        const predictedBand = Math.min(4, Math.floor((val - min) / bandSize));
-        const actualBand = Math.min(4, Math.floor((gt - min) / bandSize));
-        
-        matrix[actualBand][predictedBand]++;
-      });
-      
-      return { type: 'bands', bands, matrix };
-    }
+
+    const bucketLabels = ['0.0–0.2', '0.2–0.4', '0.4–0.6', '0.6–0.8', '0.8–1.0'];
+    const matrix: number[][] = Array.from({ length: 5 }, () => Array(5).fill(0));
+    const rowTotals = Array(5).fill(0);
+    const colTotals = Array(5).fill(0);
+    let total = 0;
+
+    const clamp01 = (v: number) => {
+      if (Number.isNaN(v)) return NaN;
+      if (v < 0) return 0;
+      if (v > 1) return 1;
+      return v;
+    };
+
+    const toBucketIndex = (v: number) => {
+      const clamped = clamp01(v);
+      if (Number.isNaN(clamped)) return null;
+      // Map [0,1] -> 5 buckets, inclusive of 1.0 in last bucket
+      const idx = Math.floor(clamped * 5);
+      return Math.min(4, Math.max(0, idx));
+    };
+
+    tracesWithTraceIds.forEach(trace => {
+      const modelValRaw = typeof trace.metricValue === 'number'
+        ? trace.metricValue
+        : parseFloat(String(trace.metricValue));
+      const humanValRaw = trace.groundTruth !== undefined
+        ? (typeof trace.groundTruth === 'number' ? trace.groundTruth : parseFloat(String(trace.groundTruth)))
+        : NaN;
+
+      const modelIdx = toBucketIndex(modelValRaw);
+      const humanIdx = toBucketIndex(humanValRaw);
+
+      if (modelIdx === null || humanIdx === null) return;
+
+      matrix[humanIdx][modelIdx] += 1;
+      rowTotals[humanIdx] += 1;
+      colTotals[modelIdx] += 1;
+      total += 1;
+    });
+
+    if (total === 0) return null;
+
+    return {
+      type: 'buckets' as const,
+      bucketLabels,
+      matrix,
+      rowTotals,
+      colTotals,
+      total,
+    };
   }, [isLLMMetric, tracesWithTraceIds]);
+
+  const tracesNeedingScore = useMemo(
+    () =>
+      tracesWithTraceIds.filter(
+        (t) => t.traceId && (t.groundTruth === undefined || t.groundTruth === null)
+      ),
+    [tracesWithTraceIds]
+  );
+
+  const currentScoringTrace =
+    scoringActive && currentScoringIndex !== null
+      ? tracesNeedingScore[currentScoringIndex] ?? null
+      : null;
+
+  const currentScoringExample = useMemo(() => {
+    if (!currentScoringTrace || !examplesData) return null;
+    return examplesData.find((e: any) => e?.id === currentScoringTrace.exampleId) ?? null;
+  }, [currentScoringTrace, examplesData]);
+
+  const saveHumanScoreMutation = useMutation({
+    mutationFn: async ({ exampleId, score }: { exampleId: string; score: number }) => {
+      const example = examplesData?.find((e: any) => e?.id === exampleId);
+      const existingAnnotations =
+        example?.annotations && typeof example.annotations === 'object'
+          ? example.annotations
+          : {};
+      const updatedAnnotations = {
+        ...existingAnnotations,
+        [metricName!]: score,
+      };
+      return updateExample(organisationId!, exampleId, { annotations: updatedAnnotations } as any);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['examples-for-metric'] });
+      showToast('Human score saved', 'success');
+    },
+    onError: (error: any) => {
+      console.error(error);
+      showToast('Failed to save human score', 'error');
+    },
+  });
+
+  const startScoring = () => {
+    if (tracesNeedingScore.length === 0) {
+      setScoringError('No traces available that need human scores.');
+      return;
+    }
+    setScoringActive(true);
+    setCurrentScoringIndex(0);
+    setCurrentUserScore(null);
+    setScoringError(null);
+  };
+
+  const stopScoring = () => {
+    setScoringActive(false);
+    setCurrentScoringIndex(null);
+    setCurrentUserScore(null);
+    setScoringError(null);
+  };
+
+  const goToNextTrace = () => {
+    setCurrentUserScore(null);
+    setScoringError(null);
+    setCurrentScoringIndex((prev) => {
+      if (prev === null) return 0;
+      const next = prev + 1;
+      if (next >= tracesNeedingScore.length) {
+        return null;
+      }
+      return next;
+    });
+  };
+
+  const handleSaveScore = () => {
+    if (!currentScoringTrace) {
+      setScoringError('No active trace to score. You broke physics.');
+      return;
+    }
+    if (currentUserScore === null) {
+      setScoringError('Please select a score from 1 to 5.');
+      return;
+    }
+    // Map 1–5 to [0,1] in 5 buckets
+    const normalisedScore = (currentUserScore - 1) / 4;
+    setScoringError(null);
+    setSavingScore(true);
+    saveHumanScoreMutation.mutate(
+      { exampleId: currentScoringTrace.exampleId, score: normalisedScore },
+      {
+        onSuccess: () => {
+          goToNextTrace();
+        },
+        onSettled: () => {
+          setSavingScore(false);
+        },
+      }
+    );
+  };
 
   const handleConfirm = (trace: TraceWithMetric) => {
     setSelectedTrace(trace);
@@ -338,57 +414,201 @@ const MetricDetailsPage: React.FC = () => {
               {isLLMMetric && confusionMatrixData && (
                 <Row className="mt-4">
                   <Col>
-                    <h6>Confusion Matrix</h6>
-                    {confusionMatrixData.type === 'binary' ? (
+                    <h6>Confusion Matrix (Model vs Human)</h6>
+                    <p className="small text-muted mb-2">
+                      Metric values and human judgements bucketed over [0,1] into 5 bands.
+                    </p>
+                    {confusionMatrixData.type === 'buckets' && (
                       <Table bordered size="sm" className="mt-2">
                         <thead>
                           <tr>
-                            <th></th>
-                            <th>Predicted: {confusionMatrixData.val1}</th>
-                            <th>Predicted: {confusionMatrixData.val2}</th>
+                            <th>Human ↓ / Model →</th>
+                            {confusionMatrixData.bucketLabels.map((label, i) => (
+                              <th key={i} className="small">{label}</th>
+                            ))}
+                            <th className="small">Row total</th>
                           </tr>
                         </thead>
                         <tbody>
-                          <tr>
-                            <th>Actual: {confusionMatrixData.gt1}</th>
-                            <td>{confusionMatrixData.tn}</td>
-                            <td>{confusionMatrixData.fp}</td>
-                          </tr>
-                          <tr>
-                            <th>Actual: {confusionMatrixData.gt2}</th>
-                            <td>{confusionMatrixData.fn}</td>
-                            <td>{confusionMatrixData.tp}</td>
+                          {confusionMatrixData.matrix.map((row, rowIdx) => (
+                            <tr key={rowIdx}>
+                              <th className="small">{confusionMatrixData.bucketLabels[rowIdx]}</th>
+                              {row.map((count, colIdx) => (
+                                <td key={colIdx} className={rowIdx === colIdx ? 'table-success' : ''}>
+                                  {count}
+                                </td>
+                              ))}
+                              <td className="fw-bold">{confusionMatrixData.rowTotals[rowIdx]}</td>
+                            </tr>
+                          ))}
+                          <tr className="table-light">
+                            <th className="fw-bold">Column total</th>
+                            {confusionMatrixData.colTotals.map((total, idx) => (
+                              <td key={idx} className="fw-bold">
+                                {total}
+                              </td>
+                            ))}
+                            <td className="fw-bold">{confusionMatrixData.total}</td>
                           </tr>
                         </tbody>
                       </Table>
-                    ) : (
-                      <div className="mt-2">
-                        <p className="small text-muted">Using 5 bands for numerical scores</p>
-                        {confusionMatrixData.matrix && (
-                          <Table bordered size="sm">
-                            <thead>
-                              <tr>
-                                <th></th>
-                                {confusionMatrixData.bands.map((band, i) => (
-                                  <th key={i} className="small">{band.label}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {confusionMatrixData.matrix.map((row, i) => (
-                                <tr key={i}>
-                                  <th className="small">{confusionMatrixData.bands[i].label}</th>
-                                  {row.map((count, j) => (
-                                    <td key={j} className={i === j ? 'table-success' : ''}>
-                                      {count}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </Table>
-                        )}
+                    )}
+                  </Col>
+                </Row>
+              )}
+
+              {isLLMMetric && (
+                <Row className="mt-4">
+                  <Col>
+                    <h6>Human scoring activity</h6>
+                    <p className="small text-muted">
+                      Step through traces for this metric, rate them yourself, and we&apos;ll log the scores
+                      as annotations on the underlying examples.
+                    </p>
+                    {!scoringActive && (
+                      <div className="d-flex align-items-center gap-2">
+                        <Button
+                          color="primary"
+                          size="sm"
+                          onClick={startScoring}
+                          disabled={tracesNeedingScore.length === 0}
+                        >
+                          Start scoring
+                        </Button>
+                        <span className="text-muted small">
+                          {tracesNeedingScore.length === 0
+                            ? 'No traces currently need a human score.'
+                            : `${tracesNeedingScore.length} trace(s) need a human score.`}
+                        </span>
                       </div>
+                    )}
+                    {scoringActive && (
+                      <Card className="mt-3">
+                        <CardBody>
+                          {currentScoringTrace && currentScoringExample ? (
+                            <>
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                  <div className="small text-muted">Trace</div>
+                                  {currentScoringTrace.traceId ? (
+                                    <Link
+                                      to={`/organisation/${organisationId}/traces/${currentScoringTrace.traceId}`}
+                                    >
+                                      <code className="small">
+                                        {currentScoringTrace.traceId.substring(0, 16)}...
+                                      </code>
+                                    </Link>
+                                  ) : (
+                                    <span className="text-muted small">Unknown trace</span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="small text-muted">Metric score</div>
+                                  <span className="fw-bold">{currentScoringTrace.metricValue}</span>
+                                </div>
+                                <div>
+                                  <div className="small text-muted">Example</div>
+                                  <Link
+                                    to={`/organisation/${organisationId}/example/${currentScoringTrace.exampleId}`}
+                                  >
+                                    <code className="small">
+                                      {currentScoringTrace.exampleId.substring(0, 16)}...
+                                    </code>
+                                  </Link>
+                                </div>
+                              </div>
+
+                              <Row className="mt-3">
+                                <Col md={6}>
+                                  <h6 className="small text-uppercase text-muted">Input</h6>
+                                  <div className="border rounded p-2" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                    <TextWithStructureViewer
+                                      text={
+                                        typeof currentScoringExample.input === 'string'
+                                          ? currentScoringExample.input
+                                          : JSON.stringify(currentScoringExample.input ?? {}, null, 2)
+                                      }
+                                    />
+                                  </div>
+                                </Col>
+                                <Col md={6} className="mt-3 mt-md-0">
+                                  <h6 className="small text-uppercase text-muted">Output</h6>
+                                  <div className="border rounded p-2" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                    <TextWithStructureViewer
+                                      text={
+                                        typeof currentScoringExample.outputs?.good === 'string'
+                                          ? currentScoringExample.outputs.good
+                                          : JSON.stringify(currentScoringExample.outputs ?? {}, null, 2)
+                                      }
+                                    />
+                                  </div>
+                                </Col>
+                              </Row>
+
+                              <Row className="mt-3">
+                                <Col>
+                                  <div className="mb-2">
+                                    <span className="fw-bold me-2">Your score</span>
+                                    <span className="small text-muted">
+                                      1 = very poor, 5 = excellent. Saved as a normalised score in [0,1].
+                                    </span>
+                                  </div>
+                                  <div className="d-flex flex-wrap gap-2 mb-2">
+                                    {[1, 2, 3, 4, 5].map((score) => (
+                                      <Button
+                                        key={score}
+                                        color={currentUserScore === score ? 'primary' : 'secondary'}
+                                        outline={currentUserScore !== score}
+                                        size="sm"
+                                        onClick={() => setCurrentUserScore(score)}
+                                      >
+                                        {score}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                  {scoringError && (
+                                    <div className="text-danger small mb-2">{scoringError}</div>
+                                  )}
+                                  <div className="d-flex gap-2">
+                                    <Button
+                                      color="primary"
+                                      size="sm"
+                                      onClick={handleSaveScore}
+                                      disabled={savingScore}
+                                    >
+                                      {savingScore ? 'Saving...' : 'Save score'}
+                                    </Button>
+                                    <Button
+                                      color="secondary"
+                                      size="sm"
+                                      onClick={goToNextTrace}
+                                      disabled={tracesNeedingScore.length === 0}
+                                    >
+                                      Skip
+                                    </Button>
+                                    <Button
+                                      color="link"
+                                      size="sm"
+                                      onClick={stopScoring}
+                                    >
+                                      Stop
+                                    </Button>
+                                  </div>
+                                </Col>
+                              </Row>
+                            </>
+                          ) : (
+                            <div>
+                              <p className="mb-2">
+                                No more traces need a human score. Either you&apos;re done, or the models unionised.
+                              </p>
+                              <Button color="secondary" size="sm" onClick={stopScoring}>
+                                Close activity
+                              </Button>
+                            </div>
+                          )}
+                        </CardBody>
+                      </Card>
                     )}
                   </Col>
                 </Row>

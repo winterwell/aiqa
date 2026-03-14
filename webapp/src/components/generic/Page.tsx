@@ -82,6 +82,8 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEdit
 }; // end: ItemInfo
 
 interface PageProps {
+  /** Whether to use fluid container */
+  fluid?: boolean;
   /** This is placed within an h1 tag */
   header: React.ReactNode;
   back?: string | React.ReactNode; // URL string or custom ReactNode
@@ -95,7 +97,7 @@ interface PageProps {
   showEditorFor?: string[]; // Optional list of properties to show editor for
 }
 
-const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, onDelete, onUpdate, children, showEditorFor }) => {
+const Page: React.FC<PageProps> = ({ fluid, header, back, backLabel, item, itemType, onDelete, onUpdate, children, showEditorFor }) => {
   const { showToast } = useToast();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -137,7 +139,7 @@ const Page: React.FC<PageProps> = ({ header, back, backLabel, item, itemType, on
   // }
 
   return (
-    <Container className="page">
+    <Container className="page" fluid={fluid}>
       <Row>
         <Col>
           {renderBackLink()}

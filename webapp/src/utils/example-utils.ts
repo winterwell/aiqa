@@ -28,6 +28,7 @@ export function getExampleTraceId(example: Example): string | null {
  * Priority: example.input > (if single span) span.attributes.input > example.spans
  */
 export function getExampleInput(example: Example): any {
+  if ( !example) return;
   if (example.input !== undefined && example.input !== null) {
     return example.input;
   }

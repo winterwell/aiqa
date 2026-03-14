@@ -147,7 +147,7 @@ const DatasetDetailsPage: React.FC = () => {
               </span>
             );
           },
-          minWidth: 150,
+          style: { minWidth: 150 },
         })), // end example specific metrics
         {
           id: 'created',

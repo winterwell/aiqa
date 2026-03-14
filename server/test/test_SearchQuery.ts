@@ -12,16 +12,16 @@ tap.test('searchQueryToSqlWhereClause - simple OR', t => {
 tap.test('searchQueryToSqlWhereClause - complex OR AND', t => {
   const sq = new SearchQuery('(apples OR oranges) AND (bananas OR pears)');
   const sql = searchQueryToSqlWhereClause(sq);
-  // Parser flattens parens, so this is AND of four terms
-  t.equal(sql, "(name ILIKE '%apples%' AND name ILIKE '%oranges%' AND name ILIKE '%bananas%' AND name ILIKE '%pears%')", 'should convert to SQL');
+  // Parser respects parentheses: (A OR B) AND (C OR D)
+  t.equal(sql, "((name ILIKE '%apples%' OR name ILIKE '%oranges%') AND (name ILIKE '%bananas%' OR name ILIKE '%pears%'))", 'should convert to SQL');
   t.end();
 });
 
 tap.test('searchQueryToSqlWhereClause - complex OR AND with props', t => {
   const sq = new SearchQuery('lang:en (fruit:apple OR fruit:orange)');
   const sql = searchQueryToSqlWhereClause(sq);
-  // Parser treats as OR of three key:value terms
-  t.equal(sql, "(lang = 'en' OR fruit = 'apple' OR fruit = 'orange')", 'should convert KVs to SQL');
+  // Parser: lang:en AND (fruit:apple OR fruit:orange)
+  t.equal(sql, "(lang = 'en' AND (fruit = 'apple' OR fruit = 'orange'))", 'should convert KVs to SQL');
   t.end();
 });
 
@@ -343,16 +343,27 @@ tap.test('SearchQuery.parse - parentheses around last field:value in OR query', 
   t.end();
 });
 
+// Collect all values for a key from the tree (recursive; tree may be [op, ...bits] or {key:value})
+function collectPropValues(tree: any, propName: string): string[] {
+  if (tree && typeof tree === 'object' && !Array.isArray(tree) && propName in tree) {
+    return [tree[propName]];
+  }
+  if (Array.isArray(tree)) {
+    return tree.slice(1).flatMap((bit: any) => collectPropValues(bit, propName));
+  }
+  return [];
+}
+
 tap.test('SearchQuery.parse - multiple OR conditions with parentheses (real-world case)', t => {
   const query = '(traceId:871d07301f2ece35baf54e06add78544 OR traceId:7ee52d7bb0be3118970bc399354c92c6 OR traceId:487c9dc63c7f0c49e8b671357ce82c67)';
   const sq = new SearchQuery(query);
   t.ok(sq.tree, 'tree should be parsed');
   t.equal(sq.tree![0], SearchQuery.OR, 'should detect OR operator');
-  const traceIdBits = sq.tree!.filter(bit => typeof bit === 'object' && 'traceId' in bit);
-  t.equal(traceIdBits.length, 3, 'should parse all three traceId values');
-  t.equal(traceIdBits[0]['traceId'], '871d07301f2ece35baf54e06add78544', 'should parse first traceId');
-  t.equal(traceIdBits[1]['traceId'], '7ee52d7bb0be3118970bc399354c92c6', 'should parse second traceId');
-  t.equal(traceIdBits[2]['traceId'], '487c9dc63c7f0c49e8b671357ce82c67', 'should parse third traceId');
+  const traceIdValues = collectPropValues(sq.tree, 'traceId');
+  t.equal(traceIdValues.length, 3, 'should parse all three traceId values');
+  t.equal(traceIdValues[0], '871d07301f2ece35baf54e06add78544', 'should parse first traceId');
+  t.equal(traceIdValues[1], '7ee52d7bb0be3118970bc399354c92c6', 'should parse second traceId');
+  t.equal(traceIdValues[2], '487c9dc63c7f0c49e8b671357ce82c67', 'should parse third traceId');
   t.end();
 });
 
@@ -467,15 +478,13 @@ tap.test('SearchQuery.parse - value starting with opening parenthesis', t => {
 });
 
 tap.test('SearchQuery.parse - complex real-world query from error log', t => {
-  // This is the actual query from the error log that was failing
+  // This is the actual query from the error log that was failing. Parser now respects (OR) AND term.
   const query = '(traceId:871d07301f2ece35baf54e06add78544 OR traceId:7ee52d7bb0be3118970bc399354c92c6 OR traceId:487c9dc63c7f0c49e8b671357ce82c67 OR traceId:cfc7bd7d8815fd73d8981ff690d4060a OR traceId:285ae64f68e67931ad7b6c1bb66055f5) AND attributes.aiqa.span_type:feedback';
   const sq = new SearchQuery(query);
   t.ok(sq.tree, 'tree should be parsed');
-  // The query should parse without errors
-  const traceIdBits = sq.tree!.filter(bit => typeof bit === 'object' && 'traceId' in bit);
-  t.ok(traceIdBits.length >= 1, 'should parse at least one traceId');
-  const spanTypeBit = sq.tree!.find(bit => typeof bit === 'object' && 'attributes.aiqa.span_type' in bit);
-  t.ok(spanTypeBit, 'should parse attributes.aiqa.span_type field');
+  t.equal(sq.tree![0], SearchQuery.AND, 'top-level is AND');
+  t.ok(SearchQuery.prop(sq, 'traceId'), 'should parse traceId (recursive prop)');
+  t.ok(SearchQuery.prop(sq, 'attributes.aiqa.span_type') === 'feedback', 'should parse attributes.aiqa.span_type');
   t.end();
 });
 
@@ -483,10 +492,8 @@ tap.test('SearchQuery.parse - OR query with AND after parentheses', t => {
   const sq = new SearchQuery('(traceId:1 OR traceId:2) AND parentSpanId:unset');
   t.ok(sq.tree, 'tree should be parsed');
   t.equal(sq.tree![0], SearchQuery.AND, 'should detect AND as top-level operator');
-  const traceIdBits = sq.tree!.filter(bit => typeof bit === 'object' && 'traceId' in bit);
-  t.ok(traceIdBits.length >= 1, 'should parse traceId fields');
-  const parentSpanIdBit = sq.tree!.find(bit => typeof bit === 'object' && 'parentSpanId' in bit);
-  t.ok(parentSpanIdBit, 'should parse parentSpanId field');
+  t.ok(SearchQuery.prop(sq, 'traceId'), 'should parse traceId (nested under OR)');
+  t.equal(SearchQuery.prop(sq, 'parentSpanId'), 'unset', 'should parse parentSpanId field');
   t.end();
 });
 
@@ -504,5 +511,31 @@ tap.test('SearchQuery.setPropInString - set and remove key:value', t => {
   t.equal(SearchQuery.setPropInString('feedback:positive AND parent:unset', 'feedback', null), 'parent:unset', 'should remove key');
   t.equal(SearchQuery.setPropInString('feedback:positive', 'feedback', null), '', 'should return empty when only key removed');
   t.equal(SearchQuery.setPropInString('a AND feedback:positive AND b', 'feedback', null), 'a AND b', 'should remove key from middle');
+  t.end();
+});
+
+// Parsing unit tests: assert tree shape for key cases (DRY: one helper, table of expectations)
+tap.test('SearchQuery parsing - tree shape', t => {
+  const tree = (q: string) => new SearchQuery(q).tree;
+  const AND = SearchQuery.AND;
+  const OR = SearchQuery.OR;
+
+  const cases: Array<[string, any]> = [
+    ['', [AND]],
+    ['x', [AND, 'x']],
+    ['foo:bar', [AND, { foo: 'bar' }]],
+    ['a OR b', [OR, 'a', 'b']],
+    ['a AND b', [AND, 'a', 'b']],
+    ['a b', [AND, 'a', 'b']],
+    ['(a OR b)', [OR, 'a', 'b']],
+    ['(a OR b) AND c', [AND, [OR, 'a', 'b'], 'c']],
+    ['(trace:id1 OR trace:id2) AND parent:unset', [AND, [OR, { trace: 'id1' }, { trace: 'id2' }], { parent: 'unset' }]],
+    ['x:unset', [AND, { x: 'unset' }]],
+    ['k:"v with space"', [AND, { k: 'v with space' }]],
+  ];
+
+  cases.forEach(([query, expected]) => {
+    t.same(tree(query), expected, `parse: "${query}"`);
+  });
   t.end();
 });
