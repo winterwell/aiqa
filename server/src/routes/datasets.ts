@@ -6,6 +6,7 @@ import {
   updateDataset,
   deleteDataset,
 } from '../db/db_sql.js';
+import { getDatasetAtTime } from '../db/db_archive.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import { checkAccessDeveloper, getOrganisationId, parseSearchQuery, send400, send404, validateUuid } from './route_helpers.js';
 
@@ -29,6 +30,20 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
     if (!validateUuid(id, reply)) {
       send400(reply, 'Invalid UUID format');
       return;
+    }
+    const { atTime } = request.query as { atTime?: string };
+    if (atTime) {
+      const atDate = new Date(atTime);
+      if (isNaN(atDate.getTime())) {
+        send400(reply, 'Invalid atTime format (expected ISO 8601)');
+        return;
+      }
+      const archived = await getDatasetAtTime(id, atDate);
+      if (!archived) {
+        send404(reply, 'Dataset archive');
+        return;
+      }
+      return archived;
     }
     const dataset = await getDataset(id);
     if (!dataset) {
