@@ -14,6 +14,7 @@ import SearchQuery from '../common/SearchQuery.js';
 import { scoreMetric } from '../scoring.js';
 import { getSpanStatsFromAttributes } from './server-span-utils.js';
 import { GEN_AI_USAGE_TOTAL_TOKENS, GEN_AI_COST_USD } from '../common/constants_otel.js';
+import { TIME_TO_FIRST_TOKEN_METRIC_ID } from '../common/defaultSystemMetrics.js';
 import { recalculateSummaryResults, updateSummaryResults } from '../experiments/summary.js';
 import { Result } from '../common/types/Experiment.js';
 import Metric from '../common/types/Metric.js';
@@ -254,6 +255,9 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
           }
           if (tokenUsage.cost >= 0) {
             scores[GEN_AI_COST_USD] = tokenUsage.cost;
+          }
+          if (tokenUsage.timeToFirstOutputToken >= 0) {
+            scores[TIME_TO_FIRST_TOKEN_METRIC_ID] = tokenUsage.timeToFirstOutputToken;
           }
 
           // Also mirror metric scores onto the root span as attributes (if not already set)

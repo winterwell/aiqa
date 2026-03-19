@@ -7,6 +7,8 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import compress from '@fastify/compress';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -181,6 +183,27 @@ const start = async () => {
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'X-Organisation-Id'],
     });
+
+    // OpenAPI spec + interactive docs
+    await fastify.register(swagger, {
+      openapi: {
+        info: {
+          title: 'AIQA Server API',
+          version: '1.0.0', // Probably ought to read from version.json - but this is the API version not the code version, so more stable, and they dont need to match.
+          description: 'REST API for AIQA tracing, datasets, experiments, and admin resources.',
+        },
+      },
+    });
+    await fastify.register(swaggerUi, {
+      routePrefix: '/docs',
+      staticCSP: true,
+      transformSpecification: (swaggerObject) => swaggerObject,
+      transformSpecificationClone: true,
+      uiConfig: {
+        docExpansion: 'list',
+        deepLinking: true,
+      },
+    });
     
     // Register experiment routes
     await registerExperimentRoutes(fastify);
@@ -210,6 +233,15 @@ const start = async () => {
     await registerModelRoutes(fastify);
     
     await registerMiscRoutes(fastify);
+
+    fastify.get('/openapi.json', async () => {
+      return fastify.swagger();
+    });
+
+    // Build and expose the OpenAPI JSON after all routes are registered
+    fastify.ready(() => {
+      fastify.swagger();
+    });
 
     const port = parseInt(process.env.PORT || '4318');
     // Bind to 0.0.0.0 to allow external connections (not just localhost)

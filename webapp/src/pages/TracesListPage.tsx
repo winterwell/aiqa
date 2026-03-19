@@ -100,7 +100,9 @@ const TracesListPage: React.FC = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<Span[]>([]);
-  
+  /** Spans currently matching table filters (or all spans when no filter). Set by table's onFilteredRowsChange. */
+  const [filteredSpansForDashboard, setFilteredSpansForDashboard] = useState<Span[] | null>(null);
+
   // Account usage (for rate limit hit banner)
   const { data: usage } = useQuery({
     queryKey: ['organisationAccountUsage', organisationId],
@@ -370,6 +372,23 @@ const TracesListPage: React.FC = () => {
         enableColumnFilter: false,
       },
       {
+        id: 'timeToFirstToken',
+        header: 'Time to First Token',
+        accessorFn: (row) => {
+          return row.stats?.timeToFirstOutputToken;
+        },
+        cell: ({ row }) => {
+          const timeToFirst = row.original.stats?.timeToFirstOutputToken;
+          if (typeof timeToFirst !== 'number') return <span>N/A</span>;
+          return <span>{durationString(1000*timeToFirst)}</span>;
+        },
+        csvValue: (row) => {
+          return durationString(1000*row.original.stats?.timeToFirstOutputToken);
+        },
+        enableSorting: true,
+        enableColumnFilter: false,
+      },
+      {
         id: 'totalTokens',
         header: 'Tokens',
         accessorFn: (row) => {
@@ -387,7 +406,6 @@ const TracesListPage: React.FC = () => {
         id: 'cost',
         header: 'Cost (USD)',
         accessorFn: (span) => {
-          console.log('stats', JSON.stringify(span.stats), span.id);
           const cost = span.stats?.cost;
           return cost !== null ? cost : null;
         },
@@ -616,6 +634,11 @@ const TracesListPage: React.FC = () => {
     setSearchInput(searchQuery);
   }, [searchQuery]);
 
+  // Reset dashboard to "all spans" when date/search changes so it stays in sync after refetch
+  useEffect(() => {
+    setFilteredSpansForDashboard(null);
+  }, [organisationId, searchQuery, dateFilterType, sinceParam, untilParam]);
+
   return (
     <Page header="Traces">
       {hasRateLimitHits && (
@@ -694,7 +717,10 @@ const TracesListPage: React.FC = () => {
       {enrichedSpans.size > 0 && (
         <Row className="mt-3">
           <Col>
-            <TracesListDashboard spans={Array.from(enrichedSpans.values())} feedbackMap={feedbackMap} />
+            <TracesListDashboard
+              spans={filteredSpansForDashboard ?? Array.from(enrichedSpans.values())}
+              feedbackMap={feedbackMap}
+            />
           </Col>
         </Row>
       )}
@@ -704,12 +730,13 @@ const TracesListPage: React.FC = () => {
           <TableUsingAPI
             loadData={loadData}
             showSearch={false}
-			refetchInterval={30000} // 30 seconds
+            refetchInterval={30000} // 30 seconds
             columns={columns}
             pageSize={50}
             enableInMemoryFiltering={true}
             initialSorting={[{ id: 'start', desc: true }]}
             queryKeyPrefix={['traces', organisationId, searchQuery, dateFilterType, sinceParam, untilParam]}
+            onFilteredRowsChange={setFilteredSpansForDashboard}
             getRowId={(span) => {
               // Use trace as the stable row ID, fallback to span ID if no trace
               const traceId = getTraceId(span);

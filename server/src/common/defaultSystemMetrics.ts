@@ -6,6 +6,7 @@ import { SpanStats } from './types/Span.js';
 export const COST_METRIC_ID = 'cost';
 export const TOTAL_TOKENS_METRIC_ID = 'totalTokens';
 export const DURATION_METRIC_ID = 'duration';
+export const TIME_TO_FIRST_TOKEN_METRIC_ID = 'timeToFirstOutputToken';
 export const ERRORS_METRIC_ID = 'errors';
 export const SPECIFIC_METRIC_ID = 'specific';
 /** Number of spances in the trace (minus 1 for the root span - which is typically RunExample and we dont want to count it) */
@@ -43,6 +44,14 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
     name: 'Token Cost',
     description: 'Total cost of tokens used',
     unit: 'USD',
+    type: 'system',
+  },
+  {
+    /** matches SpanStats.timeToFirstOutputToken */
+    id: TIME_TO_FIRST_TOKEN_METRIC_ID,
+    name: 'Time to First Token',
+    description: 'Time to first output token seen by the user',
+    unit: 's',
     type: 'system',
   },
   {

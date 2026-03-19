@@ -5,6 +5,7 @@ import {
 	DURATION_METRIC_ID,
 	TOTAL_TOKENS_METRIC_ID,
 	COST_METRIC_ID,
+	TIME_TO_FIRST_TOKEN_METRIC_ID,
 	SPAN_COUNT_METRIC_ID,
 } from "../common/defaultSystemMetrics";
 
@@ -156,6 +157,8 @@ export function getSpanMetricValue(span: Span, metric: Metric): number | null {
 			return stats.totalTokens ?? null;
 		case COST_METRIC_ID:
 			return stats.cost ?? null;
+		case TIME_TO_FIRST_TOKEN_METRIC_ID:
+			return stats.timeToFirstOutputToken ?? null;
 		case SPAN_COUNT_METRIC_ID:
 			// Total span count = descendants + self
 			const d = stats.descendants;

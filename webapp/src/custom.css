@@ -19,3 +19,13 @@
   min-height: auto;
 }
 
+/* Project-specific breakpoint beyond Bootstrap's xxl (>=1400px).
+   This enables denser dashboard card layouts on very wide screens. */
+@media (min-width: 1800px) {
+  .col-xxxl-12 { flex: 0 0 auto; width: 100%; }
+  .col-xxxl-6 { flex: 0 0 auto; width: 50%; }
+  .col-xxxl-4 { flex: 0 0 auto; width: 33.33333333%; }
+  .col-xxxl-3 { flex: 0 0 auto; width: 25%; }
+  .col-xxxl-2 { flex: 0 0 auto; width: 16.66666667%; }
+}
+

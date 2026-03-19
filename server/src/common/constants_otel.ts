@@ -15,6 +15,9 @@ export const GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = 'gen_ai.usage.cache_read.inp
 export const GEN_AI_COST_USD = 'gen_ai.cost.usd';
 export const GEN_AI_COST_CALCULATOR = 'gen_ai.costcalculator';
 
+// Server-side generation timing (seconds)
+export const GEN_AI_SERVER_TIME_TO_FIRST_OUTPUT_TOKEN = 'gen_ai.server.time_to_first_output_token';
+
 // Provider and model attributes
 export const GEN_AI_PROVIDER_NAME = 'gen_ai.provider.name';
 export const GEN_AI_REQUEST_MODEL = 'gen_ai.request.model';

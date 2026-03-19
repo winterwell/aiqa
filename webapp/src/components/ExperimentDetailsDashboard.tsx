@@ -122,10 +122,10 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	}
 
 	return (
-		<DashboardStrip>
+		<DashboardStrip className="mt-3 g-3" layout="dense">
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
 				<MetricDataCard
-					key={metric.name}
+					key={metric.id || metric.name}
 					metric={metric}
 					histogram={histogram}
 					min={min}

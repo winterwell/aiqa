@@ -122,6 +122,11 @@ export interface TableUsingAPIProps<T> {
    * Should return a stable identifier for each row.
    */
   getRowId?: (row: T) => string;
+  /**
+   * Callback fired when the filtered (and sorted) row set changes. Use to sync dashboard or other UI
+   * with the rows currently matching column filters and global search. Only used when enableInMemoryFiltering is true.
+   */
+  onFilteredRowsChange?: (rows: T[]) => void;
 }
 
 function TableUsingAPI<T extends Record<string, any>>({
@@ -142,6 +147,7 @@ function TableUsingAPI<T extends Record<string, any>>({
   bulkActionsToolbar,
   getRowId,
   onDataLoaded,
+  onFilteredRowsChange,
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -370,6 +376,14 @@ function TableUsingAPI<T extends Record<string, any>>({
       onSelectionChange(selectedRowIds, selectedRows);
     }
   }, [rowSelection, enableRowSelection, onSelectionChange, table]);
+
+  // Notify parent when filtered (and sorted) rows change, so dashboard can show stats for visible rows only
+  useEffect(() => {
+    if (enableInMemoryFiltering && onFilteredRowsChange) {
+      const rows = table.getRowModel().rows.map(r => r.original);
+      onFilteredRowsChange(rows);
+    }
+  }, [hits, columnFilters, globalFilter, sorting, enableInMemoryFiltering, onFilteredRowsChange, table]);
 
   // Get all rows from table
   const allRows = table.getRowModel().rows;

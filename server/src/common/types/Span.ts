@@ -17,6 +17,12 @@ export interface SpanStats {
   totalTokens?: number;
   /** USD */
   cost?: number;
+  /**
+   * Time to first output token in seconds.
+   * This is derived from `gen_ai.server.time_to_first_output_token` and propagated up the span tree
+   * so ancestor spans can expose the outermost agent-call value.
+   */
+  timeToFirstOutputToken?: number;
   /** sum(child error counts) || 1 if this span has an error status 
    * This is an estimate at distinct errors, where we assume that errors normally get passed up the tree in code.
   */

@@ -13,7 +13,7 @@ import Spinner from '../components/generic/Spinner';
 import type { ExtendedColumnDef } from '../components/generic/TableUsingAPI';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { getMetricValue, getMetrics } from '../utils/metric-utils';
-import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
+import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TIME_TO_FIRST_TOKEN_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
 import LinkId from '../components/LinkId';
 import HelpText from '../components/generic/HelpText';
 import Tags from 'src/components/generic/Tags';
@@ -65,16 +65,25 @@ const ExperimentDetailsPage: React.FC = () => {
     },
   });
 
+  const exampleIds = useMemo(() => {
+    return (experiment?.results ?? []).map((result: any) => result.example).filter(Boolean) as string[];
+  }, [experiment?.results]);
+
+  const examplesQueryKey = useMemo(() => {
+    // react-query needs the key to change once `experiment` is loaded,
+    // otherwise we can get stuck with an early "empty" fetch result.
+    return ['examples-by-id', organisationId, datasetId, ...exampleIds] as const;
+  }, [organisationId, datasetId, exampleIds]);
+
   const { data: examples } = useQuery({
-    queryKey: ['examples', organisationId, experimentId],
+    queryKey: examplesQueryKey,
     queryFn: async () => {
       // what example IDs do we reference?
-      const exampleIds = experiment?.results?.map((result: any) => result.example) || [];
       if (exampleIds.length === 0) return { hits: [] };
       const result = await searchExamples({
         organisationId: organisationId!,
         datasetId: datasetId!,
-        query: `id:${exampleIds.join(' OR id:')}}`,
+        query: `id:${exampleIds.join(' OR id:')}`,
         limit: 1000,
         offset: 0,
       });
@@ -84,7 +93,8 @@ const ExperimentDetailsPage: React.FC = () => {
         e4id[example.id] = example;
       }
       return e4id;
-    }
+    },
+    enabled: Boolean(organisationId) && Boolean(datasetId) && exampleIds.length > 0,
   });
 
   // console.log('examples', examples);
@@ -140,7 +150,6 @@ const ExperimentDetailsPage: React.FC = () => {
         header: 'Input',
         style: notTooBigStyle,
         accessorFn: (row: Result) => {
-          console.log('Input for row?', row);
           const example = examples?.[row.example];
           return getTruncatedDisplayString(getExampleInput(example), TRACE_OUTPUT_MAX_LEN);
         },
@@ -179,6 +188,20 @@ const ExperimentDetailsPage: React.FC = () => {
         header: 'Tokens',
         accessorFn: (row: Result) => {
           return prettyNumber(row.scores?.[TOTAL_TOKENS_METRIC_ID]);
+        }
+      },
+      {
+        header: 'Time to First Token',
+        accessorFn: (row: Result) => {
+          return row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
+        },
+        cell: ({ row }: any) => {
+          const timeToFirst = row.original.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
+          if (typeof timeToFirst !== 'number') return <span>—</span>;
+          return <span>{durationString(1000*timeToFirst)}</span>;
+        },
+        csvValue: (row: Result) => {
+          return durationString(1000*row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID]);
         }
       },
       {

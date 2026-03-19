@@ -2,18 +2,20 @@ import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Row, Col, Card, CardBody, CardHeader, Badge, Button, Input } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { getExample, updateExample, getDataset, deleteExample } from '../api';
+import { getExample, updateExample, getDataset, deleteExample, listExperiments, getExperiment } from '../api';
 import { useToast } from '../utils/toast';
 import type { Example, Span } from '../common/types';
 import type Dataset from '../common/types/Dataset';
 import Metric from '../common/types/Metric';
+import type Experiment from '../common/types/Experiment';
+import type { Result as ExperimentResult } from '../common/types/Experiment';
 import JsonObjectViewer from '../components/generic/JsonObjectViewer';
 import TextWithStructureViewer from '../components/generic/TextWithStructureViewer';
 import Tags from '../components/generic/Tags';
 import MetricModal, { addOrEditMetric, deleteMetric } from '../components/MetricModal';
 import Page from '../components/generic/Page';
 import { getStartTime, formatMetricValue, getSpanMetricValue } from '../utils/span-utils';
-import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC_ID } from '../common/defaultSystemMetrics';
+import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC, SPECIFIC_METRIC_ID } from '../common/defaultSystemMetrics';
 import { getMetrics } from '../utils/metric-utils';
 import { searchSpans } from '../api';
 import { asArray } from '../common/utils/miscutils';
@@ -278,12 +280,77 @@ function OutputsCard({ example, dataset }: { example: Example; dataset: Dataset 
   });
 
   const spans = spansResult?.hits || [];
+
+  const { data: recentExperimentsWithResults } = useQuery({
+    queryKey: ['example-recent-experiments', organisationId, example.dataset],
+    queryFn: async () => {
+      if (!organisationId || !example.dataset) return [] as Experiment[];
+      // Query language is "Gmail-style"; dataset:<id> is supported elsewhere in the app.
+      const list = await listExperiments(organisationId, `dataset:${example.dataset}`);
+      const experiments = Array.isArray(list) ? (list as Experiment[]) : [];
+      const sorted = [...experiments].sort((a, b) => {
+        const ta = new Date((a as any).created).getTime() || 0;
+        const tb = new Date((b as any).created).getTime() || 0;
+        return tb - ta;
+      });
+      // Keep this small to avoid N+1 pain; we only need "most recent experiments".
+      const top = sorted.slice(0, 5);
+      const full = await Promise.all(
+        top.map(async (e) => {
+          try {
+            return await getExperiment(e.id);
+          } catch (err) {
+            console.warn('Failed to load experiment details', e?.id, err);
+            return null;
+          }
+        })
+      );
+      return full.filter(Boolean) as Experiment[];
+    },
+    enabled: !!organisationId && !!example?.dataset,
+    staleTime: 30_000,
+  });
+
+  const findMostRecentExperimentResultForTrace = (traceId: string | undefined | null) => {
+    const exps = Array.isArray(recentExperimentsWithResults) ? recentExperimentsWithResults : [];
+    for (const exp of exps) {
+      const results = Array.isArray(exp.results) ? exp.results : [];
+      const r = traceId ? results.find((x) => x?.trace === traceId) : undefined;
+      if (r) return { experiment: exp, result: r };
+    }
+    // Fallback: if results don't have trace IDs, still show the most recent score for this example.
+    for (const exp of exps) {
+      const results = Array.isArray(exp.results) ? exp.results : [];
+      const r = results.find((x) => x?.example === example.id);
+      if (r) return { experiment: exp, result: r };
+    }
+    return null;
+  };
+
   // All dataset metrics (system + custom), excluding example-specific which is not per-span.
   // When no dataset, fall back to system metrics so we still show duration, tokens, cost, spans.
   const datasetMetrics = useMemo(() => {
     const all = dataset ? getMetrics(dataset) : DEFAULT_SYSTEM_METRICS;
     return all.filter((m) => (m.id || m.name) !== SPECIFIC_METRIC_ID);
   }, [dataset]);
+
+  // Metrics that are scored by experiments (custom + specific). We display these with optional messages.
+  const experimentScoredMetrics = useMemo(() => {
+    const all = dataset ? getMetrics(dataset) : [];
+    const nonSystem = all.filter((m) => m.type !== 'system');
+    const hasSpecific = nonSystem.some((m) => (m.id || m.name) === SPECIFIC_METRIC_ID);
+    return hasSpecific ? nonSystem : [...nonSystem, SPECIFIC_METRIC];
+  }, [dataset]);
+
+  const formatExperimentScore = (metric: Metric, value: number | null | undefined) => {
+    if (value === null || value === undefined) return '—';
+    const id = metric.id || metric.name;
+    if (id === SPECIFIC_METRIC_ID) {
+      // Historically rendered as percentage elsewhere in the app.
+      return (100 * value).toFixed(1) + '%';
+    }
+    return formatMetricValue(metric, value);
+  };
 
   // Sort by start time (most recent first) and take last 5
   const sortedSpans = [...spans]
@@ -314,6 +381,7 @@ function OutputsCard({ example, dataset }: { example: Example; dataset: Dataset 
               const spanAny = span as any;
               const output = spanAny.attributes?.output;
               const startTime = getStartTime(span);
+              const expMatch = findMostRecentExperimentResultForTrace(span.trace);
 
               return (
                 <Card key={index} className="mb-3">
@@ -348,6 +416,59 @@ function OutputsCard({ example, dataset }: { example: Example; dataset: Dataset 
                         );
                       })}
                     </div>
+
+                    {experimentScoredMetrics.length > 0 && (
+                      <div className="mt-3">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <small className="text-muted">
+                            <strong>Experiment scores</strong>
+                          </small>
+                          {expMatch ? (
+                            <small className="text-muted text-nowrap" title={expMatch.experiment.id}>
+                              {expMatch.experiment.name ? `${expMatch.experiment.name} • ` : ''}
+                              {expMatch.experiment.created ? new Date((expMatch.experiment as any).created).toLocaleString() : ''}
+                            </small>
+                          ) : (
+                            <small className="text-muted">No matching experiment result for this trace.</small>
+                          )}
+                        </div>
+                        <div className="d-flex gap-2 flex-wrap">
+                          {experimentScoredMetrics.map((metric) => {
+                            const id = metric.id || metric.name || 'unknown';
+                            const score = expMatch?.result?.scores?.[id];
+                            const message = expMatch?.result?.messages?.[id];
+                            const display = formatExperimentScore(metric, score);
+                            return (
+                              <Badge
+                                key={id}
+                                color={score != null ? 'primary' : 'secondary'}
+                                className="text-nowrap"
+                                title={message || undefined}
+                              >
+                                {metric.name || metric.id}: {display}
+                                {message ? ' ⓘ' : ''}
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                        {expMatch && (
+                          <div className="mt-2">
+                            {experimentScoredMetrics
+                              .map((m) => m.id || m.name)
+                              .filter(Boolean)
+                              .map((id) => {
+                                const message = id ? expMatch.result.messages?.[id] : undefined;
+                                if (!message) return null;
+                                return (
+                                  <div key={id} className="small text-muted mb-1">
+                                    <strong>{id}:</strong> {message}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </CardBody>
                 </Card>
               );

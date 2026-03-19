@@ -448,6 +448,7 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 	const tokenCount = span.stats?.totalTokens || 0;
 	const descendants = span.stats?.descendants || 0;
 	const cost = span.stats?.cost || 0;
+	const timeToFirstOutputTokenSeconds = span.stats?.timeToFirstOutputToken ?? null;
 	const { showToast } = useToast();
 	const queryClient = useQueryClient();
 	const [selectedDatasetId, setSelectedDatasetId] = useState<string>('');
@@ -523,6 +524,11 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 				</Col>
 				<Col>
 					<div><strong>Duration:</strong> {durationString(durationMs)}</div>
+					{timeToFirstOutputTokenSeconds !== null && (
+						<div>
+							<strong>Time to first token:</strong> {timeToFirstOutputTokenSeconds.toFixed(2)}s
+						</div>
+					)}
 					{descendants > 0 && <div><strong>Descendants:</strong> {descendants}</div>}
 					{tokenCount !== null && <div><strong>Tokens:</strong> {tokenCount.toLocaleString()}</div>}
 					{cost !== null && <div><strong>Cost:</strong> ${prettyNumber(cost)}</div>}

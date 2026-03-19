@@ -11,7 +11,7 @@ import A from '../components/generic/A';
 import ConfirmDialog from '../components/generic/ConfirmDialog';
 import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { TrashIcon } from '@phosphor-icons/react';
-import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID, DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
+import { COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID, DURATION_METRIC_ID, SPECIFIC_METRIC_ID, TIME_TO_FIRST_TOKEN_METRIC_ID, DEFAULT_SYSTEM_METRICS } from '../common/defaultSystemMetrics';
 import Page from '../components/generic/Page';
 
 function getMetricMean(exp: Experiment, metricId: string): number | null {
@@ -80,7 +80,7 @@ const ExperimentsListPage: React.FC = () => {
   }, [datasets, experimentsForDashboard]);
 
   const metricColumns = useMemo(() => {
-    const priorityIds = [DURATION_METRIC_ID, COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID];
+    const priorityIds = [DURATION_METRIC_ID, TIME_TO_FIRST_TOKEN_METRIC_ID, COST_METRIC_ID, TOTAL_TOKENS_METRIC_ID];
     const priority: Metric[] = [];
     const rest: Metric[] = [];
     const allMetrics = Object.values(metricsById);
@@ -98,6 +98,7 @@ const ExperimentsListPage: React.FC = () => {
       const isDuration = metric.id === DURATION_METRIC_ID;
       const isCost = metric.id === COST_METRIC_ID;
       const isTokens = metric.id === TOTAL_TOKENS_METRIC_ID;
+      const isTimeToFirstToken = metric.id === TIME_TO_FIRST_TOKEN_METRIC_ID;
       const isSpecific = metric.id === SPECIFIC_METRIC_ID;
       // make a column
       return {
@@ -108,6 +109,7 @@ const ExperimentsListPage: React.FC = () => {
           const v = getMetricMean(row.original, metric.id);
           if (v == null) return '-';
           if (isDuration) return durationString(v);
+          if (isTimeToFirstToken) return `${v.toFixed(2)}s`;
           if (isCost) return formatCost(v);
           if (isTokens) return prettyNumber(v);
           if (isSpecific) return (100 * v).toFixed(1);

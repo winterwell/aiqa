@@ -8,6 +8,7 @@ import {
   GEN_AI_USAGE_TOTAL_TOKENS,
   GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
   GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+  GEN_AI_SERVER_TIME_TO_FIRST_OUTPUT_TOKEN,
   GEN_AI_COST_USD,
 } from '../common/constants_otel.js';
 
@@ -75,6 +76,7 @@ export function getSpanStatsFromAttributes(span: Span): SpanStats {
     cacheCreationTokens: toNumber(attrs[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS]),
     totalTokens: toNumber(attrs[GEN_AI_USAGE_TOTAL_TOKENS]),
     cost: toNumber(attrs[GEN_AI_COST_USD]),
+    timeToFirstOutputToken: toNumber(attrs[GEN_AI_SERVER_TIME_TO_FIRST_OUTPUT_TOKEN]),
     errors,
     // descendants are not included in attributes. We create that for non-leaf spans.
   };
@@ -269,6 +271,8 @@ interface ProcessSpanResult {
   stats: SpanStats;
   /** Max of span.end and all descendants' end (epoch ms). Used to compute trace duration when children end after parent. */
   treeEnd: number;
+  /** Effective first output token epoch ms for this subtree (absolute time). */
+  treeFirstTokenEpochMs?: number;
 }
 
 /**
@@ -283,12 +287,20 @@ const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpan
   if (processedSpans.has(spanId)) { // paranoia against a malicious user creating a cycle
     console.warn(`propagateTokenCostsToRootSpan: span ${spanId} processed multiple times, possible cycle or duplicate`);
     const ownStats = getSpanStatsFromAttributes(span);
+    const ownTimeToFirstSeconds = ownStats.timeToFirstOutputToken;
+    const ownFirstTokenEpochMs = (ownTimeToFirstSeconds !== undefined && ownTimeToFirstSeconds !== null && isFinite(ownTimeToFirstSeconds))
+      ? span.start + ownTimeToFirstSeconds * 1000
+      : undefined;
     const end = typeof span.end === 'number' ? span.end : 0;
-    return { stats: ownStats, treeEnd: end };
+    return { stats: ownStats, treeEnd: end, treeFirstTokenEpochMs: ownFirstTokenEpochMs };
   }
   processedSpans.add(spanId);
 console.log(`processSpan: span ${spanId} ...`);
   const ownStats = getSpanStatsFromAttributes(span);
+  const ownTimeToFirstSeconds = ownStats.timeToFirstOutputToken;
+  const ownFirstTokenEpochMs = (ownTimeToFirstSeconds !== undefined && ownTimeToFirstSeconds !== null && isFinite(ownTimeToFirstSeconds))
+    ? span.start + ownTimeToFirstSeconds * 1000
+    : undefined;
   const childStatsMap = span._childStats || (span._childStats = {});
 
   const children = childrenMap.get(spanId) || [];
@@ -296,6 +308,9 @@ console.log(`processSpan: span ${spanId} ...`);
 
   // Latest end in subtree (self + descendants). Handles async SDKs where child ends after parent.
   let treeEnd = typeof span.end === 'number' ? span.end : 0;
+  // Effective first output token for this subtree.
+  // Precedence rule: if this span has its own `time_to_first_output_token`, it wins over descendants.
+  let treeFirstTokenEpochMs: number | undefined = ownFirstTokenEpochMs;
   for (const child of children) {
     const childResult = processSpan(child, childrenMap, processedSpans, modifiedSpans);
     const childId = getSpanId(child);
@@ -306,6 +321,11 @@ console.log(`processSpan: span ${spanId} ...`);
     if (childResult) {
       childStatsMap[childId] = childResult.stats;
       if (childResult.treeEnd > treeEnd) treeEnd = childResult.treeEnd;
+      if (ownFirstTokenEpochMs === undefined && childResult.treeFirstTokenEpochMs !== undefined) {
+        treeFirstTokenEpochMs = treeFirstTokenEpochMs === undefined
+          ? childResult.treeFirstTokenEpochMs
+          : Math.min(treeFirstTokenEpochMs, childResult.treeFirstTokenEpochMs);
+      }
     }
   }
   // sum over children
@@ -328,6 +348,14 @@ console.log(`processSpan: span ${spanId} ...`);
     ? treeEnd - span.start
     : (span.stats?.duration ?? (spanEnd && span.start ? spanEnd - span.start : undefined));
 
+  // Store time-to-first-output-token relative to this span start.
+  if (treeFirstTokenEpochMs !== undefined && isFinite(treeFirstTokenEpochMs)) {
+    const deltaMs = treeFirstTokenEpochMs - span.start;
+    if (deltaMs >= 0) {
+      totalUsage.timeToFirstOutputToken = deltaMs / 1000;
+    }
+  }
+
   // modified?
   // Note: counts can only ever increase, so if totals match, then the child stats match too
   if (!isEqual(span.stats, totalUsage)) {
@@ -337,7 +365,7 @@ console.log(`processSpan: span ${spanId} ...`);
   } else {
     console.log(`No change for: span ${spanId} stats match, skipping update totalUsage: ${JSON.stringify(totalUsage)}`);
   }
-  return { stats: totalUsage, treeEnd };
+  return { stats: totalUsage, treeEnd, treeFirstTokenEpochMs };
 }; // end of processSpan()
 
 
@@ -354,6 +382,7 @@ function isEqual(a: SpanStats, b: SpanStats): boolean {
     a.cacheCreationTokens === b.cacheCreationTokens &&
     a.totalTokens === b.totalTokens &&
     a.cost === b.cost &&
+    a.timeToFirstOutputToken === b.timeToFirstOutputToken &&
     a.errors === b.errors &&
     a.descendants === b.descendants &&
     a.duration === b.duration;
