@@ -17,6 +17,7 @@ import DatasetDetailsPage from './DatasetDetailsPage';
 import ExampleDetailsPage from './ExampleDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
+import ExperimentComparePage from './ExperimentComparePage';
 import ApiKeyPage from './ApiKeyPage';
 import LLMKeysPage from './LLMKeysPage';
 import CodeSetupPage from './CodeSetupPage';
@@ -229,6 +230,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <ExperimentDetailsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/experiment/compare/:experimentAId/v/:experimentBId"
+        element={
+          <ProtectedRoute>
+            <ExperimentComparePage />
           </ProtectedRoute>
         }
       />

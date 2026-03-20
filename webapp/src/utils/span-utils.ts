@@ -20,23 +20,28 @@ function getDurationUnits(durationMs: number): 'ms' | 's' | 'm' | 'h' | 'd' {
 export { getDurationUnits };
 
 
-
-export function durationString(durationMs: number | null | undefined, units: 'ms' | 's' | 'm' | 'h' | 'd' | null = null): string {
+/**
+ * 
+ * @param durationMs MUST be in milliseconds
+ * @param outputUnits 
+ * @returns 
+ */
+export function durationString(durationMs: number | null | undefined, outputUnits: 'ms' | 's' | 'm' | 'h' | 'd' | null = null): string {
 	if (durationMs === null || durationMs === undefined) return '';
 	// if units is unset, pick the most appropriate unit
-	if (units === null) {
-		units = getDurationUnits(durationMs);
+	if (outputUnits === null) {
+		outputUnits = getDurationUnits(durationMs);
 	}
 	// switch by unit
-	if (units === 'ms') return `${Math.round(durationMs)}ms`;
-	if (units === 's') return `${(durationMs / 1000).toFixed(2)}s`;
-	if (units === 'm') {
+	if (outputUnits === 'ms') return `${Math.round(durationMs)}ms`;
+	if (outputUnits === 's') return `${(durationMs / 1000).toFixed(2)}s`;
+	if (outputUnits === 'm') {
 		const minutes = Math.floor(durationMs / 60000);
 		const seconds = ((durationMs % 60000) / 1000).toFixed(0);
 		return `${minutes}m ${seconds}s`;
 	}
-	if (units === 'h') return `${Math.round(durationMs / 3600000)}h`;
-	if (units === 'd') return `${Math.round(durationMs / 86400000)}d`;
+	if (outputUnits === 'h') return `${Math.round(durationMs / 3600000)}h`;
+	if (outputUnits === 'd') return `${Math.round(durationMs / 86400000)}d`;
 	return '';
 }
 

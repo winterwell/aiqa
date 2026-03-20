@@ -10,6 +10,7 @@ import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
 import { formatMetricValue } from '../utils/span-utils';
+import CopyButton from './generic/CopyButton';
 
 type MetricDataResult = {
 	metric: Metric;
@@ -18,6 +19,7 @@ type MetricDataResult = {
 	min: number;
 	max: number;
 	mean: number;
+	stdDev: number;
 	count: number;
 	unmeasuredCount: number;
 };
@@ -38,12 +40,15 @@ function processMetricData(metrics: Metric[], experiment: Experiment): MetricDat
 		let min = 0;
 		let max = 0;
 		let mean = 0;
+		let stdDev = 0;
 		let histogram: HistogramDataPoint[] = [];
 		
 		if (values.length > 0) {
 			min = Math.min(...values);
 			max = Math.max(...values);
 			mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+			const variance = values.reduce((sum, val) => sum + (val - mean) ** 2, 0) / values.length;
+			stdDev = Math.sqrt(variance);
 			histogram = createHistogram(values);
 		}
 		
@@ -54,6 +59,7 @@ function processMetricData(metrics: Metric[], experiment: Experiment): MetricDat
 			min,
 			max,
 			mean,
+			stdDev,
 			count,
 			unmeasuredCount,
 		};
@@ -123,6 +129,7 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 
 	return (
 		<DashboardStrip className="mt-3 g-3" layout="dense">
+			<OverviewStatisticsCard metricsWithData={metricsWithData} />
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
 				<MetricDataCard
 					key={metric.id || metric.name}
@@ -137,6 +144,48 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 				/>
 			))}
 		</DashboardStrip>
+	);
+}
+
+function OverviewStatisticsCard({ metricsWithData }: { metricsWithData: MetricDataResult[] }) {
+	const overviewStatsAsTsv = () => {
+		const header = ['Metric', 'Mean', 'Std-dev'].join('\t');
+		const rows = metricsWithData.map(({ metric, mean, stdDev }) => {
+			const metricLabel = metric.name || metric.id || '';
+			return [metricLabel, formatMetricValue(metric, mean), formatMetricValue(metric, stdDev)].join('\t');
+		});
+		return [header, ...rows].join('\n');
+	};
+
+	return (
+		<Card>
+			<CardHeader className="d-flex justify-content-between align-items-center">
+				<h5 className="mb-0">Overview Statistics</h5>
+				<CopyButton content={overviewStatsAsTsv} className="btn btn-outline-secondary btn-sm" />
+			</CardHeader>
+			<CardBody>
+				<div className="table-responsive">
+					<table className="table table-sm mb-0">
+						<thead>
+							<tr>
+								<th scope="col">Metric</th>
+								<th scope="col">Mean</th>
+								<th scope="col">Std-dev</th>
+							</tr>
+						</thead>
+						<tbody>
+							{metricsWithData.map(({ metric, mean, stdDev }) => (
+								<tr key={`overview-${metric.id || metric.name}`}>
+									<td>{metric.name || metric.id}</td>
+									<td>{formatMetricValue(metric, mean)}</td>
+									<td>{formatMetricValue(metric, stdDev)}</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			</CardBody>
+		</Card>
 	);
 }
 

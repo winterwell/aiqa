@@ -218,10 +218,21 @@ const ExperimentsListPage: React.FC = () => {
             enableRowSelection={true}
             onSelectionChange={(_, rows) => setDashboardSelectedExperiments(rows)}
             bulkActionsToolbar={(ids, rows) => (
-              <Button color="danger" size="sm" onClick={() => handleBulkDelete(ids, rows)} title="Delete selected experiments">
-                <TrashIcon size={16} className="me-1" />
-                Delete
-              </Button>
+              <>
+                <Button
+                  color="primary"
+                  size="sm"
+                  disabled={rows.length !== 2}
+                  onClick={() => navigate(`/organisation/${organisationId}/experiment/compare/${rows[0].id}/v/${rows[1].id}`)}
+                  title={rows.length === 2 ? 'Compare selected experiments' : 'Select exactly 2 experiments to compare'}
+                >
+                  Compare
+                </Button>
+                <Button color="danger" size="sm" onClick={() => handleBulkDelete(ids, rows)} title="Delete selected experiments">
+                  <TrashIcon size={16} className="me-1" />
+                  Delete
+                </Button>
+              </>
             )}
           />
           <ConfirmDialog

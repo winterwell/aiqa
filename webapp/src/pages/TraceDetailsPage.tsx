@@ -640,7 +640,7 @@ function OtherAttributes({ span }: { span: Span }) {
 	return (
 	<div style={{ marginTop: '15px', minWidth: 0, maxWidth: '100%' }}>
 					<strong>Other Attributes:</strong>
-					<JsonObjectViewer json={attributes2} depth={0} />
+					<JsonObjectViewer json={attributes2} depth={0} textComponent={TextWithStructureViewer} />
 				</div>
 	);
 }

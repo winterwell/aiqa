@@ -1,12 +1,14 @@
 import React from 'react';
-import { Row, Col, Input } from 'reactstrap';
+import { Row, Col, Input, Button } from 'reactstrap';
 import { Span } from '../common/types';
 import { getSpanId } from '../common/types/Span.js';
-import { getDurationMs, durationString } from '../utils/span-utils';
+import { getDurationMs, durationString, getStartTime } from '../utils/span-utils';
 import ExpandCollapseControl from './generic/ExpandCollapseControl';
 import CopyButton from './generic/CopyButton';
 import { truncate } from '../common/utils/miscutils';
 import ChatMessage from '../common/types/ChatMessage';
+import { ArrowsOutIcon, ArrowsInIcon } from '@phosphor-icons/react';
+
 
 interface SpanTree {
   span: Span;
@@ -177,6 +179,9 @@ function SpanTreeViewer({
   
   if (!shouldShow) return null;
 
+  // sort children by start time ??
+  filteredChildren = filteredChildren.sort((a, b) => a.span.start - b.span.start);
+
   const handleSelect = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -267,11 +272,54 @@ export default function TraceDetailsContent({
   organisationId,
   datasets,
 }: TraceDetailsContentProps) {
+  const getExpandableSpanIds = React.useCallback((tree: SpanTree | null): string[] => {
+    if (!tree) return [];
+    const ids: string[] = [];
+    const visit = (node: SpanTree) => {
+      if (node.children.length > 0) {
+        ids.push(getSpanId(node.span));
+        node.children.forEach(visit);
+      }
+    };
+    visit(tree);
+    return ids;
+  }, []);
+
+  const expandableSpanIds = React.useMemo(() => getExpandableSpanIds(spanTree), [spanTree, getExpandableSpanIds]);
+  const allExpanded = expandableSpanIds.length > 0
+    && expandableSpanIds.every((id) => treeState.expandedSpanIds.has(id));
+
+  const handleExpandCollapseAll = React.useCallback(() => {
+    if (allExpanded) {
+      expandableSpanIds.forEach((id) => {
+        if (treeState.expandedSpanIds.has(id)) {
+          treeState.onToggleExpanded(id);
+        }
+      });
+      return;
+    }
+
+    expandableSpanIds.forEach((id) => {
+      if (!treeState.expandedSpanIds.has(id)) {
+        treeState.onToggleExpanded(id);
+      }
+    });
+  }, [allExpanded, expandableSpanIds, treeState]);
+
   return (
     <>
       <Row>
         <Col md={4} style={{ minWidth: 0, maxHeight: '100vh', overflowY: 'auto' }}>
-          <h3>Span Tree ({spanTree?.span?.stats?.descendants + 1} spans)</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+            <h3>Span Tree ({spanTree?.span?.stats?.descendants + 1} spans)</h3>
+            <div><button className="btn btn-outline-secondary btn-xs" 
+            onClick={handleExpandCollapseAll}
+            disabled={expandableSpanIds.length === 0}
+            title={allExpanded ? 'Collapse all spans' : 'Expand all spans'}>
+              {allExpanded ? <ArrowsInIcon size={16} /> : <ArrowsOutIcon size={16} />}
+            </button>
+            </div>
+          </div>
           <div style={{ marginBottom: '10px' }}>
             <Input
               type="text"
