@@ -12,6 +12,8 @@ interface NameAndDeleteHeaderProps {
   prop?: string;
   /** Called after the name value is set (e.g. to persist). Omit if name is read-only. */
   handleNameChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Shown after the name block, before Delete (e.g. dataset Copy). */
+  extraActions?: React.ReactNode;
   /** When provided, Delete button and confirm modal are shown. Called on confirm; may return a promise. */
   handleDelete?: () => void | Promise<void>;
   /** Label for delete modal title/body, e.g. "Experiment". Defaults to label. */
@@ -24,6 +26,7 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
   item,
   prop = 'name',
   handleNameChange,
+  extraActions,
   handleDelete,
   deleteItemTypeLabel,
 }) => {
@@ -41,10 +44,15 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
             : <span>{item[prop]}</span>
           }
         </span>
-        {handleDelete != null && (
-          <Button color="danger" size="sm" onClick={() => setDeleteModalOpen(true)} className="ms-2">
-            Delete
-          </Button>
+        {(extraActions != null || handleDelete != null) && (
+          <span className="d-flex align-items-center gap-2 ms-2">
+            {extraActions}
+            {handleDelete != null && (
+              <Button color="danger" size="sm" onClick={() => setDeleteModalOpen(true)}>
+                Delete
+              </Button>
+            )}
+          </span>
         )}
       </span>
 

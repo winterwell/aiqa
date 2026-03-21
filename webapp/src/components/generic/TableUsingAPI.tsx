@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -127,6 +127,14 @@ export interface TableUsingAPIProps<T> {
    * with the rows currently matching column filters and global search. Only used when enableInMemoryFiltering is true.
    */
   onFilteredRowsChange?: (rows: T[]) => void;
+  /**
+   * Freeze the first N body rows so they stay visible while scrolling.
+   */
+  freezeRows?: number;
+  /**
+   * Freeze the first N columns so they stay visible while scrolling.
+   */
+  freezeColumns?: number;
 }
 
 function TableUsingAPI<T extends Record<string, any>>({
@@ -148,6 +156,8 @@ function TableUsingAPI<T extends Record<string, any>>({
   getRowId,
   onDataLoaded,
   onFilteredRowsChange,
+  freezeRows = 0,
+  freezeColumns = 0,
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -156,6 +166,11 @@ function TableUsingAPI<T extends Record<string, any>>({
   const [inputValue, setInputValue] = useState('');
   const [serverQuery, setServerQuery] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [frozenColumnLeftOffsets, setFrozenColumnLeftOffsets] = useState<number[]>([]);
+  const [frozenRowTopOffsets, setFrozenRowTopOffsets] = useState<number[]>([]);
+  const tableWrapperRef = useRef<HTMLDivElement>(null);
+  const frozenColumnCount = Math.max(0, Math.floor(freezeColumns));
+  const frozenRowCount = Math.max(0, Math.floor(freezeRows));
   // Load data from server when debounced query changes
   // Use useQuery to cache
   const queryClient = useQueryClient();
@@ -414,6 +429,55 @@ function TableUsingAPI<T extends Record<string, any>>({
     setCurrentPage(0);
   }, [columnFilters]);
 
+  useLayoutEffect(() => {
+    const wrapper = tableWrapperRef.current;
+    if (!wrapper) return;
+    if (frozenColumnCount === 0 && frozenRowCount === 0) {
+      setFrozenColumnLeftOffsets((prev) => (prev.length === 0 ? prev : []));
+      setFrozenRowTopOffsets((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const sameOffsets = (a: number[], b: number[]) => {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    };
+
+    const updateFreezeOffsets = () => {
+      const headerCells = Array.from(wrapper.querySelectorAll('thead tr:first-child th')) as HTMLElement[];
+      const bodyRows = Array.from(wrapper.querySelectorAll('tbody tr')) as HTMLElement[];
+
+      const visibleHeaderCells = headerCells.filter((cell) => cell.offsetParent !== null);
+      const colOffsets: number[] = [];
+      let colLeft = 0;
+      for (let i = 0; i < Math.min(frozenColumnCount, visibleHeaderCells.length); i += 1) {
+        colOffsets.push(colLeft);
+        colLeft += visibleHeaderCells[i].getBoundingClientRect().width;
+      }
+
+      const rowOffsets: number[] = [];
+      let rowTop = 0;
+      for (let i = 0; i < Math.min(frozenRowCount, bodyRows.length); i += 1) {
+        rowOffsets.push(rowTop);
+        rowTop += bodyRows[i].getBoundingClientRect().height;
+      }
+
+      setFrozenColumnLeftOffsets((prev) => (sameOffsets(prev, colOffsets) ? prev : colOffsets));
+      setFrozenRowTopOffsets((prev) => (sameOffsets(prev, rowOffsets) ? prev : rowOffsets));
+    };
+
+    updateFreezeOffsets();
+    const resizeObserver = new ResizeObserver(updateFreezeOffsets);
+    resizeObserver.observe(wrapper);
+    window.addEventListener('resize', updateFreezeOffsets);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateFreezeOffsets);
+    };
+  }, [frozenColumnCount, frozenRowCount, currentPage, totalRows, tableColumns]);
+
   if (isLoading && hits.length === 0) {
     return (
       <Card>
@@ -469,6 +533,10 @@ function TableUsingAPI<T extends Record<string, any>>({
             <p className="text-muted">
               Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, totalRows)} of {totalRows} items
             </p>
+            <div
+              ref={tableWrapperRef}
+              className={`table-scroll-wrap ${(freezeRows > 0 || freezeColumns > 0) ? 'table-scroll-wrap-frozen' : ''}`}
+            >
             <Table hover responsive>
 				<TableHeader 
                   headers={table.getHeaderGroups()} 
@@ -479,6 +547,8 @@ function TableUsingAPI<T extends Record<string, any>>({
                   hasSelectedRows={hasSelectedRows}
                   selectedRowIds={selectedRowIds}
                   selectedRows={selectedRows}
+                  freezeColumns={freezeColumns}
+                  frozenColumnLeftOffsets={frozenColumnLeftOffsets}
                 />
                 <TableBody
                   paginatedRows={paginatedRows}
@@ -486,8 +556,13 @@ function TableUsingAPI<T extends Record<string, any>>({
                   totalRows={totalRows}
                   flexRender={flexRender}
                   onRowClick={onRowClick}
+                  freezeRows={freezeRows}
+                  freezeColumns={freezeColumns}
+                  frozenColumnLeftOffsets={frozenColumnLeftOffsets}
+                  frozenRowTopOffsets={frozenRowTopOffsets}
                 />
             </Table>
+            </div>
 
             <TablePagination totalPages={totalPages} currentPage={currentPage} handlePageChange={handlePageChange} />
           </>
@@ -505,9 +580,22 @@ interface TableHeaderProps<T> {
   hasSelectedRows?: boolean;
   selectedRowIds?: string[];
   selectedRows?: T[];
+  freezeColumns?: number;
+  frozenColumnLeftOffsets?: number[];
 }
 
-function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkActionsToolbar, hasSelectedRows, selectedRowIds, selectedRows }: TableHeaderProps<T>) {
+function TableHeader<T>({
+  headers,
+  flexRender,
+  enableRowSelection,
+  table,
+  bulkActionsToolbar,
+  hasSelectedRows,
+  selectedRowIds,
+  selectedRows,
+  freezeColumns = 0,
+  frozenColumnLeftOffsets = [],
+}: TableHeaderProps<T>) {
 	const totalColumns = headers[0]?.headers.length || 0;
   const [openFilterInputs, setOpenFilterInputs] = useState<Record<string, boolean>>({});
 	const showToolbar = bulkActionsToolbar && hasSelectedRows && selectedRowIds && selectedRows;
@@ -530,16 +618,26 @@ function TableHeader<T>({ headers, flexRender, enableRowSelection, table, bulkAc
 		{headers.map((headerGroup) => (
 		  <React.Fragment key={headerGroup.id}>
 			<tr>
-			  {headerGroup.headers.filter(h => !isHidden(h.column.columnDef)).map((header) => {
+			  {headerGroup.headers.filter(h => !isHidden(h.column.columnDef)).map((header, visibleColumnIndex) => {
 				const isSelectColumn = enableRowSelection && header.id === 'select';
+          const isFrozenColumn = visibleColumnIndex < Math.max(0, Math.floor(freezeColumns));
           const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
           const isFilterOpen = canFilter && isHeaderFilterOpen(header);
+          const frozenStyle: React.CSSProperties = isFrozenColumn
+            ? {
+              position: 'sticky',
+              left: frozenColumnLeftOffsets[visibleColumnIndex] ?? 0,
+              zIndex: 30,
+              background: 'var(--bs-table-bg, #fff)',
+            }
+            : {};
 				return (
 				  <th
 					key={header.id}
 					style={{
 					  cursor: header.column.getCanSort() ? 'pointer' : 'default',
 					  userSelect: 'none',
+              ...frozenStyle,
 					}}
 					onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
 				  >
@@ -622,18 +720,48 @@ function FunnelXIcon() {
   );
 }
 
-function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClick }: { paginatedRows: Row<T>[], columns: ColumnDef<T>[], totalRows: number, flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode, onRowClick?: (row: T) => void }) {
+function TableBody<T>({
+  paginatedRows,
+  columns,
+  totalRows,
+  flexRender,
+  onRowClick,
+  freezeRows = 0,
+  freezeColumns = 0,
+  frozenColumnLeftOffsets = [],
+  frozenRowTopOffsets = [],
+}: {
+  paginatedRows: Row<T>[],
+  columns: ColumnDef<T>[],
+  totalRows: number,
+  flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode,
+  onRowClick?: (row: T) => void,
+  freezeRows?: number,
+  freezeColumns?: number,
+  frozenColumnLeftOffsets?: number[],
+  frozenRowTopOffsets?: number[],
+}) {
 	return (
 		<tbody>
-			{paginatedRows.map((row) => {
+			{paginatedRows.map((row, rowIndex) => {
 				const cells = row.getVisibleCells();
+        const isFrozenRow = rowIndex < Math.max(0, Math.floor(freezeRows));
 				return (
 				  <tr 
 					key={row.id}
 					onClick={() => onRowClick?.(row.original)}
 					style={onRowClick ? { cursor: 'pointer' } : undefined}
 				  >
-					{cells.map((cell) => <TableCell key={cell.id} cell={cell} />)}
+					{cells.map((cell, visibleColumnIndex) => (
+              <TableCell
+                key={cell.id}
+                cell={cell}
+                isFrozenRow={isFrozenRow}
+                isFrozenColumn={visibleColumnIndex < Math.max(0, Math.floor(freezeColumns))}
+                frozenTop={frozenRowTopOffsets[rowIndex]}
+                frozenLeft={frozenColumnLeftOffsets[visibleColumnIndex]}
+              />
+            ))}
 				  </tr>
 				);
 			})}
@@ -641,7 +769,19 @@ function TableBody<T>({ paginatedRows, columns, totalRows, flexRender, onRowClic
 	);
 }
 
-function TableCell<T>({ cell }: { cell: Cell<T, any> }) {
+function TableCell<T>({
+  cell,
+  isFrozenRow = false,
+  isFrozenColumn = false,
+  frozenTop,
+  frozenLeft,
+}: {
+  cell: Cell<T, any>,
+  isFrozenRow?: boolean,
+  isFrozenColumn?: boolean,
+  frozenTop?: number,
+  frozenLeft?: number,
+}) {
     const isSelectColumn = cell.column.id === 'select';
     let rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
     const columnDef = cell.column.columnDef as any;
@@ -651,11 +791,24 @@ function TableCell<T>({ cell }: { cell: Cell<T, any> }) {
       rendered = <div style={style}>{rendered}</div>;
       style = undefined;
     }
+    const stickyStyle: React.CSSProperties = {};
+    if (isFrozenRow) {
+      stickyStyle.position = 'sticky';
+      stickyStyle.top = frozenTop ?? 0;
+      stickyStyle.zIndex = 20;
+      stickyStyle.background = 'var(--bs-table-bg, #fff)';
+    }
+    if (isFrozenColumn) {
+      stickyStyle.position = 'sticky';
+      stickyStyle.left = frozenLeft ?? 0;
+      stickyStyle.zIndex = isFrozenRow ? 25 : 15;
+      stickyStyle.background = 'var(--bs-table-bg, #fff)';
+    }
     return (
     <td 
       key={cell.id}
       onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
-      style={columnDef.style}
+      style={{ ...columnDef.style, ...stickyStyle }}
     >
       {rendered}
     </td>

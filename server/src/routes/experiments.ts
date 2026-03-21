@@ -20,7 +20,7 @@ import { Result } from '../common/types/Experiment.js';
 import Metric from '../common/types/Metric.js';
 import Dataset from '../common/types/Dataset.js';
 import Example from '../common/types/Example.js';
-import {is} from '../common/utils/miscutils.js';
+import {isDeepEqual, is} from '../common/utils/miscutils.js';
 
 type MetricSource = 'dataset' | 'example';
 interface MetricWithSource {
@@ -165,10 +165,13 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
    */
   fastify.post('/experiment/:id/example/:exampleid/scoreAndStore', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloperOrAdmin(request, reply)) return;
-    const { id: experimentId, exampleid: exampleId } = request.params as { id: string; exampleid: string };
-    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>, messages?: Record<string, string>, errors?: Record<string, string>, rateLimited?: boolean };
+    const { id: experimentId, exampleid: exampleId, noRemoteScoring } = request.params as { id: string; exampleid: string; noRemoteScoring: boolean };
+    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>, messages?: Record<string, string>, errors?: Record<string, string>, rateLimited?: boolean, parameters?: Record<string, any> };
     const organisation = request.organisation!;
-
+    // Note: treat {} same as unset
+    // TODO update clients to send parameters (if set) so this gets used
+    const runParameters = body.parameters && Object.keys(body.parameters).length > 0 ? body.parameters : undefined;
+ 
     // Validate required fields
     if (!experimentId || !organisation) {
       reply.code(400).send({ error: 'experimentId and organisation are required' });
@@ -217,7 +220,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       const metricKey = metric.id || metric.name;
 
       // If score is already provided in request body, skip computation, and clear any old error for this metric
-      if (is(scores[metricKey])) {
+      if (is(scores[metricKey]) || noRemoteScoring) {
         continue;
       }
 
@@ -289,7 +292,13 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
     // Update experiment results - ensure it's always an array
     const results = Array.isArray(experiment.results) ? experiment.results : [];
-    const existingResultIndex = results.findIndex(r => r.example === exampleId);
+    /** Same result iff same example (id) and parameters */
+    const isMatch = (r: Result) => {
+      if (r.example !== exampleId) return false;
+      if (!runParameters) return true;
+      return isDeepEqual(r.parameters, runParameters);
+    };
+    const existingResultIndex = results.findIndex(isMatch);
     const isUpdate = existingResultIndex >= 0;
 
     let result: Result;
@@ -324,6 +333,7 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
       // Add new result
       result = {
         example: exampleId,
+        parameters: runParameters,
         scores: scores,
         messages: body.messages,
         rateLimited: body.rateLimited,

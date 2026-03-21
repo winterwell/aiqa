@@ -4,6 +4,23 @@ export function is(value: any): boolean {
   return value !== null && value !== undefined;
 }
 
+/**
+ * Test for deep equality of two objects.
+ * @param a 
+ * @param b 
+ * @returns 
+ */
+export function isDeepEqual(a: any, b: any): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return a === b;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => isDeepEqual(value, b[index]));
+  }
+  return Object.keys(a).every(key => isDeepEqual(a[key], b[key]));
+}
+
 export function truncate(s: string, maxLength: number): string {
   if (s.length <= maxLength) {
     return s;

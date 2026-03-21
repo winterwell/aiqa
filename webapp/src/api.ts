@@ -284,13 +284,14 @@ export async function deleteSpans(
 
 /** common base function for create example from input | span */
 async function _createExample(organisationId: string, datasetId: string, exampleData: Partial<any>) {
+	// Spread exampleData first so id/dataset/org/timestamps always win (safe for dataset copy payloads).
 	const example = {
+		...exampleData,
 		id: crypto.randomUUID(),
 		dataset: datasetId,
 		organisation: organisationId,
 		created: new Date(),
 		updated: new Date(),
-		...exampleData,
 	};
 
 	const params = new URLSearchParams();
@@ -354,6 +355,47 @@ export async function searchExamples(
 
 	// Note: This endpoint requires API key authentication
 	return fetchWithAuth(`/example?${params.toString()}`);
+}
+
+const EXAMPLES_PAGE_SIZE = 500;
+
+/** All examples in a dataset (paginated server-side). */
+export async function listAllExamplesInDataset(organisationId: string, datasetId: string): Promise<Example[]> {
+	const all: Example[] = [];
+	let offset = 0;
+	for (;;) {
+		const page = await searchExamples({
+			organisationId,
+			datasetId,
+			limit: EXAMPLES_PAGE_SIZE,
+			offset,
+		});
+		const hits = page.hits ?? [];
+		if (hits.length === 0) break;
+		all.push(...hits);
+		if (hits.length < EXAMPLES_PAGE_SIZE) break;
+		offset += EXAMPLES_PAGE_SIZE;
+	}
+	return all;
+}
+
+/** New example in `targetDatasetId` with the same content fields as `source` (new id and timestamps). */
+export async function createExampleFromDatasetCopy(
+	organisationId: string,
+	targetDatasetId: string,
+	source: Example
+) {
+	return _createExample(organisationId, targetDatasetId, {
+		name: source.name,
+		notes: source.notes,
+		tags: source.tags,
+		annotations: source.annotations,
+		spans: source.spans,
+		input: source.input,
+		outputs: source.outputs,
+		metrics: source.metrics,
+		trace: source.trace,
+	});
 }
 
 export async function getExample(organisationId: string, exampleId: string) {

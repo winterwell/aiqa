@@ -5,6 +5,8 @@ import { LifecycleStatus } from "./LifecycleStatus";
 export interface Result {
 	example: string;
   trace?: string;
+  /** TODO optional: allow results for several runs per example to be stored */
+  parameters?: Record<string, any>;
   /** TODO detect this in scoreAndStore
    * true if this example was affected by a tracing rate-limit 
    * - so token usage may be incomplete

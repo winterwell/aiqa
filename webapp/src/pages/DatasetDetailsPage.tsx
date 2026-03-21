@@ -1,9 +1,20 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Container, Row, Col, Card, CardBody, CardHeader, ListGroup, ListGroupItem, Badge, Button, Modal, ModalHeader, ModalBody, ModalFooter } from 'reactstrap';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { getDataset, listExperiments, searchExamples, updateDataset, createExampleFromInput, updateExample, deleteExample } from '../api';
+import {
+  getDataset,
+  listExperiments,
+  searchExamples,
+  updateDataset,
+  createExampleFromInput,
+  updateExample,
+  deleteExample,
+  createDataset,
+  listAllExamplesInDataset,
+  createExampleFromDatasetCopy,
+} from '../api';
 import type { Dataset, Example, Span } from '../common/types';
 import type Experiment from '../common/types/Experiment';
 import Metric, { isExampleSpecificMetric } from '../common/types/Metric';
@@ -22,9 +33,10 @@ import Spinner from '../components/generic/Spinner';
 import MetricCard from '../components/dashboard/MetricCard';
 import { DEFAULT_SYSTEM_METRICS, SPECIFIC_METRIC } from '../common/defaultSystemMetrics';
 import { asArray, truncate, asDate } from '../common/utils/miscutils';
-import { Trash } from '@phosphor-icons/react';
+import { Copy, Trash } from '@phosphor-icons/react';
 import { getTruncatedDisplayString, getFirstSpan, getExampleSpecificMetricText, getExampleMetricDisplayText } from '../utils/example-utils';
 import DatasetDetailsDashboard from '../components/DatasetDetailsDashboard';
+import { CopyDatasetModal } from '../components/CopyDatasetModal';
 
 /**
  * Page to display details of a dataset, including its metrics and examples.
@@ -41,6 +53,18 @@ const DatasetDetailsPage: React.FC = () => {
   const [editingMetricIndex, setEditingMetricIndex] = useState<number | null>(null);
   const [editingMetric, setEditingMetric] = useState<Partial<Metric> | undefined>(undefined);
   const [examplesData, setExamplesData] = useState<Example[]>([]);
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  /** confirm = waiting for user; fetching = loading example list; copying = POSTing examples */
+  const [copyPhase, setCopyPhase] = useState<'confirm' | 'fetching' | 'copying' | 'error'>('confirm');
+  const [copyProgress, setCopyProgress] = useState({ current: 0, total: 0 });
+  const [copyError, setCopyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCopyModalOpen(false);
+    setCopyPhase('confirm');
+    setCopyProgress({ current: 0, total: 0 });
+    setCopyError(null);
+  }, [datasetId]);
 
   const { data: dataset, isLoading, error } = useQuery({
     queryKey: ['dataset', datasetId],
@@ -236,6 +260,54 @@ const DatasetDetailsPage: React.FC = () => {
     setEditingMetric(undefined);
   };
 
+  const copyBusy = copyPhase === 'fetching' || copyPhase === 'copying';
+
+  const runDatasetCopy = async () => {
+    if (!organisationId || !datasetId || !dataset) return;
+    setCopyError(null);
+    setCopyPhase('fetching');
+    setCopyProgress({ current: 0, total: 0 });
+    try {
+      const examples = await listAllExamplesInDataset(organisationId, datasetId);
+      const newDataset = await createDataset({
+        organisation: organisationId,
+        name: `${dataset.name || 'Dataset'} (copy)`,
+        description: dataset.description,
+        tags: dataset.tags ? [...dataset.tags] : undefined,
+        metrics: dataset.metrics
+          ? (typeof structuredClone === 'function'
+              ? structuredClone(dataset.metrics)
+              : (JSON.parse(JSON.stringify(dataset.metrics)) as Metric[]))
+          : undefined,
+      });
+      const newId = newDataset.id as string;
+      setCopyPhase('copying');
+      setCopyProgress({ current: 0, total: examples.length });
+      for (let i = 0; i < examples.length; i++) {
+        await createExampleFromDatasetCopy(organisationId, newId, examples[i]);
+        setCopyProgress({ current: i + 1, total: examples.length });
+      }
+      queryClient.invalidateQueries({ queryKey: ['dataset'] });
+      queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+      showToast('Dataset copied successfully', 'success');
+      navigate(`/organisation/${organisationId}/dataset/${newId}`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      setCopyError(message);
+      setCopyPhase('error');
+      showToast(`Copy failed: ${message}`, 'error');
+    }
+  };
+
+  const closeCopyModal = () => {
+    if (copyBusy) return;
+    setCopyModalOpen(false);
+    setCopyPhase('confirm');
+    setCopyProgress({ current: 0, total: 0 });
+    setCopyError(null);
+  };
+
   if (isLoading) {
     return (
       <Container>
@@ -268,6 +340,22 @@ const DatasetDetailsPage: React.FC = () => {
           label="Dataset"
           item={dataset}
           handleNameChange={() => updateDatasetMutation.mutate({ name: dataset.name })}
+          extraActions={
+            <Button
+              color="secondary"
+              size="sm"
+              onClick={() => {
+                setCopyPhase('confirm');
+                setCopyError(null);
+                setCopyProgress({ current: 0, total: 0 });
+                setCopyModalOpen(true);
+              }}
+              disabled={copyBusy}
+            >
+              <Copy size={16} className="me-1" aria-hidden />
+              Copy
+            </Button>
+          }
         />
       }
       back={`/organisation/${organisationId}/dataset`}
@@ -390,6 +478,15 @@ const DatasetDetailsPage: React.FC = () => {
           }
         }}
       />
+      <CopyDatasetModal
+        isOpen={copyModalOpen}
+        onClose={closeCopyModal}
+        datasetName={dataset.name}
+        phase={copyPhase}
+        progress={copyProgress}
+        error={copyError}
+        onStartCopy={runDatasetCopy}
+      />
 
       {/* Delete Confirmation Modal */}
       <Modal isOpen={deleteModalOpen} toggle={() => setDeleteModalOpen(false)}>
@@ -420,7 +517,6 @@ const DatasetDetailsPage: React.FC = () => {
     </Page>
   );
 };
-
 
 function DatasetMetricCard({ metric, onEdit, onDelete }: { metric: Metric, onEdit?: () => void, onDelete?: () => void }) {
   return (<Card>

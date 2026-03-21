@@ -1,3 +1,16 @@
+.table-scroll-wrap {
+  overflow: auto;
+}
+
+.table-scroll-wrap-frozen {
+  max-height: 70vh;
+}
+
+.table-scroll-wrap-frozen th,
+.table-scroll-wrap-frozen td {
+  background-clip: padding-box;
+}
+
 /* Bulk actions toolbar slide animation */
 .bulk-actions-toolbar-row {
   max-height: 0;
