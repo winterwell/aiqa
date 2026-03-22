@@ -67,6 +67,7 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
   type?: 'date' | 'categorical' | 'boolean' | 'list' | 'number';
   /**
    * For type `categorical`: values present on each row (e.g. all tags). Used to build the option list and OR matching.
+   * Default to: string? comma-separated list of values : array? as-is : set? as-is
    */
   categoricalValues?: (row: T) => string[];
 };
@@ -207,7 +208,8 @@ export interface TableUsingAPIProps<T> {
    */
   onFilteredRowsChange?: (rows: T[]) => void;
   /**
-   * Freeze the first N body rows so they stay visible while scrolling.
+   * Freeze the first N table rows (counting from the top: header row(s) in thead, then body rows)
+   * so they stay visible while scrolling. E.g. 1 = column header row only.
    */
   freezeRows?: number;
   /**
@@ -507,6 +509,10 @@ function TableUsingAPI<T extends Record<string, any>>({
   const selectedRowIds = selectedRowModel?.rows.map(row => row.id) || [];
   const selectedRows = selectedRowModel?.rows.map(row => row.original) || [];
   const hasSelectedRows = enableRowSelection && (table.getIsSomeRowsSelected() || table.getIsAllRowsSelected());
+
+  const headerGroups = table.getHeaderGroups();
+  /** Matches DOM: one tr per header group plus one optional bulk toolbar tr per group. */
+  const theadRowCount = headerGroups.length + (bulkActionsToolbar ? headerGroups.length : 0);
   
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
@@ -539,7 +545,10 @@ function TableUsingAPI<T extends Record<string, any>>({
 
     const updateFreezeOffsets = () => {
       const headerCells = Array.from(wrapper.querySelectorAll('thead tr:first-child th')) as HTMLElement[];
+      const theadRows = Array.from(wrapper.querySelectorAll('thead tr')) as HTMLElement[];
       const bodyRows = Array.from(wrapper.querySelectorAll('tbody tr')) as HTMLElement[];
+      /** Top-to-bottom order: thead rows (header, bulk toolbar, …) then body rows. */
+      const rowsTopToBottom = [...theadRows, ...bodyRows];
 
       const visibleHeaderCells = headerCells.filter((cell) => cell.offsetParent !== null);
       const colOffsets: number[] = [];
@@ -551,9 +560,9 @@ function TableUsingAPI<T extends Record<string, any>>({
 
       const rowOffsets: number[] = [];
       let rowTop = 0;
-      for (let i = 0; i < Math.min(frozenRowCount, bodyRows.length); i += 1) {
+      for (let i = 0; i < Math.min(frozenRowCount, rowsTopToBottom.length); i += 1) {
         rowOffsets.push(rowTop);
-        rowTop += bodyRows[i].getBoundingClientRect().height;
+        rowTop += rowsTopToBottom[i].getBoundingClientRect().height;
       }
 
       setFrozenColumnLeftOffsets((prev) => (sameOffsets(prev, colOffsets) ? prev : colOffsets));
@@ -568,7 +577,7 @@ function TableUsingAPI<T extends Record<string, any>>({
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateFreezeOffsets);
     };
-  }, [frozenColumnCount, frozenRowCount, currentPage, totalRows, tableColumns]);
+  }, [frozenColumnCount, frozenRowCount, currentPage, totalRows, tableColumns, bulkActionsToolbar]);
 
   if (isLoading && hits.length === 0) {
     return (
@@ -629,9 +638,14 @@ function TableUsingAPI<T extends Record<string, any>>({
               ref={tableWrapperRef}
               className={`table-scroll-wrap ${(freezeRows > 0 || freezeColumns > 0) ? 'table-scroll-wrap-frozen' : ''}`}
             >
-            <Table hover responsive>
+            <Table
+              hover
+              /* table-responsive adds overflow-x:auto; sticky cells then anchor to that wrapper,
+                 which does not vertically scroll — only .table-scroll-wrap does. */
+              responsive={frozenRowCount === 0 && frozenColumnCount === 0}
+            >
 				<TableHeader 
-                  headers={table.getHeaderGroups()} 
+                  headers={headerGroups} 
                   flexRender={flexRender} 
                   enableRowSelection={enableRowSelection} 
                   table={table}
@@ -639,8 +653,10 @@ function TableUsingAPI<T extends Record<string, any>>({
                   hasSelectedRows={hasSelectedRows}
                   selectedRowIds={selectedRowIds}
                   selectedRows={selectedRows}
+                  freezeRows={freezeRows}
                   freezeColumns={freezeColumns}
                   frozenColumnLeftOffsets={frozenColumnLeftOffsets}
+                  frozenRowTopOffsets={frozenRowTopOffsets}
                 />
                 <TableBody
                   paginatedRows={paginatedRows}
@@ -649,6 +665,7 @@ function TableUsingAPI<T extends Record<string, any>>({
                   flexRender={flexRender}
                   onRowClick={onRowClick}
                   freezeRows={freezeRows}
+                  theadRowCount={theadRowCount}
                   freezeColumns={freezeColumns}
                   frozenColumnLeftOffsets={frozenColumnLeftOffsets}
                   frozenRowTopOffsets={frozenRowTopOffsets}
@@ -672,8 +689,10 @@ interface TableHeaderProps<T> {
   hasSelectedRows?: boolean;
   selectedRowIds?: string[];
   selectedRows?: T[];
+  freezeRows?: number;
   freezeColumns?: number;
   frozenColumnLeftOffsets?: number[];
+  frozenRowTopOffsets?: number[];
 }
 
 function TableHeader<T>({
@@ -685,13 +704,17 @@ function TableHeader<T>({
   hasSelectedRows,
   selectedRowIds,
   selectedRows,
+  freezeRows = 0,
   freezeColumns = 0,
   frozenColumnLeftOffsets = [],
+  frozenRowTopOffsets = [],
 }: TableHeaderProps<T>) {
 	const totalColumns = headers[0]?.headers.length || 0;
   const [openFilterInputs, setOpenFilterInputs] = useState<Record<string, boolean>>({});
 	const showToolbar = bulkActionsToolbar && hasSelectedRows && selectedRowIds && selectedRows;
   const toFilterValue = (value: string) => (value === '' ? undefined : value);
+  const frozenColumnCount = Math.max(0, Math.floor(freezeColumns));
+  const frozenRowCount = Math.max(0, Math.floor(freezeRows));
 
   const openFilter = (columnId: string) => {
     setOpenFilterInputs((prev) => ({ ...prev, [columnId]: true }));
@@ -706,26 +729,41 @@ function TableHeader<T>({
     const filterValue = header.column.getFilterValue();
     return Boolean(openFilterInputs[header.id]) || filterValueIsActive(filterValue);
   };
+
+  const headerCellStickyStyle = (visibleColumnIndex: number, rowIdx: number): React.CSSProperties => {
+    const isFrozenColumn = visibleColumnIndex < frozenColumnCount;
+    const isFrozenHeaderRow = rowIdx < frozenRowCount;
+    if (!isFrozenColumn && !isFrozenHeaderRow) return {};
+    const style: React.CSSProperties = {
+      position: 'sticky',
+      background: 'var(--bs-table-bg, #fff)',
+    };
+    if (isFrozenColumn) {
+      style.left = frozenColumnLeftOffsets[visibleColumnIndex] ?? 0;
+    }
+    if (isFrozenHeaderRow) {
+      style.top = frozenRowTopOffsets[rowIdx] ?? 0;
+    }
+    style.zIndex = isFrozenColumn && isFrozenHeaderRow ? 45 : isFrozenColumn ? 30 : 40;
+    return style;
+  };
+
+  let theadRowIndex = 0;
 	return ( <thead>
-		{headers.map((headerGroup) => (
+		{headers.map((headerGroup) => {
+      const columnHeaderRowIndex = theadRowIndex;
+      theadRowIndex += 1;
+      return (
 		  <React.Fragment key={headerGroup.id}>
 			<tr>
 			  {headerGroup.headers.filter(h => !isHidden(h.column.columnDef)).map((header, visibleColumnIndex) => {
 				const isSelectColumn = enableRowSelection && header.id === 'select';
-          const isFrozenColumn = visibleColumnIndex < Math.max(0, Math.floor(freezeColumns));
           const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
           const isFilterOpen = canFilter && isHeaderFilterOpen(header);
           const extCol = header.column.columnDef as ExtendedColumnDef<any>;
           const useCategoricalFilter =
             extCol.type === 'categorical' && extCol.categoricalValues && table;
-          const frozenStyle: React.CSSProperties = isFrozenColumn
-            ? {
-              position: 'sticky',
-              left: frozenColumnLeftOffsets[visibleColumnIndex] ?? 0,
-              zIndex: 30,
-              background: 'var(--bs-table-bg, #fff)',
-            }
-            : {};
+          const frozenStyle = headerCellStickyStyle(visibleColumnIndex, columnHeaderRowIndex);
 				return (
 				  <th
 					key={header.id}
@@ -786,17 +824,30 @@ function TableHeader<T>({
 				);
 			  })}
 			</tr>
-			{bulkActionsToolbar ? (
-			  <tr className={`bulk-actions-toolbar-row ${showToolbar ? 'open' : ''}`}>
-				<td colSpan={totalColumns} style={{ backgroundColor: '#f8f9fa' }}>
+			{bulkActionsToolbar ? (() => {
+        const bulkRowIndex = theadRowIndex;
+        theadRowIndex += 1;
+        const bulkSticky =
+          bulkRowIndex < frozenRowCount
+            ? {
+                position: 'sticky' as const,
+                top: frozenRowTopOffsets[bulkRowIndex] ?? 0,
+                zIndex: 40,
+              }
+            : {};
+        return (
+			  <tr key={`bulk-${headerGroup.id}`} className={`bulk-actions-toolbar-row ${showToolbar ? 'open' : ''}`}>
+				<td colSpan={totalColumns} style={{ backgroundColor: '#f8f9fa', ...bulkSticky }}>
 				  <div className="d-flex align-items-center bulk-actions-toolbar-content" style={{ gap: '0.5rem' }}>
 					{showToolbar ? bulkActionsToolbar(selectedRowIds!, selectedRows!) : null}
 				  </div>
 				</td>
 			  </tr>
-			) : null}
+        );
+      })() : null}
 		  </React.Fragment>
-		))}
+      );
+    })}
 	  </thead>
 	);
 }
@@ -826,6 +877,7 @@ function TableBody<T>({
   flexRender,
   onRowClick,
   freezeRows = 0,
+  theadRowCount,
   freezeColumns = 0,
   frozenColumnLeftOffsets = [],
   frozenRowTopOffsets = [],
@@ -836,15 +888,20 @@ function TableBody<T>({
   flexRender: <TProps extends object>(comp: any, props: TProps) => React.ReactNode,
   onRowClick?: (row: T) => void,
   freezeRows?: number,
+  /** Number of `<tr>` nodes in thead (column header + optional bulk toolbar per group). */
+  theadRowCount: number,
   freezeColumns?: number,
   frozenColumnLeftOffsets?: number[],
   frozenRowTopOffsets?: number[],
 }) {
+  const frozenRowCount = Math.max(0, Math.floor(freezeRows));
+  const frozenColumnCount = Math.max(0, Math.floor(freezeColumns));
 	return (
 		<tbody>
 			{paginatedRows.map((row, rowIndex) => {
 				const cells = row.getVisibleCells();
-        const isFrozenRow = rowIndex < Math.max(0, Math.floor(freezeRows));
+        const globalRowIndex = theadRowCount + rowIndex;
+        const isFrozenRow = globalRowIndex < frozenRowCount;
 				return (
 				  <tr 
 					key={row.id}
@@ -856,8 +913,8 @@ function TableBody<T>({
                 key={cell.id}
                 cell={cell}
                 isFrozenRow={isFrozenRow}
-                isFrozenColumn={visibleColumnIndex < Math.max(0, Math.floor(freezeColumns))}
-                frozenTop={frozenRowTopOffsets[rowIndex]}
+                isFrozenColumn={visibleColumnIndex < frozenColumnCount}
+                frozenTop={frozenRowTopOffsets[globalRowIndex]}
                 frozenLeft={frozenColumnLeftOffsets[visibleColumnIndex]}
               />
             ))}

@@ -442,6 +442,7 @@ const DatasetDetailsPage: React.FC = () => {
             </Button>
           </div>
           <TableUsingAPI
+          freezeRows={1}
             loadData={loadExamplesData}
             onDataLoaded={(data) => {
               setExamplesData(data.hits);

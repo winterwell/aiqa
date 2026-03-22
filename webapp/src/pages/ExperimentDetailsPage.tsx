@@ -384,6 +384,7 @@ function ExperimentDetailsPageContent({
       <ExperimentDetailsDashboard experiment={dashboardExperiment} baselineExperiment={experiment} />
 
       <TableUsingAPI
+        freezeRows={1}
         showSearch={false}
         data={{ hits: experiment.results || [] }}
         columns={columns}
