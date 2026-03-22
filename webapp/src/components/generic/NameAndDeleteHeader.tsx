@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from 'reactstrap';
 import PropInput from './PropInput';
 import ConfirmDialog from './ConfirmDialog';
@@ -33,6 +33,14 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const itemType = deleteItemTypeLabel ?? label;
   const itemTypeLower = itemType.toLowerCase();
+ const name = item[prop];
+  // set page title to the item type and name
+  useEffect(() => {
+    document.title = ['AIQA', itemType, name].filter(Boolean).join(': ');
+    return () => {
+      document.title = 'AIQA';
+    };
+  }, [itemType, item[prop]]);
 
   return (
     <>
@@ -41,7 +49,7 @@ const NameAndDeleteHeader: React.FC<NameAndDeleteHeaderProps> = ({
           <span>{label}:</span>
           {handleNameChange? 
             <PropInput className="h1" item={item} prop={prop} label="" placeholder="name" inline onChange={handleNameChange} /> 
-            : <span>{item[prop]}</span>
+            : <span>{name}</span>
           }
         </span>
         {(extraActions != null || handleDelete != null) && (

@@ -165,7 +165,7 @@ export default function ExperimentDetailsDashboard({
 	}
 
 	return (
-		<DashboardStrip className="mt-3 g-3" layout="dense">
+		<DashboardStrip className="mt-3 g-3">
 			<OverviewStatisticsCard
 				metricsWithData={metricsWithData}
 				unfilteredMetricsWithData={baselineMetricData}

@@ -236,7 +236,7 @@ export default function ExperimentsListMetricsDashboard({ experiments }: { exper
 	const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff'];
 
 	return (
-		<DashboardStrip className="mt-3 g-3" layout="dense">
+		<DashboardStrip className="mt-3 g-3">
 			{metricData.map(({ metric, data, ignoredCount }, index) => (
 				<MetricDataCard
 					key={metric.id || metric.name}

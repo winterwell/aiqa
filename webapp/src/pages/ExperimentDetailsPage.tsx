@@ -98,7 +98,9 @@ const ExperimentDetailsPage: React.FC = () => {
     [experiment?.results]
   );
   const { data: rootSpansMap } = useRootSpansForTraces(organisationId, traceIds, {
-    fields: 'attributes.output',
+    // Need `trace` in _source so we can key the map (fields=attributes.output alone omits it).
+    // Request full `attributes` (not attributes.output) so the API also merges unindexed_attributes for large outputs.
+    fields: 'trace,attributes',
     enabled: traceIds.length > 0,
   });
   const outputByTrace = useMemo(() => {
@@ -185,20 +187,20 @@ const ExperimentDetailsPage: React.FC = () => {
           return prettyNumber(row.scores?.[TOTAL_TOKENS_METRIC_ID]);
         }
       },
-      {
-        header: 'Time to First Token',
-        accessorFn: (row: Result) => {
-          return row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
-        },
-        cell: ({ row }: any) => {
-          const timeToFirst = row.original.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
-          if (typeof timeToFirst !== 'number') return <span>—</span>;
-          return <span>{durationString(1000*timeToFirst)}</span>;
-        },
-        csvValue: (row: Result) => {
-          return durationString(1000*row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID]);
-        }
-      },
+      // {
+      //   header: 'Time to First Token',
+      //   accessorFn: (row: Result) => {
+      //     return row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
+      //   },
+      //   cell: ({ row }: any) => {
+      //     const timeToFirst = row.original.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID];
+      //     if (typeof timeToFirst !== 'number') return <span>—</span>;
+      //     return <span>{durationString(1000*timeToFirst)}</span>;
+      //   },
+      //   csvValue: (row: Result) => {
+      //     return durationString(1000*row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID]);
+      //   }
+      // },
       {
         header: 'Cost',
         accessorFn: (row: Result) => {
@@ -266,7 +268,16 @@ const ExperimentDetailsPage: React.FC = () => {
     header: 'Errors',
     style: notTooBigStyle,
     accessorFn: (row: Result) => {
-      return row.errors? JSON.stringify(row.errors) : '';
+      if ( ! row.errors || Object.keys(row.errors).length === 0) {
+        return null;
+      }
+      return Object.entries(row.errors).map(([key, value]) => `${key}: ${value}`).join('\n');
+    },
+    cell: ({ row }: any) => {
+      if ( ! row.errors || Object.keys(row.errors).length === 0) {
+        return null;
+      }
+      return <span>{Object.entries(row.errors).map(([key, value]) => `${key}: ${value}`).join('\n')}</span>;
     }
   });
 
