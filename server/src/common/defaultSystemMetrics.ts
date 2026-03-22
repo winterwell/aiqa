@@ -46,14 +46,14 @@ export const DEFAULT_SYSTEM_METRICS: Metric[] = [
     unit: 'USD',
     type: 'system',
   },
-  {
-    /** matches SpanStats.timeToFirstOutputToken */
-    id: TIME_TO_FIRST_TOKEN_METRIC_ID,
-    name: 'Time to First Token',
-    description: 'Time to first output token seen by the user',
-    unit: 's',
-    type: 'system',
-  },
+  // {
+  //   /** matches SpanStats.timeToFirstOutputToken */
+  //   id: TIME_TO_FIRST_TOKEN_METRIC_ID,
+  //   name: 'Time to First Token',
+  //   description: 'Time to first output token seen by the user',
+  //   unit: 's',
+  //   type: 'system',
+  // },
   {
     id: SPAN_COUNT_METRIC_ID,
     name: 'Spans',

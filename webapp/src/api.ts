@@ -357,6 +357,34 @@ export async function searchExamples(
 	return fetchWithAuth(`/example?${params.toString()}`);
 }
 
+/** Max IDs per OR query so GET /example?q=... stays within typical URL limits. */
+const SEARCH_EXAMPLES_BY_IDS_CHUNK = 25;
+
+/** Fetch examples by id list (may issue multiple search requests). */
+export async function searchExamplesByIds(args: {
+	organisationId: string;
+	datasetId: string;
+	ids: string[];
+}): Promise<Record<string, Example>> {
+	const { organisationId, datasetId, ids } = args;
+	const unique = [...new Set(ids.filter(Boolean))];
+	const out: Record<string, Example> = {};
+	for (let i = 0; i < unique.length; i += SEARCH_EXAMPLES_BY_IDS_CHUNK) {
+		const chunk = unique.slice(i, i + SEARCH_EXAMPLES_BY_IDS_CHUNK);
+		const result = await searchExamples({
+			organisationId,
+			datasetId,
+			query: `id:${chunk.join(' OR id:')}`,
+			limit: Math.max(chunk.length, 100),
+			offset: 0,
+		});
+		for (const ex of result.hits ?? []) {
+			out[ex.id] = ex;
+		}
+	}
+	return out;
+}
+
 const EXAMPLES_PAGE_SIZE = 500;
 
 /** All examples in a dataset (paginated server-side). */

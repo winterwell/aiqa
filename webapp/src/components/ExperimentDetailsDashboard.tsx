@@ -6,7 +6,6 @@ import type Dataset from '../common/types/Dataset';
 import type Metric from '../common/types/Metric';
 import type Experiment from '../common/types/Experiment';
 import Histogram, { createHistogram, type HistogramDataPoint } from './generic/Histogram';
-import { asArray } from '../common/utils/miscutils';
 import { extractMetricValues, getMetrics } from '../utils/metric-utils';
 import DashboardStrip from './DashboardStrip';
 import { formatMetricValue } from '../utils/span-utils';
@@ -23,6 +22,28 @@ type MetricDataResult = {
 	count: number;
 	unmeasuredCount: number;
 };
+
+/** Same result set regardless of row order (compares example ids). */
+function resultSetSignature(results: Experiment['results']): string {
+	if (!results?.length) return '';
+	return [...results].map((r) => r.example).sort().join('\u0001');
+}
+
+function isNarrowerResultView(view: Experiment, baseline: Experiment): boolean {
+	return resultSetSignature(view.results) !== resultSetSignature(baseline.results);
+}
+
+function metricKey(metric: Metric): string {
+	return metric.id || metric.name || '';
+}
+
+function findMetricDataForMetric(
+	all: MetricDataResult[] | undefined,
+	metric: Metric
+): MetricDataResult | undefined {
+	const key = metricKey(metric);
+	return all?.find((md) => metricKey(md.metric) === key);
+}
 
 /**
  * Process experiment results for each metric, extracting numerical values
@@ -77,7 +98,14 @@ function processMetricData(metrics: Metric[], experiment: Experiment): MetricDat
  * If no numerical data, show a message saying so.
  * 
  */
-export default function ExperimentDetailsDashboard({ experiment }: { experiment: Experiment }) {
+export default function ExperimentDetailsDashboard({
+	experiment,
+	baselineExperiment,
+}: {
+	experiment: Experiment;
+	/** Full experiment results (e.g. before table filter). Used to show an "Unfiltered" column when the dashboard view is a subset. */
+	baselineExperiment?: Experiment;
+}) {
 	const { data: dataset, isLoading, error } = useQuery({
 		queryKey: ['dataset', experiment.dataset],
 		queryFn: () => getDataset(experiment.dataset),
@@ -87,10 +115,19 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	// Get metrics from dataset, or extract from results if dataset not available
 	const metrics = getMetrics(dataset);
 
+	const showUnfilteredOverview = Boolean(
+		baselineExperiment && isNarrowerResultView(experiment, baselineExperiment)
+	);
+
 	// Process data for each metric
 	const metricData = useMemo(() => {
 		return processMetricData(metrics, experiment);
 	}, [metrics, experiment]);
+
+	const baselineMetricData = useMemo((): MetricDataResult[] | undefined => {
+		if (!showUnfilteredOverview || !baselineExperiment) return undefined;
+		return processMetricData(metrics, baselineExperiment);
+	}, [showUnfilteredOverview, baselineExperiment, metrics]);
 
 	if (isLoading) {
 		return (
@@ -129,7 +166,12 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 
 	return (
 		<DashboardStrip className="mt-3 g-3" layout="dense">
-			<OverviewStatisticsCard metricsWithData={metricsWithData} />
+			<OverviewStatisticsCard
+				metricsWithData={metricsWithData}
+				unfilteredMetricsWithData={baselineMetricData}
+				rowCountInView={experiment.results?.length ?? 0}
+				rowCountBaseline={baselineExperiment?.results?.length ?? 0}
+			/>
 			{metricsWithData.map(({ metric, histogram, min, max, mean, count, unmeasuredCount }) => (
 				<MetricDataCard
 					key={metric.id || metric.name}
@@ -147,12 +189,42 @@ export default function ExperimentDetailsDashboard({ experiment }: { experiment:
 	);
 }
 
-function OverviewStatisticsCard({ metricsWithData }: { metricsWithData: MetricDataResult[] }) {
+function OverviewStatisticsCard({
+	metricsWithData,
+	unfilteredMetricsWithData,
+	rowCountInView,
+	rowCountBaseline,
+}: {
+	metricsWithData: MetricDataResult[];
+	/** Same shape as filtered stats, from the full experiment — paired by metric id/name. */
+	unfilteredMetricsWithData?: MetricDataResult[];
+	rowCountInView: number;
+	rowCountBaseline: number;
+}) {
+	const showUnfilteredColumn = Boolean(unfilteredMetricsWithData);
+
+	// Why tab not comma? Because it's easier to copy and paste into a spreadsheet.
 	const overviewStatsAsTsv = () => {
-		const header = ['Metric', 'Mean', 'Std-dev'].join('\t');
+		const baseHeader = ['Metric', 'Mean', 'Std-dev'];
+		if (showUnfilteredColumn) {
+			baseHeader.push('Unfiltered mean', 'Unfiltered std-dev');
+		}
+		const header = baseHeader.join('\t');
 		const rows = metricsWithData.map(({ metric, mean, stdDev }) => {
 			const metricLabel = metric.name || metric.id || '';
-			return [metricLabel, formatMetricValue(metric, mean), formatMetricValue(metric, stdDev)].join('\t');
+			const u = findMetricDataForMetric(unfilteredMetricsWithData, metric);
+			const cells = [
+				metricLabel,
+				formatMetricValue(metric, mean),
+				formatMetricValue(metric, stdDev),
+			];
+			if (showUnfilteredColumn) {
+				cells.push(
+					u && u.count > 0 ? formatMetricValue(metric, u.mean) : '',
+					u && u.count > 0 ? formatMetricValue(metric, u.stdDev) : ''
+				);
+			}
+			return cells.join('\t');
 		});
 		return [header, ...rows].join('\n');
 	};
@@ -164,6 +236,11 @@ function OverviewStatisticsCard({ metricsWithData }: { metricsWithData: MetricDa
 				<CopyButton content={overviewStatsAsTsv} className="btn btn-outline-secondary btn-sm" />
 			</CardHeader>
 			<CardBody>
+			<p className="mb-2">
+				{showUnfilteredColumn? `Rows in view: ${rowCountInView} of ${rowCountBaseline}` 
+				: `Rows: ${rowCountInView}`}
+				
+			</p>
 				<div className="table-responsive">
 					<table className="table table-sm mb-0">
 						<thead>
@@ -171,16 +248,34 @@ function OverviewStatisticsCard({ metricsWithData }: { metricsWithData: MetricDa
 								<th scope="col">Metric</th>
 								<th scope="col">Mean</th>
 								<th scope="col">Std-dev</th>
+								{showUnfilteredColumn && (
+									<th scope="col">Unfiltered</th>
+								)}
 							</tr>
 						</thead>
 						<tbody>
-							{metricsWithData.map(({ metric, mean, stdDev }) => (
-								<tr key={`overview-${metric.id || metric.name}`}>
-									<td>{metric.name || metric.id}</td>
-									<td>{formatMetricValue(metric, mean)}</td>
-									<td>{formatMetricValue(metric, stdDev)}</td>
-								</tr>
-							))}
+							{metricsWithData.map(({ metric, mean, stdDev }) => {
+								const u = findMetricDataForMetric(unfilteredMetricsWithData, metric);
+								return (
+									<tr key={`overview-${metric.id || metric.name}`}>
+										<td>{metric.name || metric.id}</td>
+										<td>{formatMetricValue(metric, mean)}</td>
+										<td>{formatMetricValue(metric, stdDev)}</td>
+										{showUnfilteredColumn && (
+											<td className="small">
+												{u && u.count > 0 ? (
+													<>
+														<div>{formatMetricValue(metric, u.mean)}</div>
+														<div className="text-muted">σ {formatMetricValue(metric, u.stdDev)}</div>
+													</>
+												) : (
+													<span className="text-muted">—</span>
+												)}
+											</td>
+										)}
+									</tr>
+								);
+							})}
 						</tbody>
 					</table>
 				</div>

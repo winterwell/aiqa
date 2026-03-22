@@ -1,10 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Container, Row, Col } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getExperiment, getDataset, deleteExperiment, searchExamples, updateExperiment } from '../api';
-import Experiment, {Result} from '../common/types/Experiment';
-import TableUsingAPI from '../components/generic/TableUsingAPI';
+import type { UseMutationResult } from '@tanstack/react-query';
+import { getExperiment, getDataset, deleteExperiment, searchExamplesByIds, updateExperiment } from '../api';
+import Experiment, { Result } from '../common/types/Experiment';
+import type Dataset from '../common/types/Dataset';
+import type Example from '../common/types/Example';
+import TableUsingAPI, { categoricalOrRowFilter } from '../components/generic/TableUsingAPI';
 import { useToast } from '../utils/toast';
 import ExperimentDetailsDashboard from '../components/ExperimentDetailsDashboard';
 import NameAndDeleteHeader from '../components/generic/NameAndDeleteHeader';
@@ -15,8 +18,6 @@ import { durationString, formatCost, prettyNumber } from '../utils/span-utils';
 import { getMetricValue, getMetrics } from '../utils/metric-utils';
 import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TIME_TO_FIRST_TOKEN_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
 import LinkId from '../components/LinkId';
-import HelpText from '../components/generic/HelpText';
-import Tags from 'src/components/generic/Tags';
 import { getTruncatedDisplayString, getExampleInput } from '../utils/example-utils';
 import { getSpanOutput } from '../common/types/Span';
 import { useRootSpansForTraces } from '../hooks/useSpanData';
@@ -77,27 +78,20 @@ const ExperimentDetailsPage: React.FC = () => {
 
   const { data: examples } = useQuery({
     queryKey: examplesQueryKey,
-    queryFn: async () => {
-      // what example IDs do we reference?
-      if (exampleIds.length === 0) return { hits: [] };
-      const result = await searchExamples({
-        organisationId: organisationId!,
-        datasetId: datasetId!,
-        query: `id:${exampleIds.join(' OR id:')}`,
-        limit: 1000,
-        offset: 0,
-      });
-      // console.log('e4id result', result);
-      const e4id = {};
-      for (const example of result.hits) {
-        e4id[example.id] = example;
-      }
-      return e4id;
-    },
+    queryFn: () =>
+      exampleIds.length === 0
+        ? Promise.resolve({} as Record<string, Example>)
+        : searchExamplesByIds({
+            organisationId: organisationId!,
+            datasetId: datasetId!,
+            ids: exampleIds,
+          }),
     enabled: Boolean(organisationId) && Boolean(datasetId) && exampleIds.length > 0,
   });
 
-  // console.log('examples', examples);
+  // TanStack Table may retain column defs; read maps via ref so accessors/cells always see latest data.
+  const examplesByIdRef = useRef<Record<string, Example> | undefined>(undefined);
+  const outputByTraceRef = useRef<Map<string, string>>(new Map());
 
   const traceIds = useMemo(
     () => [...new Set((experiment?.results ?? []).map((r) => r.trace).filter(Boolean))] as string[],
@@ -115,6 +109,9 @@ const ExperimentDetailsPage: React.FC = () => {
     });
     return m;
   }, [rootSpansMap]);
+
+  examplesByIdRef.current = examples;
+  outputByTraceRef.current = outputByTrace;
 
   // columns: result id, duration, cost, totalTokens, errors, ...other metrics
   // Get the metrics from the dataset
@@ -136,12 +133,11 @@ const ExperimentDetailsPage: React.FC = () => {
         accessorFn: (row: Result) => {
           // TODO efficiently load the example names
           const eid = row.example;
-          const example = examples?.[eid];
+          const example = examplesByIdRef.current?.[eid];
           return example?.name || eid;
         },
         cell: ({ row }: any) => {
           const eid = row.original.example;
-          const example = examples?.[eid];
           return <LinkId to={`/organisation/${organisationId}/example/${row.original.example}`} name={eid} id={eid} />;
         },
         style: smallIdStyle,
@@ -150,13 +146,12 @@ const ExperimentDetailsPage: React.FC = () => {
         header: 'Input',
         style: notTooBigStyle,
         accessorFn: (row: Result) => {
-          const example = examples?.[row.example];
-          return getTruncatedDisplayString(getExampleInput(example), TRACE_OUTPUT_MAX_LEN);
+          const example = examplesByIdRef.current?.[row.example];
+          // Note: don't truncate for filtering or csv export. Do truncate for display.
+          return getExampleInput(example);
         },
         cell: ({ row }: any) => {
-          const exampleId = row.original.example;
-          const example = examples?.[row.original.example];
-          // console.log('Input for row?', exampleId, row, example);
+          const example = examplesByIdRef.current?.[row.original.example];
           const raw = getExampleInput(example);
           const display = getTruncatedDisplayString(raw, TRACE_OUTPUT_MAX_LEN);
           if (!display) return <span className="text-muted">—</span>;
@@ -166,9 +161,9 @@ const ExperimentDetailsPage: React.FC = () => {
       {
         header: 'Output',
         style: notTooBigStyle,
-        accessorFn: (result: Result) => getTraceOutput(result.trace, outputByTrace),
+        accessorFn: (result: Result) => getTraceOutput(result.trace, outputByTraceRef.current),
         cell: ({ row }: any) => {
-          const display = getTraceOutput(row.original.trace, outputByTrace);
+          const display = getTraceOutput(row.original.trace, outputByTraceRef.current);
           return display ? <span className="small" title={display}>{display}</span> : <span className="text-muted">—</span>;
         },
       },
@@ -236,7 +231,7 @@ const ExperimentDetailsPage: React.FC = () => {
     });
     // add a hidden column for the metric messages
     columns.push({
-      header: 'Message for ' + metric.name || metric.id,
+      header: `Message for ${metric.name ?? metric.id}`,
       accessorFn: (row: Result) => {
         return row.messages?.[metric.id];
       },
@@ -248,17 +243,24 @@ const ExperimentDetailsPage: React.FC = () => {
     });
   } // end for (const metric of metrics)
   columns.push({
+    id: 'experimentResultExampleTags',
     header: 'Tags',
+    type: 'categorical',
+    categoricalValues: (row: Result) => examplesByIdRef.current?.[row.example]?.tags ?? [],
+    filterFn: categoricalOrRowFilter((row: Result) => examplesByIdRef.current?.[row.example]?.tags ?? []),
     accessorFn: (row: Result) => {
-      const eid = row.example;
-      const example = examples?.[eid];
-      return example?.name || eid;
+      const tags = examplesByIdRef.current?.[row.example]?.tags;
+      return Array.isArray(tags) ? tags.join(' + ') : '';
     },
     cell: ({ row }: any) => {
-      const eid = row.original.example;
-      const example = examples?.[eid];
-      return <span>{example?.tags?.join(' + ') || ''}</span>;
-    }
+      const tags = examplesByIdRef.current?.[row.original.example]?.tags;
+      const text = Array.isArray(tags) ? tags.join(' + ') : '';
+      return text ? <span>{text}</span> : <span className="text-muted">—</span>;
+    },
+    csvValue: (row: Result) => {
+      const tags = examplesByIdRef.current?.[row.example]?.tags;
+      return Array.isArray(tags) ? tags.join(' + ') : '';
+    },
   });
   columns.push({
     header: 'Errors',
@@ -291,14 +293,63 @@ const ExperimentDetailsPage: React.FC = () => {
   }
 
   return (
+    <ExperimentDetailsPageContent
+      organisationId={organisationId!}
+      experimentId={experimentId!}
+      experiment={experiment}
+      dataset={dataset}
+      datasetId={datasetId}
+      columns={columns}
+      deleteExperimentMutation={deleteExperimentMutation}
+    />
+  );
+};
+
+/** Split so hooks for table↔dashboard sync stay below loading/error guards (Rules of Hooks). */
+function ExperimentDetailsPageContent({
+  organisationId,
+  experimentId,
+  experiment,
+  dataset,
+  datasetId,
+  columns,
+  deleteExperimentMutation,
+}: {
+  organisationId: string;
+  experimentId: string;
+  experiment: Experiment;
+  dataset: Dataset | undefined;
+  datasetId: string | undefined;
+  columns: ExtendedColumnDef<Result>[];
+  deleteExperimentMutation: UseMutationResult<void, Error, void, unknown>;
+}) {
+  const queryClient = useQueryClient();
+  const [filteredResults, setFilteredResults] = useState<Result[] | null>(null);
+
+  const updateExperimentNameMutation = useMutation({
+    mutationFn: (name: string) => updateExperiment(experimentId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['experiment', experimentId] });
+    },
+  });
+
+  const dashboardExperiment = useMemo(
+    () => ({
+      ...experiment,
+      results: filteredResults ?? experiment.results ?? [],
+    }),
+    [experiment, filteredResults]
+  );
+
+  return (
     <Page
       fluid={true}
       header={
         <NameAndDeleteHeader
           label="Experiment"
           item={experiment}
-          handleNameChange={() => {
-            return updateExperiment(experimentId!, { name: experiment.name }) 
+          handleNameChange={(e) => {
+            updateExperimentNameMutation.mutate(e.target.value);
           }}
           handleDelete={async () => {
             await deleteExperimentMutation.mutateAsync();
@@ -319,13 +370,14 @@ const ExperimentDetailsPage: React.FC = () => {
         </Row>
       )}
 
-      <ExperimentDetailsDashboard experiment={experiment} />
+      <ExperimentDetailsDashboard experiment={dashboardExperiment} baselineExperiment={experiment} />
 
       <TableUsingAPI
-      showSearch={false}
+        showSearch={false}
         data={{ hits: experiment.results || [] }}
         columns={columns}
         queryKeyPrefix={['experiment-results', organisationId, experimentId]}
+        onFilteredRowsChange={setFilteredResults}
       />
     </Page>
   );

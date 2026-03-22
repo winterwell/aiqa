@@ -155,6 +155,7 @@ const DatasetListPage: React.FC = () => {
                       <th>Name</th>
                       <th>Description</th>
                       <th>Tags</th>
+                      {/* TODO - wants load-stats to avoid loading all examples <th>Examples</th> */}
                       <th>Created</th>
                       <th>Updated</th>
                     </tr>
@@ -183,6 +184,7 @@ const DatasetListPage: React.FC = () => {
                             <span className="text-muted">-</span>
                           )}
                         </td>
+    
                         <td>{new Date(dataset.created).toLocaleString()}</td>
                         <td>{new Date(dataset.updated).toLocaleString()}</td>
                       </tr>

@@ -22,7 +22,7 @@ import { getSpanId } from '../common/types';
 import { getStartTime, getEndTime, getDurationMs } from '../utils/span-utils';
 import { useToast } from '../utils/toast';
 
-import TableUsingAPI, { PageableData } from '../components/generic/TableUsingAPI';
+import TableUsingAPI, { PageableData, categoricalOrRowFilter } from '../components/generic/TableUsingAPI';
 import MetricModal, { addOrEditMetric } from '../components/MetricModal';
 import AddExampleModal from '../components/AddExampleModal';
 import PropInput from '../components/generic/PropInput';
@@ -186,6 +186,9 @@ const DatasetDetailsPage: React.FC = () => {
         {
           id: 'tags',
           header: 'Tags',
+          type: 'categorical',
+          categoricalValues: (row: Example) => row.tags ?? [],
+          filterFn: categoricalOrRowFilter((row: Example) => row.tags ?? []),
           accessorFn: (row) => {
             // Sort by first tag alphabetically, or empty string if no tags
             if (!row.tags || !Array.isArray(row.tags) || row.tags.length === 0) {
@@ -443,6 +446,7 @@ const DatasetDetailsPage: React.FC = () => {
             onDataLoaded={(data) => {
               setExamplesData(data.hits);
             }}
+            csvFilenamePrefix={`dataset-${dataset.name||datasetId}`}
             showSearch={false} /* column filters work as expected, overall search currently needs key:value which is unintuitive TODO flexible search*/
             columns={columns}
             searchPlaceholder="Search examples..."

@@ -222,9 +222,9 @@ const ExperimentsListPage: React.FC = () => {
                 <Button
                   color="primary"
                   size="sm"
-                  disabled={rows.length !== 2}
+                  disabled={rows.length !== 2 || rows[0].dataset !== rows[1].dataset}
                   onClick={() => navigate(`/organisation/${organisationId}/experiment/compare/${rows[0].id}/v/${rows[1].id}`)}
-                  title={rows.length === 2 ? 'Compare selected experiments' : 'Select exactly 2 experiments to compare'}
+                  title={rows.length === 2 ? 'Compare selected experiments' : 'Select exactly 2 experiments from the same dataset to compare'}
                 >
                   Compare
                 </Button>

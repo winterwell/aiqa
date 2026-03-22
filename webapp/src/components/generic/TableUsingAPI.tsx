@@ -63,11 +63,90 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
    */
   hidden?: boolean;
   style?: React.CSSProperties;
+  /** When set, filter UI and behaviour are specialised (e.g. categorical multi-select). */
+  type?: 'date' | 'categorical' | 'boolean' | 'list' | 'number';
+  /**
+   * For type `categorical`: values present on each row (e.g. all tags). Used to build the option list and OR matching.
+   */
+  categoricalValues?: (row: T) => string[];
 };
 /* convenience for typing columnDef as ExtendedColumnDef<any> */
 export function isHidden(columnDef: ColumnDef<any>) {
   const extendedColumnDef = columnDef as ExtendedColumnDef<any>;
   return extendedColumnDef?.hidden;
+}
+
+/** OR filter: row matches if any selected value is present in getValues(row). Empty selection = no filter. */
+export function categoricalOrRowFilter<T>(getValues: (row: T) => string[]): FilterFn<T> {
+  return (row, _columnId, filterValue) => {
+    const selected = filterValue as string[] | undefined;
+    if (!selected?.length) return true;
+    const rowVals = getValues(row.original);
+    const set = new Set(rowVals);
+    return selected.some((s) => set.has(s));
+  };
+}
+
+function collectCategoricalOptions<T>(
+  data: T[] | undefined,
+  categoricalValues: (row: T) => string[]
+): string[] {
+  const out = new Set<string>();
+  for (const row of data ?? []) {
+    for (const v of categoricalValues(row)) {
+      if (v) out.add(v);
+    }
+  }
+  return Array.from(out).sort((a, b) => a.localeCompare(b));
+}
+
+function filterValueIsActive(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return String(value).length > 0;
+}
+
+function CategoricalColumnFilter<T>({
+  header,
+  table,
+}: {
+  header: Header<T, unknown>;
+  table: { options: { data?: T[] } };
+}) {
+  const colDef = header.column.columnDef as ExtendedColumnDef<T>;
+  const getVals = colDef.categoricalValues;
+  const data = table.options.data;
+  const options = getVals ? collectCategoricalOptions(data, getVals) : [];
+  const selected = (header.column.getFilterValue() as string[] | undefined) ?? [];
+  const toggle = (tag: string) => {
+    const next = selected.includes(tag) ? selected.filter((t) => t !== tag) : [...selected, tag];
+    header.column.setFilterValue(next.length ? next : undefined);
+  };
+  return (
+    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+      {options.length === 0 ? (
+        <span className="text-muted small">No values in loaded rows</span>
+      ) : (
+        <div className="border rounded p-2 bg-body" style={{ maxHeight: 200, overflowY: 'auto' }}>
+          {options.map((tag, i) => (
+            <div key={tag} className="form-check mb-1">
+              <input
+                type="checkbox"
+                className="form-check-input"
+                id={`cat-${header.id}-${i}`}
+                checked={selected.includes(tag)}
+                onChange={() => toggle(tag)}
+              />
+              <label className="form-check-label small" htmlFor={`cat-${header.id}-${i}`}>
+                {tag}
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="small text-muted mt-1">Match any selected (OR)</div>
+    </div>
+  );
 }
 
 export interface PageableData<T> {
@@ -135,6 +214,10 @@ export interface TableUsingAPIProps<T> {
    * Freeze the first N columns so they stay visible while scrolling.
    */
   freezeColumns?: number;
+  /**
+   * Prefix used for the CSV export filename.
+   */
+  csvFilenamePrefix?: string;
 }
 
 function TableUsingAPI<T extends Record<string, any>>({
@@ -158,6 +241,7 @@ function TableUsingAPI<T extends Record<string, any>>({
   onFilteredRowsChange,
   freezeRows = 0,
   freezeColumns = 0,
+  csvFilenamePrefix = 'table-export',
 }: TableUsingAPIProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(initialSorting);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -169,6 +253,12 @@ function TableUsingAPI<T extends Record<string, any>>({
   const [frozenColumnLeftOffsets, setFrozenColumnLeftOffsets] = useState<number[]>([]);
   const [frozenRowTopOffsets, setFrozenRowTopOffsets] = useState<number[]>([]);
   const tableWrapperRef = useRef<HTMLDivElement>(null);
+  /** Latest table instance for effects; useReactTable's return is not stable enough for dependency arrays. */
+  const tableRef = useRef<ReturnType<typeof useReactTable<T>> | null>(null);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const onFilteredRowsChangeRef = useRef(onFilteredRowsChange);
+  onFilteredRowsChangeRef.current = onFilteredRowsChange;
   const frozenColumnCount = Math.max(0, Math.floor(freezeColumns));
   const frozenRowCount = Math.max(0, Math.floor(freezeRows));
   // Load data from server when debounced query changes
@@ -310,7 +400,7 @@ function TableUsingAPI<T extends Record<string, any>>({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `table-export-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${csvFilenamePrefix}-${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -382,23 +472,25 @@ function TableUsingAPI<T extends Record<string, any>>({
     },
   });
 
+  tableRef.current = table;
+
   // Handle selection changes - use table's selected row model for accurate data
   useEffect(() => {
-    if (enableRowSelection && onSelectionChange) {
-      const selectedRowModel = table.getSelectedRowModel();
-      const selectedRowIds = selectedRowModel.rows.map(row => row.id);
-      const selectedRows = selectedRowModel.rows.map(row => row.original);
-      onSelectionChange(selectedRowIds, selectedRows);
-    }
-  }, [rowSelection, enableRowSelection, onSelectionChange, table]);
+    const cb = onSelectionChangeRef.current;
+    if (!enableRowSelection || !cb) return;
+    const selectedRowModel = tableRef.current!.getSelectedRowModel();
+    const selectedRowIds = selectedRowModel.rows.map((row) => row.id);
+    const selectedRows = selectedRowModel.rows.map((row) => row.original);
+    cb(selectedRowIds, selectedRows);
+  }, [rowSelection, enableRowSelection]);
 
   // Notify parent when filtered (and sorted) rows change, so dashboard can show stats for visible rows only
   useEffect(() => {
-    if (enableInMemoryFiltering && onFilteredRowsChange) {
-      const rows = table.getRowModel().rows.map(r => r.original);
-      onFilteredRowsChange(rows);
-    }
-  }, [hits, columnFilters, globalFilter, sorting, enableInMemoryFiltering, onFilteredRowsChange, table]);
+    const cb = onFilteredRowsChangeRef.current;
+    if (!enableInMemoryFiltering || !cb) return;
+    const rows = tableRef.current!.getRowModel().rows.map((r) => r.original);
+    cb(rows);
+  }, [hits, columnFilters, globalFilter, sorting, enableInMemoryFiltering]);
 
   // Get all rows from table
   const allRows = table.getRowModel().rows;
@@ -612,7 +704,7 @@ function TableHeader<T>({
 
   const isHeaderFilterOpen = (header: any) => {
     const filterValue = header.column.getFilterValue();
-    return Boolean(openFilterInputs[header.id]) || Boolean(filterValue);
+    return Boolean(openFilterInputs[header.id]) || filterValueIsActive(filterValue);
   };
 	return ( <thead>
 		{headers.map((headerGroup) => (
@@ -623,6 +715,9 @@ function TableHeader<T>({
           const isFrozenColumn = visibleColumnIndex < Math.max(0, Math.floor(freezeColumns));
           const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
           const isFilterOpen = canFilter && isHeaderFilterOpen(header);
+          const extCol = header.column.columnDef as ExtendedColumnDef<any>;
+          const useCategoricalFilter =
+            extCol.type === 'categorical' && extCol.categoricalValues && table;
           const frozenStyle: React.CSSProperties = isFrozenColumn
             ? {
               position: 'sticky',
@@ -673,15 +768,19 @@ function TableHeader<T>({
             )}
           </div>
           {canFilter && isFilterOpen && (
-            <Input
-              type="search"
-              value={String(header.column.getFilterValue() ?? '')}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
-              placeholder="Filter..."
-              bsSize="sm"
-              className="mt-1"
-            />
+            useCategoricalFilter ? (
+              <CategoricalColumnFilter header={header} table={table} />
+            ) : (
+              <Input
+                type="search"
+                value={String(header.column.getFilterValue() ?? '')}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
+                placeholder="Filter..."
+                bsSize="sm"
+                className="mt-1"
+              />
+            )
           )}
 				  </th>
 				);

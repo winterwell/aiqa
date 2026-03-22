@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { DeviceRotateIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
 import { Row, Col } from 'reactstrap';
 import { getExperiment, getDataset, searchExamples } from '../api';
@@ -238,9 +239,21 @@ const ExperimentComparePage: React.FC = () => {
     >
       <Row className="mb-3">
         <Col>
-          <p className="mb-1"><strong>A:</strong> {experimentA.name || experimentA.id} (<code>{experimentA.id}</code>)</p>
-          <p className="mb-0"><strong>B:</strong> {experimentB.name || experimentB.id} (<code>{experimentB.id}</code>)</p>
-          <p className="text-muted mb-0">Metric delta is computed as B - A (negative means experiment B is lower).</p>
+          <div className="d-flex align-items-start gap-2">
+            <div className="flex-grow-1 min-w-0">
+              <p className="mb-1"><strong>A:</strong> {experimentA.name || experimentA.id} (<code>{experimentA.id}</code>)</p>
+              <p className="mb-0"><strong>B:</strong> {experimentB.name || experimentB.id} (<code>{experimentB.id}</code>)</p>
+              <p className="text-muted mb-0">Metric delta is computed as B - A (negative means experiment B is lower).</p>
+            </div>
+            <Link
+              to={`/organisation/${organisationId}/experiment/compare/${experimentBId}/v/${experimentAId}`}
+              className="btn btn-sm btn-outline-secondary flex-shrink-0 p-1 lh-1"
+              title="Swap A and B"
+              aria-label="Swap A and B"
+            >
+              <DeviceRotateIcon size={18} aria-hidden />
+            </Link>
+          </div>
         </Col>
       </Row>
       <TableUsingAPI
