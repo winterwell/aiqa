@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "schema": "node scripts/generate-schemas.js",
     "retention": "pnpm run build && node dist/scripts/delete-old-spans.js",
+    "trace-quality": "pnpm run build && node dist/scripts/check-trace-quality.js",
     "postinstall": "if [ ! -d opentelemetry-proto ]; then git submodule update --init --recursive 2>/dev/null || echo 'Note: opentelemetry-proto not found. If using git submodules, run: git submodule update --init --recursive'; fi"
   },
   "dependencies": {

@@ -22,6 +22,7 @@ export interface Result {
 		[metricName: string]: string;
 	}
 }
+export const OTEL_CORRECTNESS_KEY = "opentelemetry";
 
 /**
  * The Result from one example and one metric

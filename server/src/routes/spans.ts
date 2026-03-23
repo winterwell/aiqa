@@ -266,7 +266,9 @@ export async function processOtlpTraceExport(
   await bulkInsertSpans(spansWithOrg);
   await recordSpanPosting(organisation, spansWithOrg.length);
   // do we need to update any experiments with fresh token usage? (fire-and-forget call)
-  updateExperimentsWithFreshTokenUsage(rootSpans);
+  void updateExperimentsWithFreshTokenUsage(rootSpans).catch((error) => {
+    console.warn('spans.ts updateExperimentsWithFreshTokenUsage failed:', error);
+  });
   return { success: true };
 }
 

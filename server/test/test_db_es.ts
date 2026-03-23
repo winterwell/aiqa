@@ -119,6 +119,13 @@ tap.test('Elasticsearch: Insert and Query Spans', async t => {
   result = await searchSpans(sq, orgId, 10, 0);
   t.equal(result.total, 2, 'Should find both spans with OR query');
 
+  // Long OR chain should stay queryable (regression test for nested bool depth explosions).
+  const longTraceIds = Array.from({ length: 120 }, (_, i) => `missing_trace_${i}`);
+  longTraceIds.push('tr1');
+  const longOrQuery = longTraceIds.map((id) => `trace:${id}`).join(' OR ');
+  result = await searchSpans(new SearchQuery(longOrQuery), orgId, 10, 0);
+  t.ok(result.total >= 2, 'Should handle long OR trace query without ES nested-bool errors');
+
   // Insert span with input as JSON string (e.g. Python WithTracing filter_input sends serialized dict).
   // normalizeAttributesForFlattened should parse it to an object so we don't store { value: "..." }.
   const traceId = randomUUID();

@@ -12,6 +12,11 @@ import {
   GEN_AI_COST_USD,
 } from '../common/constants_otel.js';
 
+const TRACE_PARTIAL = 'trace.partial';
+const TRACE_PARTIAL_REASON = 'trace.partial.reason';
+const CHILD_FETCH_LIMIT = 5000;
+const CHILD_FETCH_TRUNCATION_REASON = `child span lookup truncated at ${CHILD_FETCH_LIMIT} results`;
+
 /**
  * Safely convert a value to a number, handling both string and number types.
  * Prevents string concatenation bugs when adding token values.
@@ -89,6 +94,36 @@ export function getSpanStatsFromAttributes(span: Span): SpanStats {
 export interface PropagateTokenCostsDependencies {
   searchSpans: (query: SearchQuery | string, organisation: string, limit: number, offset: number, includes?: string[] | null, excludes?: string[] | null) => Promise<{ hits: Span[]; total: number }>;
   updateSpan: (spanId: string, updates: Partial<Span>, organisation: string) => Promise<Span | null>;
+}
+
+function isTracePartial(span: Span): boolean {
+  return Boolean(span.attributes?.[TRACE_PARTIAL]);
+}
+
+function getTracePartialReason(span: Span): string | undefined {
+  const reason = span.attributes?.[TRACE_PARTIAL_REASON];
+  return typeof reason === 'string' && reason.trim().length > 0 ? reason : undefined;
+}
+
+function mergeReasons(existingReason: string | undefined, newReason: string | undefined): string | undefined {
+  const parts = [existingReason, newReason]
+    .filter((s): s is string => Boolean(s && s.trim().length > 0))
+    .flatMap(s => s.split(' | ').map(p => p.trim()).filter(Boolean));
+  const unique = Array.from(new Set(parts));
+  return unique.length > 0 ? unique.join(' | ') : undefined;
+}
+
+function setTracePartial(span: Span, reason: string): boolean {
+  const mutableSpan = span as any;
+  const attrs = mutableSpan.attributes || (mutableSpan.attributes = {});
+  const oldPartial = Boolean(attrs[TRACE_PARTIAL]);
+  const oldReason = typeof attrs[TRACE_PARTIAL_REASON] === 'string' ? attrs[TRACE_PARTIAL_REASON] : undefined;
+  const mergedReason = mergeReasons(oldReason, reason);
+  attrs[TRACE_PARTIAL] = true;
+  if (mergedReason) {
+    attrs[TRACE_PARTIAL_REASON] = mergedReason;
+  }
+  return !oldPartial || oldReason !== attrs[TRACE_PARTIAL_REASON];
 }
 
 /**
@@ -169,16 +204,26 @@ export async function propagateTokenCostsToRootSpan(
   // load child spans for the batch
   let idsToResolveChildren = Array.from(spanIdsInBatch);
   while (idsToResolveChildren.length > 0) {
+    const parentIdsForThisFetch = [...idsToResolveChildren];
     // load child spans
     const result = await searchSpans({
       // Must repeat parent: on each id — join(" OR ") alone yields parent:a OR b (b is not a parent filter).
       searchQuery: SearchQuery.setPropOr(null, 'parent', idsToResolveChildren),
       organisation,
-      limit: 5000, // This is a high limit! Larger span trees than this can be considered as unsupported
+      limit: CHILD_FETCH_LIMIT,
       offset: 0,
       _source_includes: ['id', 'parent', 'trace', 'organisation', 'attributes', 'stats', '_childStats'],
       _source_excludes: undefined
   });
+    if (result.total > result.hits.length) {
+      console.warn(`propagateTokenCostsToRootSpan: child fetch truncated (${result.hits.length}/${result.total}) for ${parentIdsForThisFetch.length} parent span(s)`);
+      for (const parentId of parentIdsForThisFetch) {
+        const parentSpan = spanMap.get(parentId);
+        if (parentSpan) {
+          setTracePartial(parentSpan, CHILD_FETCH_TRUNCATION_REASON);
+        }
+      }
+    }
     idsToResolveChildren = [];
     for(const child of result.hits) {
       if (spanMap.has(child.id)) {
@@ -274,6 +319,10 @@ interface ProcessSpanResult {
   treeEnd: number;
   /** Effective first output token epoch ms for this subtree (absolute time). */
   treeFirstTokenEpochMs?: number;
+  /** Whether this subtree is partial due to truncated child fetching. */
+  treePartial: boolean;
+  /** Reason(s) for partial subtree. */
+  treePartialReason?: string;
 }
 
 /**
@@ -293,7 +342,13 @@ const processSpan = (span: Span, childrenMap: Map<string, Span[]>, processedSpan
       ? span.start + ownTimeToFirstSeconds * 1000
       : undefined;
     const end = typeof span.end === 'number' ? span.end : 0;
-    return { stats: ownStats, treeEnd: end, treeFirstTokenEpochMs: ownFirstTokenEpochMs };
+    return {
+      stats: ownStats,
+      treeEnd: end,
+      treeFirstTokenEpochMs: ownFirstTokenEpochMs,
+      treePartial: isTracePartial(span),
+      treePartialReason: getTracePartialReason(span),
+    };
   }
   processedSpans.add(spanId);
 console.log(`processSpan: span ${spanId} ...`);
@@ -312,6 +367,8 @@ console.log(`processSpan: span ${spanId} ...`);
   // Effective first output token for this subtree.
   // Precedence rule: if this span has its own `time_to_first_output_token`, it wins over descendants.
   let treeFirstTokenEpochMs: number | undefined = ownFirstTokenEpochMs;
+  let treePartial = isTracePartial(span);
+  let treePartialReason = getTracePartialReason(span);
   for (const child of children) {
     const childResult = processSpan(child, childrenMap, processedSpans, modifiedSpans);
     const childId = getSpanId(child);
@@ -326,6 +383,10 @@ console.log(`processSpan: span ${spanId} ...`);
         treeFirstTokenEpochMs = treeFirstTokenEpochMs === undefined
           ? childResult.treeFirstTokenEpochMs
           : Math.min(treeFirstTokenEpochMs, childResult.treeFirstTokenEpochMs);
+      }
+      if (childResult.treePartial) {
+        treePartial = true;
+        treePartialReason = mergeReasons(treePartialReason, childResult.treePartialReason);
       }
     }
   }
@@ -356,17 +417,21 @@ console.log(`processSpan: span ${spanId} ...`);
       totalUsage.timeToFirstOutputToken = deltaMs / 1000;
     }
   }
+  let partialAttributesChanged = false;
+  if (treePartial) {
+    partialAttributesChanged = setTracePartial(span, treePartialReason || CHILD_FETCH_TRUNCATION_REASON);
+  }
 
   // modified?
   // Note: counts can only ever increase, so if totals match, then the child stats match too
-  if (!isEqual(span.stats, totalUsage)) {
+  if (!isEqual(span.stats, totalUsage) || partialAttributesChanged) {
     span.stats = totalUsage;
     modifiedSpans.add(span);
     console.log(`processSpan: span ${spanId} modified, adding to modifiedSpans: ${JSON.stringify(totalUsage)}`);
   } else {
     console.log(`No change for: span ${spanId} stats match, skipping update totalUsage: ${JSON.stringify(totalUsage)}`);
   }
-  return { stats: totalUsage, treeEnd, treeFirstTokenEpochMs };
+  return { stats: totalUsage, treeEnd, treeFirstTokenEpochMs, treePartial, treePartialReason };
 }; // end of processSpan()
 
 

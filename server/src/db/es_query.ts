@@ -127,6 +127,30 @@ function buildEsQuery_oneBit(bit: any): any {
 }
 
 /**
+ * Flatten nested bool queries for the same operator to avoid deep query trees.
+ * This prevents hitting `indices.query.bool.max_nested_depth` on large OR chains.
+ */
+function flattenBoolClauses(queries: any[], operator: 'should' | 'must'): any[] {
+  const flattened: any[] = [];
+  for (const query of queries) {
+    if (!query?.bool) {
+      flattened.push(query);
+      continue;
+    }
+    if (operator === 'should' && Array.isArray(query.bool.should) && query.bool.minimum_should_match === 1) {
+      flattened.push(...query.bool.should);
+      continue;
+    }
+    if (operator === 'must' && Array.isArray(query.bool.must) && Object.keys(query.bool).length === 1) {
+      flattened.push(...query.bool.must);
+      continue;
+    }
+    flattened.push(query);
+  }
+  return flattened;
+}
+
+/**
  * Build Elasticsearch query from parse tree
  */
 export function buildEsQuery(tree: any[]): any {
@@ -146,9 +170,9 @@ export function buildEsQuery(tree: any[]): any {
   if (op === 'OR') {
     if (queries.length === 0) return { match_all: {} };
     if (queries.length === 1) return queries[0];
-    return { bool: { should: queries, minimum_should_match: 1 } };
+    return { bool: { should: flattenBoolClauses(queries, 'should'), minimum_should_match: 1 } };
   } else {
-    return { bool: { must: queries } };
+    return { bool: { must: flattenBoolClauses(queries, 'must') } };
   }
 }
 

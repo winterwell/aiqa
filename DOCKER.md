@@ -53,6 +53,11 @@ E.g. if the server is myserver.mydomain.com, then nginx
 would typically listen on ports 80, 443, 4317, and 4318
 and do: port 80: redirect, port 443 proxy pass to port 4000, port 4318 proxy pass to port 4318, port 4317 proxy pass to port 4317.
 
+0.2. **Configure the nginx gateway to allow large files**
+The internal nginx config is set to 50m, but the gateway nginx
+on your server is likely lower. This can lead to spans being dropped.
+TODO notes
+
 1. **Clone repository**:
    ```bash
    git clone https://github.com/winterwell/aiqa
