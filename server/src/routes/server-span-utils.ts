@@ -146,7 +146,7 @@ export async function propagateTokenCostsToRootSpan(
     if (spanMap.has(parentId)) continue;
     try {
       const result = await searchSpans({
-        searchQuery: new SearchQuery(`id:${parentId}`),
+        searchQuery: SearchQuery.setProp(null, 'id', parentId),
         organisation,
         limit: 1,
         offset: 0,
@@ -171,7 +171,8 @@ export async function propagateTokenCostsToRootSpan(
   while (idsToResolveChildren.length > 0) {
     // load child spans
     const result = await searchSpans({
-      searchQuery: new SearchQuery(`parent:${idsToResolveChildren.join(' OR ')}`),
+      // Must repeat parent: on each id — join(" OR ") alone yields parent:a OR b (b is not a parent filter).
+      searchQuery: SearchQuery.setPropOr(null, 'parent', idsToResolveChildren),
       organisation,
       limit: 5000, // This is a high limit! Larger span trees than this can be considered as unsupported
       offset: 0,

@@ -863,6 +863,7 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
   // - organisation matches
   // - (end < cutoffTime OR (end missing AND start < cutoffTime))
   // Use deleteByQuery for efficient bulk deletion
+  // Nested bool clauses as arrays — some OpenSearch/ES builds reject single-object must/must_not.
   const query = {
     bool: {
       must: [
@@ -874,8 +875,8 @@ export async function deleteOldSpans(organisationId: string, retentionDays: numb
         // Spans without end but with start older than cutoff
         {
           bool: {
-            must_not: { exists: { field: 'end' } },
-            must: { range: { start: { lt: cutoffTime } } }
+            must_not: [{ exists: { field: 'end' } }],
+            must: [{ range: { start: { lt: cutoffTime } } }]
           }
         }
       ],

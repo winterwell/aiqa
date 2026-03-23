@@ -141,9 +141,11 @@ export function buildEsQuery(tree: any[]): any {
 
   const op = tree[0];
   const bits = tree.slice(1);
-  const queries = bits.map((bit: any) => buildEsQuery_oneBit(bit));
+  const queries = bits.map((bit: any) => buildEsQuery_oneBit(bit)).filter((q: any) => q != null);
 
   if (op === 'OR') {
+    if (queries.length === 0) return { match_all: {} };
+    if (queries.length === 1) return queries[0];
     return { bool: { should: queries, minimum_should_match: 1 } };
   } else {
     return { bool: { must: queries } };

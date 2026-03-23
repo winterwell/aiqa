@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { DeviceRotateIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { Row, Col } from 'reactstrap';
+import { Row, Col, Card, CardHeader, CardBody } from 'reactstrap';
 import { getExperiment, getDataset, searchExamples } from '../api';
 import type { Result } from '../common/types/Experiment';
 import TableUsingAPI from '../components/generic/TableUsingAPI';
@@ -11,8 +11,10 @@ import LinkId from '../components/LinkId';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
 import { getExampleInput, getTruncatedDisplayString } from '../utils/example-utils';
-import { durationString, prettyNumber } from '../utils/span-utils';
-import { getMetricValue, getMetrics } from '../utils/metric-utils';
+import { durationString, formatMetricValue, prettyNumber } from '../utils/span-utils';
+import { extractMetricValues, getMetricValue, getMetrics } from '../utils/metric-utils';
+import type Metric from '../common/types/Metric';
+import type Experiment from '../common/types/Experiment';
 
 type CompareRow = {
   id: string;
@@ -33,7 +35,32 @@ function getResultByExampleId(results?: Result[]): Record<string, Result> {
   return out;
 }
 
+function meanOfValues(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((s, v) => s + v, 0) / values.length;
+}
 
+/**
+ * Relative % change of B vs baseline A: ((B - A) / A) * 100.
+ * Returns null when either mean is missing, or when |A| is negligible vs scale (avoids div-by-zero).
+ */
+function percentDifferenceBVsA(meanA: number | null, meanB: number | null): number | null {
+  if (meanA === null || meanB === null) return null;
+  const scale = Math.max(Math.abs(meanA), Math.abs(meanB), Number.EPSILON);
+  if (Math.abs(meanA) < 1e-12 * scale) return null;
+  return ((meanB - meanA) / meanA) * 100;
+}
+
+function formatPercentDiff(pct: number): string {
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct.toFixed(1)}%`;
+}
+
+type MetricOverviewRow = {
+  metric: Metric;
+  meanA: number | null;
+  meanB: number | null;
+};
 
 const ExperimentComparePage: React.FC = () => {
   const { organisationId, experimentAId, experimentBId } = useParams<{
@@ -149,6 +176,16 @@ const ExperimentComparePage: React.FC = () => {
     }));
   }, [metricById]);
 
+  const metricOverviewRows = useMemo<MetricOverviewRow[]>(() => {
+    const list = Object.values(metricById) as Metric[];
+    list.sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)));
+    return list.map((metric) => ({
+      metric,
+      meanA: meanOfValues(extractMetricValues(metric, experimentA?.results)),
+      meanB: meanOfValues(extractMetricValues(metric, experimentB?.results)),
+    }));
+  }, [metricById, experimentA?.results, experimentB?.results]);
+
   const columns = useMemo<ExtendedColumnDef<CompareRow>[]>(() => {
     const notTooBigStyle: React.CSSProperties = {
       maxWidth: '220px',
@@ -256,6 +293,7 @@ const ExperimentComparePage: React.FC = () => {
           </div>
         </Col>
       </Row>
+      <CompareOverview rows={metricOverviewRows} experimentA={experimentA} experimentB={experimentB} />
       <TableUsingAPI
         showSearch={false}
         data={{ hits: rows }}
@@ -265,5 +303,58 @@ const ExperimentComparePage: React.FC = () => {
     </Page>
   );
 };
+
+function CompareOverview({ rows, experimentA, experimentB }: { rows: MetricOverviewRow[]; experimentA: Experiment; experimentB: Experiment }) {
+  return (
+    <Row className="mb-3">
+      <Col>
+        <Card>
+          <CardHeader>
+            <h5 className="mb-0">Compare Overview</h5>
+          </CardHeader>
+          <CardBody className="p-0">
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th scope="col">Metric</th>
+                    <th scope="col" className="text-end">
+                      Mean {experimentA.name || experimentA.id}
+                    </th>
+                    <th scope="col" className="text-end">
+                      Mean {experimentB.name || experimentB.id}
+                    </th>
+                    <th scope="col" className="text-end">
+                      % difference
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ metric, meanA, meanB }) => {
+                    const pct = percentDifferenceBVsA(meanA, meanB);
+                    return (
+                    <tr key={metric.id}>
+                      <td>{metric.name || metric.id}</td>
+                      <td className="text-end">
+                        {meanA != null ? formatMetricValue(metric, meanA) : '—'}
+                      </td>
+                      <td className="text-end">
+                        {meanB != null ? formatMetricValue(metric, meanB) : '—'}
+                      </td>
+                      <td className="text-end">
+                        {pct != null ? formatPercentDiff(pct) : <span className="text-muted">—</span>}
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      </Col>
+    </Row>
+  );
+}
 
 export default ExperimentComparePage;

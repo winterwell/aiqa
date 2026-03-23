@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { Button, FormGroup, Input, Label, Row, Col } from 'reactstrap';
-import { createExampleFromSpans, createDataset, listDatasets } from '../api';
+import { createExampleFromSpans, createDataset, listDatasets, getExperiment } from '../api';
 import { Span } from '../common/types';
 import { getSpanId, getTraceId, getParentSpanId } from '../common/types/Span.js';
 import { getDurationMs, getDurationUnits, prettyNumber, durationString, getStartTime } from '../utils/span-utils';
@@ -513,6 +513,12 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 		addToDatasetMutation.mutate(selectedDatasetId);
 	};
 
+	const experimentId = span.attributes?.['aiqa.experiment'] as string;
+	const {data:experiment} = useQuery({
+		queryKey: ['experiment', experimentId],
+		queryFn: () => getExperiment(experimentId),
+		enabled: !!experimentId
+	});
 	return (
 		<div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', minWidth: 0, maxWidth: '100%' }}>
 			<Row>
@@ -521,6 +527,8 @@ function SpanDetails({ span, organisationId, datasets }: { span: Span; organisat
 					{span.name && <div><strong>Name:</strong> {span.name}</div>}
 					{span.example && <div><strong>Example:</strong> {span.example}</div>}
 					<div><strong>Date:</strong> {getStartTime(span)?.toLocaleString() || 'N/A'}</div>
+					{/*span.attributes?.['aiqa.example'] && <div><strong>Example:</strong> {span.attributes?.['aiqa.example']}</div> */}
+					{experimentId && <div><strong>Experiment:</strong> {experiment?.name || experimentId}</div>}
 				</Col>
 				<Col>
 					<div><strong>Duration:</strong> {durationString(durationMs)}</div>
