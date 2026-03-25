@@ -13,6 +13,7 @@ import {
 	GEN_AI_COST_USD,
 	GEN_AI_COST_CALCULATOR,
 	GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+	GEN_AI_USAGE_CACHE_WRITE_TTL,
 } from './common/constants_otel.js';
 
 interface TokenCostEntry {
@@ -21,7 +22,10 @@ interface TokenCostEntry {
 	mode: string;
 	input_Mtkn: number;
 	cached_input_Mtkn: number;
-	cache_creation_input_Mtkn: number;
+	/** Prompt cache write, 1-hour TTL ($/1M tokens). */
+	cache_creation_input_1h_Mtkn: number;
+	/** Prompt cache write, 5-minute TTL ($/1M tokens). */
+	cache_creation_input_5m_Mtkn: number;
 	output_Mtkn: number;
 	/** if true, this is a bland guess */
 	fallback?: boolean;
@@ -49,7 +53,9 @@ function loadTokenCosts(): Map<string, TokenCostEntry> {
 		const lines = csvContent.split('\n').filter(line => line.trim() && !line.startsWith('provider'));
 
 		for (const line of lines) {
-			const [provider, model, mode, input_Mtkn, cached_input_Mtkn, output_Mtkn, cache_creation_input_Mtkn] = line.split(',');
+			// skip comment lines and empty lines
+			if (line.trim() === '' || line.startsWith('#')) continue;
+			const [provider, model, mode, input_Mtkn, cached_input_Mtkn, output_Mtkn, c1h, c5m] = line.split(',');
 			if (!provider || !model || !mode) continue;
 
 			const entry: TokenCostEntry = {
@@ -59,7 +65,8 @@ function loadTokenCosts(): Map<string, TokenCostEntry> {
 				input_Mtkn: parseFloat(input_Mtkn?.trim() || '0'),
 				cached_input_Mtkn: parseFloat(cached_input_Mtkn?.trim() || '0'),
 				output_Mtkn: parseFloat(output_Mtkn?.trim() || '0'),
-				cache_creation_input_Mtkn: parseFloat(cache_creation_input_Mtkn?.trim() || '0'),
+				cache_creation_input_1h_Mtkn: parseFloat(c1h?.trim() || '0'),
+				cache_creation_input_5m_Mtkn: parseFloat(c5m?.trim() || '0'),
 			};
 
 			// Store by provider-model-mode key
@@ -86,10 +93,21 @@ function loadTokenCosts(): Map<string, TokenCostEntry> {
  */
 function inferProviderFromModel(model: string | undefined): string | null {
 	if (!model) return null;
-	
+
+	loadTokenCosts();
+
 	const modelLower = model.toLowerCase();
-	
-	// Common patterns
+
+	// Bedrock before generic "claude". Direct Anthropic API uses names like claude-3-5-sonnet-20241022 (no "anthropic.");
+	// Bedrock uses anthropic.claude-… and eu.anthropic.claude-…. Require that prefix so we do not match arbitrary strings that merely contain the substring "anthropic.claude".
+	if (
+		modelLower.includes('bedrock') ||
+		/^(?:[a-z]{2}\.)?anthropic\.claude-/i.test(model.trim()) ||
+		/^[a-z]{2}\.(amazon\.|ai21\.|cohere\.|meta\.|mistral\.)/i.test(model.trim())
+	) {
+		return 'bedrock';
+	}
+
 	if (modelLower.includes('gpt') || modelLower.includes('o1') || modelLower.includes('o3') || modelLower.includes('o4')) {
 		return 'openai';
 	}
@@ -101,9 +119,6 @@ function inferProviderFromModel(model: string | undefined): string | null {
 	}
 	if (modelLower.includes('azure')) {
 		return 'azure';
-	}
-	if (modelLower.includes('bedrock') || modelLower.includes('amazon') || modelLower.includes('anthropic.claude')) {
-		return 'bedrock';
 	}
 	
 	// Check provider map from CSV
@@ -186,9 +201,18 @@ export function getTokenCostEntry(provider: string | null, model: string | undef
 		input_Mtkn: 2.50,
 		cached_input_Mtkn: 1.25,
 		output_Mtkn: 10.00,
-		cache_creation_input_Mtkn: 0.00, // ChatGPT dont charge for cache creation
+		cache_creation_input_1h_Mtkn: 0.00,
+		cache_creation_input_5m_Mtkn: 0.00,
 	};
 	return hardCodedEntry;
+}
+
+function cacheCreationRatePerMtkn(entry: TokenCostEntry, ttl: '1h' | '5m'): number {
+	const r1h = entry.cache_creation_input_1h_Mtkn;
+	const r5m = entry.cache_creation_input_5m_Mtkn;
+	if (ttl === '1h' && r1h > 0) return r1h;
+	if (ttl === '5m' && r5m > 0) return r5m;
+	return r5m || r1h || 0;
 }
 
 /**
@@ -210,6 +234,10 @@ export function getTokenCostEntry(provider: string | null, model: string | undef
  * This function assumes:
  * - `inputTokens` may already include cached tokens (OpenAI or client-adjusted Bedrock).
  * - `cachedInputTokens` is the subset of input tokens that came from cache reads.
+ *
+ * Prompt cache **creation** uses `cache_write_1h_Mtkn` vs `cache_write_5m_Mtkn` from the CSV;
+ * `cacheWriteTtl` picks the tier (default `5m`). Spans may set {@link GEN_AI_USAGE_CACHE_WRITE_TTL}
+ * to `1h` when the provider used a 1-hour cache TTL.
  */
 // exported for unit tests
 export function calculateCost(
@@ -217,7 +245,8 @@ export function calculateCost(
 	outputTokens: number,
 	cachedInputTokens: number,
 	cacheCreationTokens: number,
-	costEntry: TokenCostEntry
+	costEntry: TokenCostEntry,
+	cacheWriteTtl: '1h' | '5m' = '5m',
 ): number {
 	// Costs are in dollars per million tokens.
 	// So cost per token = cost_in_Mtkn / 1,000,000.
@@ -241,9 +270,9 @@ export function calculateCost(
 	const cachedInputCost = (cachedInputTokens && cachedInputMtkn > 0)
 		? (cachedInputTokens * cachedInputMtkn) / 1_000_000
 		: 0;
-	// cache creation cost
-	const cacheCreationCost = (cacheCreationTokens && costEntry.cache_creation_input_Mtkn > 0)
-		? (cacheCreationTokens * costEntry.cache_creation_input_Mtkn) / 1_000_000
+	const cacheMtkn = cacheCreationRatePerMtkn(costEntry, cacheWriteTtl);
+	const cacheCreationCost = (cacheCreationTokens && cacheMtkn > 0)
+		? (cacheCreationTokens * cacheMtkn) / 1_000_000
 		: 0;
 	// output
 	const outputCost = (outputTokens && costEntry.output_Mtkn > 0)
@@ -264,7 +293,9 @@ export function addTokenCost(span: Span): void {
 	const outputTokens = toNumber(attributes[GEN_AI_USAGE_OUTPUT_TOKENS]);
 	const totalTokens = toNumber(attributes[GEN_AI_USAGE_TOTAL_TOKENS]);
 	const cachedInputTokens = toNumber(attributes[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS]) ?? 0;
-	const cacheCreationTokens = toNumber(attributes[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS]) ?? 0; // TODO
+	const cacheCreationTokens = toNumber(attributes[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS]) ?? 0;
+	const cacheWriteTtlRaw = attributes[GEN_AI_USAGE_CACHE_WRITE_TTL] as string | undefined;
+	const cacheWriteTtl: '1h' | '5m' = cacheWriteTtlRaw === '1h' ? '1h' : '5m';
 	// If no token usage at all, return early
 	if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
 		return;
@@ -299,17 +330,9 @@ export function addTokenCost(span: Span): void {
 		provider = inferProviderFromModel(model) || null;
 	}
 	
-	// Get cost entry
 	const costEntry = getTokenCostEntry(provider || null, model, mode);
-	
-	if (!costEntry) {
-		// No cost entry found - log warning for debugging
-		console.warn(`No cost entry found for provider="${provider || 'null'}", model="${model || 'undefined'}", mode="${mode}". Tokens present but cost not calculated.`);
-		return;
-	}
-	
-	// Calculate cost
-	const cost = calculateCost(actualInputTokens, actualOutputTokens, cachedInputTokens, cacheCreationTokens, costEntry);
+
+	const cost = calculateCost(actualInputTokens, actualOutputTokens, cachedInputTokens, cacheCreationTokens, costEntry, cacheWriteTtl);
 	
 	// Add cost attributes (using type assertion to work around read-only interface)
 	const mutableSpan = span as any;

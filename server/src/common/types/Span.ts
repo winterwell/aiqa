@@ -8,7 +8,8 @@ export interface Feedback {
   comment?: string;
 }
 
-
+/** aggregate stats for a span and its children 
+ */
 export interface SpanStats {
   inputTokens?: number;
   outputTokens?: number;

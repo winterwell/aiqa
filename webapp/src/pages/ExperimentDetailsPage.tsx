@@ -21,6 +21,7 @@ import LinkId from '../components/LinkId';
 import { getTruncatedDisplayString, getExampleInput } from '../utils/example-utils';
 import { getSpanOutput } from '../common/types/Span';
 import { useRootSpansForTraces } from '../hooks/useSpanData';
+import { GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS, GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, GEN_AI_USAGE_INPUT_TOKENS, GEN_AI_USAGE_OUTPUT_TOKENS } from 'src/common/constants_otel';
 
 const TRACE_OUTPUT_MAX_LEN = 100;
 
@@ -205,6 +206,24 @@ const ExperimentDetailsPage: React.FC = () => {
         header: 'Cost',
         accessorFn: (row: Result) => {
           return formatCost(row.scores?.[COST_METRIC_ID]);
+        }
+      },
+      { /* see SpanStats */
+        header: 'Input Tokens',
+        accessorFn: (row: Result) => {
+          return row.scores?.inputTokens;
+        }
+      },
+      {
+        header: 'Cached Input Tokens',
+        accessorFn: (row: Result) => {
+          return row.scores?.cachedInputTokens;
+        }
+      },
+      {
+        header: 'Output Tokens',
+        accessorFn: (row: Result) => {
+          return row.scores?.outputTokens;
         }
       },
       {

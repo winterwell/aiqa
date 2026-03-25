@@ -10,6 +10,8 @@ import type { ExtendedColumnDef } from '../components/generic/TableUsingAPI';
 import LinkId from '../components/LinkId';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
+import CopyButton from '../components/generic/CopyButton';
+import { useToast } from '../utils/toast';
 import { getExampleInput, getTruncatedDisplayString } from '../utils/example-utils';
 import { durationString, formatMetricValue, prettyNumber } from '../utils/span-utils';
 import { extractMetricValues, getMetricValue, getMetrics } from '../utils/metric-utils';
@@ -62,12 +64,33 @@ type MetricOverviewRow = {
   meanB: number | null;
 };
 
+function getCompareOverviewClipboardText(
+  rows: MetricOverviewRow[],
+  experimentA: Experiment,
+  experimentB: Experiment,
+): string {
+  const aName = experimentA.name || experimentA.id;
+  const bName = experimentB.name || experimentB.id;
+  const header = ['Metric', `Mean ${aName}`, `Mean ${bName}`, '% difference'].join('\t');
+  const body = rows.map(({ metric, meanA, meanB }) => {
+    const pct = percentDifferenceBVsA(meanA, meanB);
+    return [
+      metric.name || metric.id,
+      meanA != null ? formatMetricValue(metric, meanA) : '—',
+      meanB != null ? formatMetricValue(metric, meanB) : '—',
+      pct != null ? formatPercentDiff(pct) : '—',
+    ].join('\t');
+  });
+  return [header, ...body].join('\n');
+}
+
 const ExperimentComparePage: React.FC = () => {
   const { organisationId, experimentAId, experimentBId } = useParams<{
     organisationId: string;
     experimentAId: string;
     experimentBId: string;
   }>();
+  const { showToast } = useToast();
 
   const { data: experimentA, isLoading: isLoadingA, error: errorA } = useQuery({
     queryKey: ['experiment-compare', 'a', experimentAId],
@@ -293,8 +316,14 @@ const ExperimentComparePage: React.FC = () => {
           </div>
         </Col>
       </Row>
-      <CompareOverview rows={metricOverviewRows} experimentA={experimentA} experimentB={experimentB} />
+      <CompareOverview
+        rows={metricOverviewRows}
+        experimentA={experimentA}
+        experimentB={experimentB}
+        showToast={showToast}
+      />
       <TableUsingAPI
+      freezeRows={1}
         showSearch={false}
         data={{ hits: rows }}
         columns={columns}
@@ -304,13 +333,28 @@ const ExperimentComparePage: React.FC = () => {
   );
 };
 
-function CompareOverview({ rows, experimentA, experimentB }: { rows: MetricOverviewRow[]; experimentA: Experiment; experimentB: Experiment }) {
+function CompareOverview({
+  rows,
+  experimentA,
+  experimentB,
+  showToast,
+}: {
+  rows: MetricOverviewRow[];
+  experimentA: Experiment;
+  experimentB: Experiment;
+  showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+}) {
   return (
     <Row className="mb-3">
       <Col>
         <Card>
-          <CardHeader>
+          <CardHeader className="d-flex align-items-center justify-content-between gap-2">
             <h5 className="mb-0">Compare Overview</h5>
+            <CopyButton
+              size="sm"
+              content={() => getCompareOverviewClipboardText(rows, experimentA, experimentB)}
+              showToast={showToast}
+            />
           </CardHeader>
           <CardBody className="p-0">
             <div className="table-responsive">

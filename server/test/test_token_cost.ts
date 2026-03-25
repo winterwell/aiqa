@@ -24,19 +24,38 @@ tap.test('getTokenCostEntry - unknown provider+model falls back to openai-gpt-4o
 
 tap.test('calculateCost', t => {
 	const entry = getTokenCostEntry('bedrock', 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', 'standard');
-	const cost = calculateCost(366, 112, 2656, 0, entry);
-	console.log('entry', entry);
-	console.log('cost', cost);
+	// OTEL: input_tokens includes cache-read tokens; uncached = 366, cache-read = 2656 → total input 3022
+	const cost = calculateCost(3022, 112, 2656, 0, entry);
 	t.equal(cost, 0.0035748, 'should calculate cost correctly');
+	// 1M cache-write tokens: 5m rate 3.75 vs 1h rate 6.00 $/MTok
+	const e45 = getTokenCostEntry('bedrock', 'anthropic.claude-sonnet-4-5', 'standard');
+	t.equal(calculateCost(0, 0, 0, 1_000_000, e45, '5m'), 3.75, 'cache write 5m tier');
+	t.equal(calculateCost(0, 0, 0, 1_000_000, e45, '1h'), 6.0, 'cache write 1h tier');
 	t.end();
 })
+
+tap.test('addTokenCost infers bedrock when provider omitted but model is Bedrock id', t => {
+	const span = {
+		attributes: {
+			'gen_ai.request.model': 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0',
+			'gen_ai.usage.input_tokens': 3022,
+			'gen_ai.usage.cache_read.input_tokens': 2656,
+			'gen_ai.usage.output_tokens': 112,
+			'gen_ai.usage.total_tokens': 3134,
+		},
+	} as any;
+	addTokenCost(span);
+	t.equal(span.attributes['gen_ai.cost.usd'], 0.0035748, 'same cost as explicit bedrock provider');
+	t.equal(span.attributes['gen_ai.costcalculator'], 'bedrock-anthropic.claude-sonnet-4-5-standard');
+	t.end();
+});
 
 tap.test('addTokenCost', t => {
 	const span = {
 		attributes: {
 			'gen_ai.request.model': 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0',
 			'gen_ai.provider.name': 'bedrock',
-			'gen_ai.usage.input_tokens': 366,
+			'gen_ai.usage.input_tokens': 3022,
 			'gen_ai.usage.cache_read.input_tokens': 2656,
 			'gen_ai.usage.output_tokens': 112,
 			'gen_ai.usage.total_tokens': 3134,
@@ -44,7 +63,7 @@ tap.test('addTokenCost', t => {
 	} as any;
 	// calculate and set attributes
 	addTokenCost(span);
-	// test the sum is correct ($3/m input tokens, $0.30/m cache read tokens, $15/m output tokens)
+	// $3/M uncached input, $0.30/M cache read, $15/M output — uncached 366, cache-read 2656, output 112
 	// (3*366 + 2656*0.30 + 112*15)/1000000 = $0.0035748
 	t.equal(span.attributes['gen_ai.cost.usd'], 0.0035748, 'should set cost attribute correctly');
 	t.equal(

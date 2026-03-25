@@ -254,9 +254,9 @@ function SpanSummary({ spanSummary }: { spanSummary: string | ChatMessage | null
   if (!spanSummary) return null;
   if (typeof spanSummary === 'object') {
     const message = typeof spanSummary.content === 'string' ? spanSummary.content : JSON.stringify(spanSummary.content);
-    return <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{truncate(message, 100)}</div>;
+    return <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{truncate(message, 60)}</div>;
   }
-  return <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{truncate(spanSummary, 100)}</div>;
+  return <div style={{ fontSize: '0.9em', color: '#666', marginTop: '2px' }}>{truncate(spanSummary, 60)}</div>;
 }
 
 export default function TraceDetailsContent({
