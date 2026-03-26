@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Container, Row, Col } from 'reactstrap';
+import { Container, Row, Col, Button } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult } from '@tanstack/react-query';
 import { getExperiment, getDataset, deleteExperiment, searchExamplesByIds, updateExperiment } from '../api';
@@ -21,6 +21,7 @@ import LinkId from '../components/LinkId';
 import { getTruncatedDisplayString, getExampleInput } from '../utils/example-utils';
 import { getSpanOutput } from '../common/types/Span';
 import { useRootSpansForTraces } from '../hooks/useSpanData';
+import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
 import { GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS, GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, GEN_AI_USAGE_INPUT_TOKENS, GEN_AI_USAGE_OUTPUT_TOKENS } from 'src/common/constants_otel';
 
 const TRACE_OUTPUT_MAX_LEN = 100;
@@ -121,6 +122,10 @@ const ExperimentDetailsPage: React.FC = () => {
   // This must be computed before any early returns to satisfy Rules of Hooks
   const notTooBigStyle: React.CSSProperties = { maxWidth: '200px', maxHeight: '100px', textOverflow: 'ellipsis', overflow: 'hidden', wordBreak: 'break-all', overflowWrap: 'anywhere' };
   const smallIdStyle: React.CSSProperties = { fontSize: '0.8rem', maxWidth: '150px', textOverflow: 'ellipsis', overflow: 'hidden', wordBreak: 'break-all', overflowWrap: 'anywhere' };
+  const [expandedTokens, setExpandedTokens] = useState(false);
+  const toggleExpandedTokens = () => setExpandedTokens(!expandedTokens);
+  const tokenDetailColumnClass = expandedTokens ? 'collapsible' : 'collapsible collapsed';
+  // columns for tokens
   const columns : ExtendedColumnDef<Result>[] = [
     {
       header: 'Trace',
@@ -183,7 +188,18 @@ const ExperimentDetailsPage: React.FC = () => {
         }
       },
       {
+        header: 'Cost',
+        accessorFn: (row: Result) => {
+          return formatCost(row.scores?.[COST_METRIC_ID]);
+        }
+      },
+      {
         header: 'Tokens',
+        headerCell: () => {
+          return <>Tokens
+          <ExpandCollapseControl direction="right" hasChildren={true} isExpanded={expandedTokens} onToggle={toggleExpandedTokens} />
+          </>;
+        },
         accessorFn: (row: Result) => {
           return prettyNumber(row.scores?.[TOTAL_TOKENS_METRIC_ID]);
         }
@@ -202,29 +218,37 @@ const ExperimentDetailsPage: React.FC = () => {
       //     return durationString(1000*row.scores?.[TIME_TO_FIRST_TOKEN_METRIC_ID]);
       //   }
       // },
-      {
-        header: 'Cost',
-        accessorFn: (row: Result) => {
-          return formatCost(row.scores?.[COST_METRIC_ID]);
-        }
-      },
       { /* see SpanStats */
         header: 'Input Tokens',
         accessorFn: (row: Result) => {
           return row.scores?.inputTokens;
-        }
+        },
+        headerClassName: tokenDetailColumnClass,
+        cellClassName: tokenDetailColumnClass,
       },
       {
         header: 'Cached Input Tokens',
         accessorFn: (row: Result) => {
           return row.scores?.cachedInputTokens;
-        }
+        },
+        headerClassName: tokenDetailColumnClass,
+        cellClassName: tokenDetailColumnClass,
+      },
+      {
+        header: 'Cache Creation Tokens',
+        accessorFn: (row: Result) => {
+          return row.scores?.cacheCreationTokens;
+        },
+        headerClassName: tokenDetailColumnClass,
+        cellClassName: tokenDetailColumnClass,
       },
       {
         header: 'Output Tokens',
         accessorFn: (row: Result) => {
           return row.scores?.outputTokens;
-        }
+        },
+        headerClassName: tokenDetailColumnClass,
+        cellClassName: tokenDetailColumnClass,
       },
       {
         header: 'Spans',

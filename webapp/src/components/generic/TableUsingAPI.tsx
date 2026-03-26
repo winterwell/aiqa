@@ -70,6 +70,16 @@ export type ExtendedColumnDef<T> = ColumnDef<T> & {
    * Default to: string? comma-separated list of values : array? as-is : set? as-is
    */
   categoricalValues?: (row: T) => string[];
+
+  /**
+   * Optional function to render a custom header cell (not including the th and gubbins)
+   * If not provided, the default header string is rendered.
+   */
+  headerCell?: (header: Header<T, unknown>) => React.ReactNode;
+  /** Optional class for `<th>` cells for this column. */
+  headerClassName?: string;
+  /** Optional class for `<td>` cells for this column. */
+  cellClassName?: string;
 };
 /* convenience for typing columnDef as ExtendedColumnDef<any> */
 export function isHidden(columnDef: ColumnDef<any>) {
@@ -749,107 +759,130 @@ function TableHeader<T>({
   };
 
   let theadRowIndex = 0;
-	return ( <thead>
-		{headers.map((headerGroup) => {
-      const columnHeaderRowIndex = theadRowIndex;
-      theadRowIndex += 1;
-      return (
-		  <React.Fragment key={headerGroup.id}>
-			<tr>
-			  {headerGroup.headers.filter(h => !isHidden(h.column.columnDef)).map((header, visibleColumnIndex) => {
-				const isSelectColumn = enableRowSelection && header.id === 'select';
-          const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
-          const isFilterOpen = canFilter && isHeaderFilterOpen(header);
-          const extCol = header.column.columnDef as ExtendedColumnDef<any>;
-          const useCategoricalFilter =
-            extCol.type === 'categorical' && extCol.categoricalValues && table;
-          const frozenStyle = headerCellStickyStyle(visibleColumnIndex, columnHeaderRowIndex);
-				return (
-				  <th
-					key={header.id}
-					style={{
-					  cursor: header.column.getCanSort() ? 'pointer' : 'default',
-					  userSelect: 'none',
-              ...frozenStyle,
-					}}
-					onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
-				  >
-					<div className="d-flex align-items-center justify-content-between">
-            <div className="d-flex align-items-center">
-              {flexRender(header.column.columnDef.header, header.getContext())}
-              {header.column.getCanSort() && !isSelectColumn && (
-                <span className="ms-2">
-                  {{
-                    asc: ' ↑',
-                    desc: ' ↓',
-                  }[header.column.getIsSorted() as string] ?? ' ⇅'}
-                </span>
-              )}
-            </div>
-            {canFilter && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isFilterOpen) {
-                    clearAndCloseFilter(header);
-                  } else {
-                    openFilter(header.id);
-                  }
-                }}
-                aria-label={isFilterOpen ? `Clear filter for ${header.id}` : `Filter ${header.id}`}
-                className="btn btn-link p-0 ms-2 text-muted"
-                style={{ lineHeight: 1 }}
-              >
-                {isFilterOpen ? <FunnelXIcon /> : <FunnelIcon />}
-              </button>
+
+  function Th({
+    header,
+    visibleColumnIndex,
+    columnHeaderRowIndex,
+  }: {
+    header: Header<T, unknown>;
+    visibleColumnIndex: number;
+    columnHeaderRowIndex: number;
+  }) {
+    const isSelectColumn = enableRowSelection && header.id === 'select';
+    const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
+    const isFilterOpen = canFilter && isHeaderFilterOpen(header);
+    const extCol = header.column.columnDef as ExtendedColumnDef<any>;
+    const useCategoricalFilter =
+      extCol.type === 'categorical' && extCol.categoricalValues && table;
+    const frozenStyle = headerCellStickyStyle(visibleColumnIndex, columnHeaderRowIndex);
+    return (
+      <th
+        className={extCol.headerClassName}
+        style={{
+          cursor: header.column.getCanSort() ? 'pointer' : 'default',
+          userSelect: 'none',
+          ...frozenStyle,
+        }}
+        onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
+      >
+        <div className="d-flex align-items-center justify-content-between">
+          <div className="d-flex align-items-center">
+            {extCol.headerCell ? extCol.headerCell(header) : flexRender(extCol.header, header.getContext())}
+            {header.column.getCanSort() && !isSelectColumn && (
+              <span className="ms-2">
+                {{
+                  asc: ' ↑',
+                  desc: ' ↓',
+                }[header.column.getIsSorted() as string] ?? ' ⇅'}
+              </span>
             )}
           </div>
-          {canFilter && isFilterOpen && (
-            useCategoricalFilter ? (
-              <CategoricalColumnFilter header={header} table={table} />
-            ) : (
-              <Input
-                type="search"
-                value={String(header.column.getFilterValue() ?? '')}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
-                placeholder="Filter..."
-                bsSize="sm"
-                className="mt-1"
-              />
-            )
+          {canFilter && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isFilterOpen) {
+                  clearAndCloseFilter(header);
+                } else {
+                  openFilter(header.id);
+                }
+              }}
+              aria-label={isFilterOpen ? `Clear filter for ${header.id}` : `Filter ${header.id}`}
+              className="btn btn-link p-0 ms-2 text-muted"
+              style={{ lineHeight: 1 }}
+            >
+              {isFilterOpen ? <FunnelXIcon /> : <FunnelIcon />}
+            </button>
           )}
-				  </th>
-				);
-			  })}
-			</tr>
-			{bulkActionsToolbar ? (() => {
-        const bulkRowIndex = theadRowIndex;
+        </div>
+        {canFilter &&
+          isFilterOpen &&
+          (useCategoricalFilter ? (
+            <CategoricalColumnFilter header={header} table={table} />
+          ) : (
+            <Input
+              type="search"
+              value={String(header.column.getFilterValue() ?? '')}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
+              placeholder="Filter..."
+              bsSize="sm"
+              className="mt-1"
+            />
+          ))}
+      </th>
+    );
+  }
+
+  return (
+    <thead>
+      {headers.map((headerGroup) => {
+        const columnHeaderRowIndex = theadRowIndex;
         theadRowIndex += 1;
-        const bulkSticky =
-          bulkRowIndex < frozenRowCount
-            ? {
-                position: 'sticky' as const,
-                top: frozenRowTopOffsets[bulkRowIndex] ?? 0,
-                zIndex: 40,
-              }
-            : {};
         return (
-			  <tr key={`bulk-${headerGroup.id}`} className={`bulk-actions-toolbar-row ${showToolbar ? 'open' : ''}`}>
-				<td colSpan={totalColumns} style={{ backgroundColor: '#f8f9fa', ...bulkSticky }}>
-				  <div className="d-flex align-items-center bulk-actions-toolbar-content" style={{ gap: '0.5rem' }}>
-					{showToolbar ? bulkActionsToolbar(selectedRowIds!, selectedRows!) : null}
-				  </div>
-				</td>
-			  </tr>
+          <React.Fragment key={headerGroup.id}>
+            <tr>
+              {headerGroup.headers
+                .filter((h) => !isHidden(h.column.columnDef))
+                .map((header, visibleColumnIndex) => (
+                  <Th
+                    key={header.id}
+                    header={header}
+                    visibleColumnIndex={visibleColumnIndex}
+                    columnHeaderRowIndex={columnHeaderRowIndex}
+                  />
+                ))}
+            </tr>
+            {bulkActionsToolbar
+              ? (() => {
+                  const bulkRowIndex = theadRowIndex;
+                  theadRowIndex += 1;
+                  const bulkSticky =
+                    bulkRowIndex < frozenRowCount
+                      ? {
+                          position: 'sticky' as const,
+                          top: frozenRowTopOffsets[bulkRowIndex] ?? 0,
+                          zIndex: 40,
+                        }
+                      : {};
+                  return (
+                    <tr key={`bulk-${headerGroup.id}`} className={`bulk-actions-toolbar-row ${showToolbar ? 'open' : ''}`}>
+                      <td colSpan={totalColumns} style={{ backgroundColor: '#f8f9fa', ...bulkSticky }}>
+                        <div className="d-flex align-items-center bulk-actions-toolbar-content" style={{ gap: '0.5rem' }}>
+                          {showToolbar ? bulkActionsToolbar(selectedRowIds!, selectedRows!) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })()
+              : null}
+          </React.Fragment>
         );
-      })() : null}
-		  </React.Fragment>
-      );
-    })}
-	  </thead>
-	);
+      })}
+    </thead>
+  );
 }
 
 function FunnelIcon() {
@@ -940,7 +973,7 @@ function TableCell<T>({
 }) {
     const isSelectColumn = cell.column.id === 'select';
     let rendered = flexRender(cell.column.columnDef.cell, cell.getContext());
-    const columnDef = cell.column.columnDef as any;
+    const columnDef = cell.column.columnDef as ExtendedColumnDef<any>;
     if (columnDef.hidden) return null;
     let style = columnDef.style;
     if (style && (style.maxWidth || style.maxHeight)) {
@@ -963,6 +996,7 @@ function TableCell<T>({
     return (
     <td 
       key={cell.id}
+      className={columnDef.cellClassName}
       onClick={isSelectColumn ? (e) => e.stopPropagation() : undefined}
       style={{ ...columnDef.style, ...stickyStyle }}
     >

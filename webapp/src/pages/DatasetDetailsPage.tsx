@@ -8,6 +8,7 @@ import {
   listExperiments,
   searchExamples,
   updateDataset,
+  deleteDataset,
   createExampleFromInput,
   updateExample,
   deleteExample,
@@ -79,6 +80,19 @@ const DatasetDetailsPage: React.FC = () => {
     },
   });
 
+  const deleteDatasetMutation = useMutation({
+    mutationFn: () => deleteDataset(datasetId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['dataset', datasetId] });
+      showToast('Dataset deleted successfully', 'success');
+      navigate(`/organisation/${organisationId}/dataset`);
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to delete dataset: ${error.message}`, 'error');
+    },
+  });
+
   const deleteExampleMutation = useMutation({
     mutationFn: (exampleId: string) => deleteExample(organisationId!, exampleId),
     onSuccess: () => {
@@ -119,7 +133,7 @@ const DatasetDetailsPage: React.FC = () => {
     };
   };
   const exampleSpecificMetrics = useMemo(() => {
-    const esms = dataset?.metrics?.filter(isExampleSpecificMetric) || [];
+    const esms = (asArray(dataset?.metrics) as Metric[]).filter(isExampleSpecificMetric);
     if ( !esms.find(m => m.id === SPECIFIC_METRIC.id)) {
       esms.push(SPECIFIC_METRIC);
     }
@@ -343,6 +357,9 @@ const DatasetDetailsPage: React.FC = () => {
           label="Dataset"
           item={dataset}
           handleNameChange={() => updateDatasetMutation.mutate({ name: dataset.name })}
+          handleDelete={async () => {
+            await deleteDatasetMutation.mutateAsync();
+          }}
           extraActions={
             <Button
               color="secondary"

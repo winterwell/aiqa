@@ -186,6 +186,12 @@ export async function updateDataset(id: string, updates: Partial<{
 	});
 }
 
+export async function deleteDataset(id: string) {
+	return fetchWithAuth(`/dataset/${id}`, {
+		method: 'DELETE',
+	});
+}
+
 // Experiment endpoints
 export async function getExperiment(id: string) {
 	return fetchWithAuth(`/experiment/${id}`);

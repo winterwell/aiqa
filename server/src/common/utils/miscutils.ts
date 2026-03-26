@@ -28,6 +28,7 @@ export function truncate(s: string, maxLength: number): string {
   return s.substring(0, maxLength) + "...";
 }
 
+/** ALways returns an array, even if the input is not an array. */
 export function asArray(value: any): any[] {
   if (Array.isArray(value)) {
     return value;

@@ -38,3 +38,24 @@
   opacity: 1;
   padding: 0.1rem;
 }
+
+/* Generic collapsible columns used by ExperimentDetailsPage token details. */
+th.collapsible,
+td.collapsible {
+  opacity: 1;
+  transition: max-width 0.35s ease, width 0.35s ease, opacity 0.35s ease, padding 0.35s ease;
+}
+
+th.collapsible.collapsed,
+td.collapsible.collapsed {
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border-left-width: 0;
+  border-right-width: 0;
+}
