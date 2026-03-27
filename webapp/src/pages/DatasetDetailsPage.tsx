@@ -168,6 +168,17 @@ const DatasetDetailsPage: React.FC = () => {
             return;
           },
         },
+        {
+          id: 'input',
+          header: 'Input',
+          accessorFn: (example: Example) => {
+            return example.input;
+          },
+          cell: ({ row }) => {
+            return <span>{row.original.input}</span>;
+          },
+          hidden: true,
+        },
         // example specific metrics
         ...exampleSpecificMetrics.map((specificMetric) => ({
           id: specificMetric.id,
