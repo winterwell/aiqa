@@ -279,7 +279,6 @@ function TableUsingAPI<T extends Record<string, any>>({
   // data provided? use it (via a constant function, so useQuery below is not conditional)
   if (data) {
     loadData = () => Promise.resolve(data);
-    onDataLoaded?.(data); 
   }
   
   // Debounce input value to serverQuery
@@ -306,16 +305,13 @@ function TableUsingAPI<T extends Record<string, any>>({
   const { data: loadedData, isLoading, error: loadError } = useQuery({
     queryKey,
     queryFn: () => {
-      const promiseData = loadData(serverQuery);
-      if (onDataLoaded) {
-        promiseData.then((data: PageableData<T>) => {
-          onDataLoaded(data);
-        });
-      }
-      return promiseData;
+      return loadData(serverQuery);
     },
 	refetchInterval,
   });
+  useEffect(() => {
+    if (loadedData) onDataLoaded?.(loadedData);
+  }, [loadedData, onDataLoaded]);
   const hits = loadedData?.hits || [];
   const total = loadedData?.total || 0;
   const offset = loadedData?.offset || 0;

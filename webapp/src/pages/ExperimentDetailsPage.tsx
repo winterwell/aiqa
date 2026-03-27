@@ -317,10 +317,10 @@ const ExperimentDetailsPage: React.FC = () => {
       return Object.entries(row.errors).map(([key, value]) => `${key}: ${value}`).join('\n');
     },
     cell: ({ row }: any) => {
-      if ( ! row.errors || Object.keys(row.errors).length === 0) {
+      if ( ! row.original.errors || Object.keys(row.original.errors).length === 0) {
         return null;
       }
-      return <span>{Object.entries(row.errors).map(([key, value]) => `${key}: ${value}`).join('\n')}</span>;
+      return <span>{Object.entries(row.original.errors).map(([key, value]) => `${key}: ${value}`).join('\n')}</span>;
     }
   });
 

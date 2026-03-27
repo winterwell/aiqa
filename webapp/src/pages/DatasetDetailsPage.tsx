@@ -270,8 +270,8 @@ const DatasetDetailsPage: React.FC = () => {
   ); // end columns
 
   const handleSaveMetric = (metric: Partial<Metric>) => {
-    dataset.metrics = addOrEditMetric(metric, asArray(dataset?.metrics) as Metric[]);
-    updateDatasetMutation.mutate({ metrics: dataset.metrics });
+    const updatedMetrics = addOrEditMetric(metric, asArray(dataset?.metrics) as Metric[]);
+    updateDatasetMutation.mutate({ metrics: updatedMetrics });
     setIsMetricModalOpen(false);
     setEditingMetricIndex(null);
     setEditingMetric(undefined);
