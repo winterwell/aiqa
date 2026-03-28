@@ -6,6 +6,7 @@ import ApiKeySchema from '../types/ApiKey.schema.json';
 import ModelSchema from '../types/Model.schema.json';
 import DatasetSchema from '../types/Dataset.schema.json';
 import ExperimentSchema from '../types/Experiment.schema.json';
+import ReportSchema from '../types/Report.schema.json';
 import SpanSchema from '../types/Span.schema.json';
 import ExampleSchema from '../types/Example.schema.json';
 import MetricSchema from '../types/Metric.schema.json';
@@ -21,6 +22,7 @@ const schemaRegistry: Record<string, JsonSchema> = {
   Model: ModelSchema as JsonSchema,
   Dataset: DatasetSchema as JsonSchema,
   Experiment: ExperimentSchema as JsonSchema,
+  Report: ReportSchema as JsonSchema,
   Span: SpanSchema as JsonSchema,
   Example: ExampleSchema as JsonSchema,
 };

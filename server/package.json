@@ -11,6 +11,7 @@
     "schema": "node scripts/generate-schemas.js",
     "retention": "pnpm run build && node dist/scripts/delete-old-spans.js",
     "trace-quality": "node scripts/check-trace-quality.js",
+    "report-worker": "sh -c 'cd ../server-python && PYTHONPATH=. python3 -m uvicorn aiqa_report_worker.app:app --host 127.0.0.1 --port 8765'",
     "postinstall": "if [ ! -d opentelemetry-proto ]; then git submodule update --init --recursive 2>/dev/null || echo 'Note: opentelemetry-proto not found. If using git submodules, run: git submodule update --init --recursive'; fi"
   },
   "dependencies": {

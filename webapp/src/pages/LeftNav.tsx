@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useStepCompletion, STEP_FLOW } from '../utils/stepProgress';
 import { listDatasets } from '../api';
 import '../utils/animations.css';
-import { BuildingIcon, DatabaseIcon, FlaskIcon, FootprintsIcon, KeyIcon, UsersThreeIcon, CodeIcon } from '@phosphor-icons/react';
+import { BuildingIcon, DatabaseIcon, FlaskIcon, FootprintsIcon, KeyIcon, UsersThreeIcon, CodeIcon, ChartBarIcon } from '@phosphor-icons/react';
 import type { StepInfo } from '../utils/stepProgress';
 
 const LeftNav: React.FC = () => {
@@ -148,6 +148,24 @@ const LeftNav: React.FC = () => {
 					/>
 				);
 			})}
+
+			{organisationId && (
+				<>
+					<hr className="my-2" />
+					<NavItem className="mb-1">
+						<NavLink
+							tag={Link}
+							to={`/organisation/${organisationId}/reports`}
+							className={location.pathname.includes('/reports') ? 'active' : ''}
+						>
+							<span className="me-2 d-inline-flex align-items-center" style={{ width: '1.1rem' }}>
+								<ChartBarIcon />
+							</span>
+							Reports
+						</NavLink>
+					</NavItem>
+				</>
+			)}
 
 			{/* Progress bar */}
 			<div className="progress-section mt-3 w-100">

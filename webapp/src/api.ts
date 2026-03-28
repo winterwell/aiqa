@@ -228,6 +228,24 @@ export async function deleteExperiment(id: string) {
 	});
 }
 
+// Report endpoints (drift / coverage analysis)
+export async function listReports(organisationId: string, query?: string) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	if (query) params.append('q', query);
+	return fetchWithAuth(`/report?${params.toString()}`);
+}
+
+export async function getReport(id: string) {
+	return fetchWithAuth(`/report/${id}`);
+}
+
+export async function runReport(id: string) {
+	return fetchWithAuth(`/report/${id}/run`, {
+		method: 'POST',
+	});
+}
+
 function addOrganisationParam(params: URLSearchParams, organisationId: string) {
 	params.append('organisation', organisationId);
 }

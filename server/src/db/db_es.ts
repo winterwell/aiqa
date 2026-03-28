@@ -10,6 +10,11 @@ import Span from '../common/types/Span.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { searchEntities } from './es_query.js';
 import Example from '../common/types/Example.js';
+import {
+  EMBEDDING_SOURCE_FIELDS,
+  mergeSearchSourceExcludes,
+  normaliseEmbeddingOnDocForEs,
+} from '../common/embedding_storage.js';
 
 let client: Client | null = null;
 
@@ -269,6 +274,8 @@ function transformSpanForEs(doc: any): any {
   if (hasKeys(unindexedBigAttributes)) {
     transformed.unindexed_attributes = unindexedBigAttributes;
   }
+
+  normaliseEmbeddingOnDocForEs(transformed);
   
   return transformed;
 } //  end transformSpanForEs
@@ -290,8 +297,8 @@ function transformExampleForEs(doc: any): any {
     }
     // If it's already an object or array, leave it as-is
   }
-  
 
+  normaliseEmbeddingOnDocForEs(transformed);
 
   return transformed;
 } //  end transformExampleForEs
@@ -410,6 +417,8 @@ export async function searchSpans(
     organisation = organisationId;
   }
 
+  const mergedExcludes = mergeSearchSourceExcludes(sourceIncludes, sourceExcludes);
+
   return searchEntities<Span>({
     client: client!,
     indexName: SPAN_INDEX_ALIAS,
@@ -419,7 +428,7 @@ export async function searchSpans(
     limit,
     offset,
     _source_includes: sourceIncludes,
-    _source_excludes: sourceExcludes
+    _source_excludes: mergedExcludes
   });
 }
 
@@ -462,13 +471,18 @@ export async function updateSpan(
     });
 
     if (Object.keys(updateDoc).length === 0) {
-      // No updates to apply, return current span
-      return currentSpan as Span;
+      const pub = await client.get({
+        index: SPAN_INDEX_ALIAS,
+        id: spanId,
+        _source_excludes: [...EMBEDDING_SOURCE_FIELDS],
+      });
+      return pub._source as Span;
     }
 
     // Transform the update document if needed (for fields like start, end)
     // For starred, we can update directly
     const transformedUpdate = { ...updateDoc };
+    normaliseEmbeddingOnDocForEs(transformedUpdate);
     
     // Update the document by its _id
     await client.update({
@@ -480,10 +494,11 @@ export async function updateSpan(
       refresh: 'wait_for', // Make update immediately visible
     });
 
-    // Fetch and return the updated document
+    // Fetch and return the updated document (omit large embedding fields for API)
     const updatedResponse = await client.get({
       index: SPAN_INDEX_ALIAS,
       id: spanId,
+      _source_excludes: [...EMBEDDING_SOURCE_FIELDS],
     });
 
     return updatedResponse._source as Span;
@@ -508,14 +523,27 @@ export async function bulkInsertExamples(examples: Example[]): Promise<{ id: str
  * @param index - Index alias (e.g. SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX_ALIAS)
  * @param id - Document ID (used as _id in Elasticsearch)
  * @param organisationId - Optional organisation ID; if provided, document must match or null is returned
+ * @param source - Optional _source filtering (e.g. exclude embeddings for public reads)
  * @returns Document _source or null if not found or organisation mismatch
  */
-export async function getItem(index: string, id: string, organisationId?: string): Promise<any | null> {
+export async function getItem(
+  index: string,
+  id: string,
+  organisationId?: string,
+  source?: { _source_excludes?: string[]; _source_includes?: string[] }
+): Promise<any | null> {
   if (!client) {
     throw new Error('Elasticsearch client not initialized.');
   }
   try {
-    const getResponse = await client.get({ index, id });
+    const getParams: Record<string, unknown> = { index, id };
+    if (source?._source_excludes?.length) {
+      getParams._source_excludes = source._source_excludes;
+    }
+    if (source?._source_includes?.length) {
+      getParams._source_includes = source._source_includes;
+    }
+    const getResponse = await client.get(getParams as any);
     const doc = getResponse._source as any;
     if (organisationId != null && doc.organisation !== organisationId) {
       return null;
@@ -531,9 +559,18 @@ export async function getItem(index: string, id: string, organisationId?: string
 
 /**
  * Get a single example by ID. Uses getItem; unwraps input.value for backward compatibility.
+ * @param includeEmbedding - When true, include embedding_1/2 + meta (internal/report use). Default false for API.
  */
-export async function getExample(id: string, organisationId?: string): Promise<Example | null> {
-  const doc = await getItem(DATASET_EXAMPLES_INDEX_ALIAS, id, organisationId);
+export async function getExample(
+  id: string,
+  organisationId?: string,
+  options?: { includeEmbedding?: boolean }
+): Promise<Example | null> {
+  const source =
+    options?.includeEmbedding === true
+      ? undefined
+      : { _source_excludes: [...EMBEDDING_SOURCE_FIELDS] };
+  const doc = await getItem(DATASET_EXAMPLES_INDEX_ALIAS, id, organisationId, source);
   if (!doc) return null;
   if (doc.input && typeof doc.input === 'object' && !Array.isArray(doc.input) && doc.input.value !== undefined && Object.keys(doc.input).length === 1) {
     doc.input = doc.input.value;
@@ -543,9 +580,18 @@ export async function getExample(id: string, organisationId?: string): Promise<E
 
 /**
  * Get a single span by ID. Uses getItem. Unwraps input/output from { aiqa_value } or legacy { value } so API returns raw values.
+ * @param includeEmbedding - When true, include embedding_1/2 + meta. Default false for API.
  */
-export async function getSpan(id: string, organisationId?: string): Promise<Span | null> {
-  const doc = await getItem(SPAN_INDEX_ALIAS, id, organisationId);
+export async function getSpan(
+  id: string,
+  organisationId?: string,
+  options?: { includeEmbedding?: boolean }
+): Promise<Span | null> {
+  const source =
+    options?.includeEmbedding === true
+      ? undefined
+      : { _source_excludes: [...EMBEDDING_SOURCE_FIELDS] };
+  const doc = await getItem(SPAN_INDEX_ALIAS, id, organisationId, source);
   if (doc?.attributes) {
     if (doc.attributes.input !== undefined) doc.attributes.input = unwrapAttributeWrapper(doc.attributes.input);
     if (doc.attributes.output !== undefined) doc.attributes.output = unwrapAttributeWrapper(doc.attributes.output);
@@ -593,9 +639,19 @@ export async function updateExample(
     });
 
     if (Object.keys(updateDoc).length === 0) {
-      // No updates to apply, return current example
-      return currentExample as Example;
+      const pub = await client.get({
+        index: DATASET_EXAMPLES_INDEX_ALIAS,
+        id: exampleId,
+        _source_excludes: [...EMBEDDING_SOURCE_FIELDS],
+      });
+      let ex = pub._source as any;
+      if (ex.input && typeof ex.input === 'object' && !Array.isArray(ex.input) && ex.input.value !== undefined && Object.keys(ex.input).length === 1) {
+        ex.input = ex.input.value;
+      }
+      return ex as Example;
     }
+
+    normaliseEmbeddingOnDocForEs(updateDoc);
 
     // Normalize input field if being updated: Elasticsearch flattened type expects an object
     if (updateDoc.input !== undefined && updateDoc.input !== null) {
@@ -617,10 +673,11 @@ export async function updateExample(
       refresh: 'wait_for', // Make update immediately visible
     });
 
-    // Fetch and return the updated document
+    // Fetch and return the updated document (omit embeddings from API payload)
     const updatedResponse = await client.get({
       index: DATASET_EXAMPLES_INDEX_ALIAS,
       id: exampleId,
+      _source_excludes: [...EMBEDDING_SOURCE_FIELDS],
     });
 
     const updatedExample = updatedResponse._source as any;
@@ -802,18 +859,22 @@ export async function searchExamples(
   organisationId?: string,
   datasetId?: string,
   limit: number = 100,
-  offset: number = 0
+  offset: number = 0,
+  source?: { _source_includes?: string[] | null; _source_excludes?: string[] | null }
 ): Promise<{ hits: Example[]; total: number }> {
   const filters: Record<string, string> = {};
   if (organisationId) filters.organisation = organisationId;
   if (datasetId) filters.dataset = datasetId;
+  const mergedExcludes = mergeSearchSourceExcludes(source?._source_includes, source?._source_excludes);
   const result = await searchEntities<Example>({
     client: client!,
     indexName: DATASET_EXAMPLES_INDEX_ALIAS,
     searchQuery,
     filters: hasKeys(filters) ? filters : undefined,
     limit,
-    offset
+    offset,
+    _source_includes: source?._source_includes ?? undefined,
+    _source_excludes: mergedExcludes,
 });
   
   // Unwrap input.value structure if it exists (for backward compatibility with string inputs)

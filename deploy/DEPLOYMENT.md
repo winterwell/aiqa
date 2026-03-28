@@ -55,6 +55,56 @@ sudo nginx -t
 sudo systemctl daemon-reload
 ```
 
+### Report worker (server-python)
+
+The Node server calls this process for report embedding analysis (PCA, drift, coverage). It is **not** started by `aiqa-server`; run it as a separate service or omit it if you do not use those features.
+
+1. **Install Python 3** (3.11+ recommended) and create a venv under `/opt/aiqa/server-python`:
+   ```bash
+   sudo mkdir -p /opt/aiqa/server-python
+   sudo chown -R winterwell:winterwell /opt/aiqa/server-python
+   cd /opt/aiqa/server-python
+   python3 -m venv .venv
+   .venv/bin/pip install --upgrade pip
+   # Copy server-python/requirements.txt and aiqa_report_worker/ from the repo (or rsync from CI)
+   .venv/bin/pip install -r requirements.txt
+   ```
+
+2. **Install the systemd unit** (from repo `deploy/aiqa-report-worker.service`):
+   ```bash
+   sudo cp deploy/aiqa-report-worker.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable aiqa-report-worker
+   sudo systemctl start aiqa-report-worker
+   ```
+
+3. **Configure the Node server** so it can reach the worker (default matches the unit):
+   ```bash
+   # In /opt/aiqa/server/.env
+   REPORT_WORKER_URL=http://127.0.0.1:8765
+   ```
+   Then `sudo systemctl restart aiqa-server`.
+
+4. **Verify:** `curl -s http://127.0.0.1:8765/health` should return JSON with `"status":"ok"`.
+
+### MCP server
+
+Files already live in `deploy/`:
+
+- **`aiqa-mcp.service`** — runs `node dist/index.js` from `/opt/aiqa/mcp` (default **4319**). CI (`.github/workflows/mcp-deploy.yml`) builds, copies artifacts, runs `pnpm install --prod`, writes `.env`, and restarts `aiqa-mcp`.
+- **`mcp-aiqa.nginx.conf`** — TLS reverse proxy to `http://localhost:4319` for `/sse`, `/message`, `/health`. Requires log dir `/var/log/nginx/mcp-aiqa.winterwell.com` (created by `setup.sh`).
+
+Manual enable (if not using the workflow):
+
+```bash
+sudo cp deploy/aiqa-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload
+# Populate /opt/aiqa/mcp with dist/, package.json, pnpm-lock.yaml, node_modules, and .env (see mcp/env.example)
+sudo systemctl enable --now aiqa-mcp
+```
+
+The MCP process only needs the **API reachable** (`AIQA_API_BASE_URL` in `/opt/aiqa/mcp/.env`, e.g. `https://server-aiqa.winterwell.com`). It does not need the report worker.
+
 ### 3. Configure DNS
 
 Before the webapp and server domains will be accessible, you need to create DNS A records pointing to your server's IP address.

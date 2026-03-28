@@ -402,9 +402,7 @@ function ExperimentDetailsPageContent({
         <NameAndDeleteHeader
           label="Experiment"
           item={experiment}
-          handleNameChange={(e) => {
-            updateExperimentNameMutation.mutate(e.target.value);
-          }}
+          handleNameChange={(e) => updateExperimentNameMutation.mutate(e.target.value)}
           handleDelete={async () => {
             await deleteExperimentMutation.mutateAsync();
           }}

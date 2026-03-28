@@ -7,10 +7,13 @@ Do NOT use this for personal deployments.
 ## Files
 
 ### Service Files
-- **aiqa-server.service** - Systemd service file for the server (auto-restart on failure)
+- **aiqa-server.service** - Systemd unit for the Node API (`/opt/aiqa/server`)
+- **aiqa-report-worker.service** - Systemd unit for the Python report-analysis worker (`/opt/aiqa/server-python`, listens on `127.0.0.1:8765`). Required for report embedding analysis endpoints unless you run the worker some other way.
+- **aiqa-mcp.service** - Systemd unit for the MCP HTTP/SSE server (`/opt/aiqa/mcp`, default port **4319**). Deployed by `.github/workflows/mcp-deploy.yml`; nginx front-end: **mcp-aiqa.nginx.conf**.
 - **app-aiqa.nginx.conf** - Nginx site configuration for serving the webapp (recommended)
 - **server-aiqa.nginx.conf** - Nginx site configuration for serving the server API (optional)
 - **website-aiqa.nginx.conf** - Nginx site configuration for serving the website
+- **mcp-aiqa.nginx.conf** - Nginx TLS + SSE proxy for `mcp-aiqa.winterwell.com` → `localhost:4319`
 - **aiqa-webapp.optional.service** - Alternative systemd service (optional, uses custom nginx config)
 
 ### CI/CD Workflows
@@ -46,9 +49,11 @@ Do NOT use this for personal deployments.
 
 ## Architecture
 
-- **Server**: Runs as systemd service on port 4318, auto-restarts on failure
+- **Server**: Systemd `aiqa-server` on port 4318 (configurable), auto-restarts on failure
+- **Report worker**: Optional separate process; Node uses `REPORT_WORKER_URL` (default `http://127.0.0.1:8765`). Use `aiqa-report-worker.service` or run uvicorn manually.
+- **MCP**: Optional `aiqa-mcp` on port 4319; public traffic typically via nginx + TLS (`mcp-aiqa.nginx.conf`).
 - **Webapp**: Served by nginx on ports 80/443 (HTTP/HTTPS), static files from `/opt/aiqa/webapp/dist`
-- **CI/CD**: GitHub Actions builds and deploys automatically on code changes
+- **CI/CD**: GitHub Actions deploy server, webapp, and MCP on changes under `server/`, `webapp/`, `mcp/`
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 

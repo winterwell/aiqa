@@ -2,6 +2,17 @@
   "$ref": "#/definitions/Span",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "EmbeddingMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "type": "string" },
+        "dimensions": { "type": "integer" },
+        "model": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["model", "dimensions"],
+      "type": "object"
+    },
     "Span": {
       "description": "Matches OTel ReadableSpan except: start/end (ms) replace startTime/endTime (HrTime), parent replaces parentSpanId, duration in ms; plus our fields (@timestamp, id, trace, spanId, traceFlags, traceRef, transaction, service, organisation, example, dataset, experiment, annotations, tags, inputHash, _seen).",
       "additionalProperties": true,
@@ -181,6 +192,24 @@
         "inputHash": {
           "type": "string",
           "description": "Hash of the input for looking up same-input spans"
+        },
+        "embedding_1": {
+          "description": "Primary cached embedding (default slot); omitted from default API responses",
+          "items": { "type": "number" },
+          "type": "array"
+        },
+        "embeddingMeta_1": {
+          "$ref": "#/definitions/EmbeddingMeta",
+          "description": "Metadata for embedding_1"
+        },
+        "embedding_2": {
+          "description": "Secondary embedding slot; omitted from default API responses",
+          "items": { "type": "number" },
+          "type": "array"
+        },
+        "embeddingMeta_2": {
+          "$ref": "#/definitions/EmbeddingMeta",
+          "description": "Metadata for embedding_2"
         },
         "_childStats": {
           "type": "object",

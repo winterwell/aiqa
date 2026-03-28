@@ -1,0 +1,22 @@
+[Unit]
+Description=AIQA Report Worker (Python FastAPI — embedding analysis for reports)
+After=network.target
+
+[Service]
+Type=simple
+User=winterwell
+WorkingDirectory=/opt/aiqa/server-python
+Environment=PYTHONPATH=/opt/aiqa/server-python
+EnvironmentFile=-/opt/aiqa/server-python/.env
+ExecStart=/opt/aiqa/server-python/.venv/bin/uvicorn aiqa_report_worker.app:app --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aiqa-report-worker
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

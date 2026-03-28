@@ -15,6 +15,7 @@ import {
 	Dataset,
 	Experiment,
 } from '../common/types/index.js';
+import Report from '../common/types/Report.js';
 import SearchQuery from '../common/SearchQuery.js';
 import { loadSchema, generatePostgresTable, getTypeDefinition, toSnakeCase } from '../common/utils/schema-loader.js';
 import { searchQueryToSqlWhereClause } from './sql_query.js';
@@ -29,6 +30,7 @@ const TABLE_FIELDS = {
 	api_keys: getAllowedFieldsFromSchema('ApiKey'),
 	datasets: getAllowedFieldsFromSchema('Dataset'),
 	experiments: getAllowedFieldsFromSchema('Experiment'),
+	reports: getAllowedFieldsFromSchema('Report'),
 	models: getAllowedFieldsFromSchema('Model'),
 };
 
@@ -151,6 +153,7 @@ export async function createTables(): Promise<void> {
 	const modelSchema = loadSchema('Model');
 	const datasetSchema = loadSchema('Dataset');
 	const experimentSchema = loadSchema('Experiment');
+	const reportSchema = loadSchema('Report');
 
 	// Create organisations table
 	await doQuery(generatePostgresTable('Organisation', organisationSchema, {}, []));
@@ -188,6 +191,12 @@ export async function createTables(): Promise<void> {
 		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE'
 	}, []));
 
+	// Create reports table (drift / coverage analysis)
+	await doQuery(generatePostgresTable('Report', reportSchema, {
+		organisation: 'UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE',
+		dataset: 'UUID REFERENCES datasets(id) ON DELETE SET NULL'
+	}, []));
+
 	// Rate limit events: one row per 429 (trace export rejected due to rate limit)
 	await doQuery(`
 		CREATE TABLE IF NOT EXISTS rate_limit_events (
@@ -205,6 +214,9 @@ export async function createTables(): Promise<void> {
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_datasets_organisation ON datasets(organisation)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_dataset ON experiments(dataset)`);
 	await doQuery(`CREATE INDEX IF NOT EXISTS idx_experiments_organisation ON experiments(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_reports_organisation ON reports(organisation)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_reports_dataset ON reports(dataset)`);
+	await doQuery(`CREATE INDEX IF NOT EXISTS idx_reports_kind ON reports(kind)`);
 	await doQuery(`
 		CREATE INDEX IF NOT EXISTS idx_rate_limit_events_organisation_occurred_at
 		ON rate_limit_events(organisation, occurred_at)
@@ -953,6 +965,67 @@ export async function updateExperiment(id: string, updates: Partial<Experiment>)
 
 export async function deleteExperiment(id: string): Promise<boolean> {
 	return deleteEntity('experiments', id);
+}
+
+function parseJsonObject(val: unknown): Record<string, unknown> | undefined {
+	if (val === null || val === undefined) return undefined;
+	if (typeof val === 'string') {
+		try {
+			return JSON.parse(val) as Record<string, unknown>;
+		} catch {
+			return {};
+		}
+	}
+	if (typeof val === 'object' && !Array.isArray(val)) return val as Record<string, unknown>;
+	return undefined;
+}
+
+function transformReport(row: any): Report {
+	return {
+		...row,
+		parameters: parseJsonObject(row.parameters),
+		summary: parseJsonObject(row.summary),
+		results: parseJsonObject(row.results),
+	};
+}
+
+export async function createReport(report: Omit<Report, 'id' | 'created' | 'updated'>): Promise<Report> {
+	const r = { ...report } as Record<string, unknown>;
+	if (r.status === undefined || r.status === null) r.status = 'draft';
+	if (r.parameters === undefined) r.parameters = {};
+	if (r.summary === undefined) r.summary = {};
+	if (r.results === undefined) r.results = {};
+	return createEntity<Report>('reports', r as any, null, transformReport);
+}
+
+export async function getReport(id: string): Promise<Report | null> {
+	return getById<Report>('reports', id, transformReport);
+}
+
+export async function listReports(organisationId: string, searchQuery?: SearchQuery | string | null): Promise<Report[]> {
+	return listEntities<Report>('reports', organisationId, searchQuery, transformReport);
+}
+
+export async function updateReport(id: string, updates: Partial<Report>): Promise<Report | null> {
+	const item: Record<string, any> = {};
+	if (updates.name !== undefined) item.name = updates.name;
+	if (updates.kind !== undefined) item.kind = updates.kind;
+	if (updates.status !== undefined) item.status = updates.status;
+	if (updates.dataset !== undefined) item.dataset = updates.dataset;
+	if (updates.parameters !== undefined) {
+		item.parameters = updates.parameters !== null && updates.parameters !== undefined ? JSON.stringify(updates.parameters) : null;
+	}
+	if (updates.summary !== undefined) {
+		item.summary = updates.summary !== null && updates.summary !== undefined ? JSON.stringify(updates.summary) : null;
+	}
+	if (updates.results !== undefined) {
+		item.results = updates.results !== null && updates.results !== undefined ? JSON.stringify(updates.results) : null;
+	}
+	return updateEntity<Report>('reports', id, item, transformReport);
+}
+
+export async function deleteReport(id: string): Promise<boolean> {
+	return deleteEntity('reports', id);
 }
 
 // Helper function to transform Model (snake_case columns -> camelCase)

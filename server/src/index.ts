@@ -33,6 +33,7 @@ import { registerOrganisationAccountRoutes } from './routes/organisationaccounts
 import { registerUserRoutes } from './routes/users.js';
 import { registerExampleRoutes } from './routes/examples.js';
 import { registerDatasetRoutes } from './routes/datasets.js';
+import { registerReportRoutes } from './routes/reports.js';
 import { registerApiKeyRoutes } from './routes/api-keys.js';
 import { registerModelRoutes } from './routes/models.js';
 import { startGrpcServer, stopGrpcServer } from './grpc_server.js';
@@ -225,6 +226,8 @@ const start = async () => {
     
     // Register dataset routes
     await registerDatasetRoutes(fastify);
+
+    await registerReportRoutes(fastify);
     
     // Register API key routes
     await registerApiKeyRoutes(fastify);

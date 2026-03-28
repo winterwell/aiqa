@@ -367,7 +367,7 @@ const DatasetDetailsPage: React.FC = () => {
         <NameAndDeleteHeader
           label="Dataset"
           item={dataset}
-          handleNameChange={() => updateDatasetMutation.mutate({ name: dataset.name })}
+          handleNameChange={(e) => updateDatasetMutation.mutate({ name: e.target.value })}
           handleDelete={async () => {
             await deleteDatasetMutation.mutateAsync();
           }}
@@ -389,6 +389,8 @@ const DatasetDetailsPage: React.FC = () => {
           }
         />
       }
+      onUpdate={updates => updateDatasetMutation.mutate(updates as Partial<Dataset>)}
+      showEditorFor={['description']}
       back={`/organisation/${organisationId}/dataset`}
       backLabel="Datasets"
       item={dataset}

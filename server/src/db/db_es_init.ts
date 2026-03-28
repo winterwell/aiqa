@@ -5,6 +5,7 @@
 
 import { getClient, SPAN_INDEX_ALIAS, DATASET_EXAMPLES_INDEX, DATASET_EXAMPLES_INDEX_ALIAS } from './db_es.js';
 import { loadSchema, jsonSchemaToEsMapping, getTypeDefinition } from '../common/utils/schema-loader.js';
+import { EMBEDDING_STORAGE_DIMS } from '../common/embedding_storage.js';
 
 /** Most code should use the SPAN_INDEX_ALIAS. Only init code needs the actual index name. */
 // WARNING: an es_migration will create a new index with a version suffix
@@ -85,6 +86,10 @@ export function generateSpanMappings(): any {
     console.warn(`Span should not have dataset field?! mappings.dataset:`, JSON.stringify(mappings.dataset, null, 2), "spanDef:", JSON.stringify(spanDef, null, 2));
     delete mappings.dataset;
   }
+  mappings.embedding_1 = { type: 'dense_vector', dims: EMBEDDING_STORAGE_DIMS, index: false };
+  mappings.embedding_2 = { type: 'dense_vector', dims: EMBEDDING_STORAGE_DIMS, index: false };
+  mappings.embeddingMeta_1 = { type: 'flattened' };
+  mappings.embeddingMeta_2 = { type: 'flattened' };
   return mappings;
 }
 
@@ -126,6 +131,10 @@ export function generateExampleMappings(): any {
   if (mappings.parameters) {
     mappings.parameters = { type: 'flattened' };
   }
+  mappings.embedding_1 = { type: 'dense_vector', dims: EMBEDDING_STORAGE_DIMS, index: false };
+  mappings.embedding_2 = { type: 'dense_vector', dims: EMBEDDING_STORAGE_DIMS, index: false };
+  mappings.embeddingMeta_1 = { type: 'flattened' };
+  mappings.embeddingMeta_2 = { type: 'flattened' };
   return mappings;
 }
 

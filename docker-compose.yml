@@ -48,6 +48,24 @@ services:
       timeout: 5s
       retries: 5
 
+  report-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.report-worker
+    container_name: aiqa-report-worker
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8765/health\")"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    ports:
+      - "8765:8765"
+
   server:
     build:
       context: .
@@ -60,12 +78,13 @@ services:
       PORT: ${SERVER_PORT:-4318}
       GRPC_PORT: ${GRPC_PORT:-4317}
       ENVIRONMENT: production
+      REPORT_WORKER_URL: http://report-worker:8765
       # Auth0 configuration (shared with webapp - can be overridden in root .env)
       AUTH0_DOMAIN: ${AUTH0_DOMAIN:-winterstein.eu.auth0.com}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://winterstein.eu.auth0.com/api/v2/}
     ports:
-      - "4418:${SERVER_PORT:-4318}"  # HTTP API - host port 4418 maps to container port 4318 (nginx handles 4318)
-      - "4417:${GRPC_PORT:-4317}"  # gRPC port - host port 4417 maps to container port 4317 (nginx handles 4317)
+      - "4418:${SERVER_PORT:-4318}"  # HTTP API — host 4418 → container SERVER_PORT (default 4318)
+      - "4417:${GRPC_PORT:-4317}"  # gRPC — host 4417 → container GRPC_PORT (default 4317)
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +92,43 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      report-worker:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(\"http://127.0.0.1:\"+(process.env.PORT||4318)+\"/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: aiqa-mcp
+    environment:
+      AIQA_API_BASE_URL: http://server:${SERVER_PORT:-4318}
+      MCP_PORT: ${MCP_PORT:-4319}
+      NODE_ENV: production
+    ports:
+      - "4419:${MCP_PORT:-4319}"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(\"http://127.0.0.1:\"+(process.env.MCP_PORT||4319)+\"/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     # Removed volume mounts for production - use built images instead
     # volumes:
     #   - ./server:/app/server
@@ -99,5 +155,3 @@ services:
 volumes:
   postgres_data:
   es_data:
-  server_node_modules:
-  webapp_node_modules:

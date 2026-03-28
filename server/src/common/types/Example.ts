@@ -1,5 +1,6 @@
 import Span from "./Span";
 import Metric from "./Metric.js";
+import type EmbeddingMeta from "./EmbeddingMeta.js";
 
 /**
  * An Example aka an Eval
@@ -33,6 +34,14 @@ export default interface Example {
 	};
 	/** Can be blank - only needed for per-example tests, e.g. "llm:this answer should be a joke about cats" */
 	metrics?: Metric[];
+	/**
+	 * Primary cached embedding (default slot). Stored padded in ES; omitted from default GET /example responses.
+	 */
+	embedding_1?: number[];
+	embeddingMeta_1?: EmbeddingMeta;
+	/** Secondary embedding slot for a different model/setup. Omitted from default GET responses. */
+	embedding_2?: number[];
+	embeddingMeta_2?: EmbeddingMeta;
 	created: Date;
 	updated: Date;
 }

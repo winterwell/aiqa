@@ -36,7 +36,9 @@ Use this checklist to verify your deployment setup is complete.
 - [ ] Server nginx config installed (optional): `/etc/nginx/sites-available/server-aiqa.nginx.conf` (from `deploy/server-aiqa.nginx.conf`)
 - [ ] Server nginx config symlinked (optional): `/etc/nginx/sites-enabled/server-aiqa.nginx.conf`
 - [ ] Website nginx config installed (optional): `/etc/nginx/sites-available/website` (from `deploy/website-aiqa.nginx.conf`)
-- [ ] Nginx log directories created: `/var/log/nginx/app-aiqa.winterwell.com`, `/var/log/nginx/aiqa.winterwell.com`, and `/var/log/nginx/server-aiqa.winterwell.com` (if using server domain)
+- [ ] Nginx log directories created: `/var/log/nginx/app-aiqa.winterwell.com`, `/var/log/nginx/aiqa.winterwell.com`, `/var/log/nginx/server-aiqa.winterwell.com` (if using server domain), `/var/log/nginx/mcp-aiqa.winterwell.com` (if using MCP site)
+- [ ] (Optional, reports) Report worker: `/opt/aiqa/server-python` venv + code, `aiqa-report-worker.service` installed, `REPORT_WORKER_URL` in server `.env`
+- [ ] (Optional) MCP: `/opt/aiqa/mcp` deployed, `aiqa-mcp.service` enabled, `mcp-aiqa.nginx.conf` enabled if exposing MCP publicly
 - [ ] Website nginx config symlinked (optional): `/etc/nginx/sites-enabled/website`
 - [ ] Default nginx site disabled (if exists)
 - [ ] Nginx config tested: `sudo nginx -t`

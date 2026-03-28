@@ -18,6 +18,8 @@ import ExampleDetailsPage from './ExampleDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
 import ExperimentDetailsPage from './ExperimentDetailsPage';
 import ExperimentComparePage from './ExperimentComparePage';
+import ReportsListPage from './ReportsListPage';
+import ReportDetailsPage from './ReportDetailsPage';
 import ApiKeyPage from './ApiKeyPage';
 import LLMKeysPage from './LLMKeysPage';
 import CodeSetupPage from './CodeSetupPage';
@@ -238,6 +240,22 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <ExperimentComparePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/reports"
+        element={
+          <ProtectedRoute>
+            <ReportsListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/reports/:reportId"
+        element={
+          <ProtectedRoute>
+            <ReportDetailsPage />
           </ProtectedRoute>
         }
       />

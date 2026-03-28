@@ -21,8 +21,12 @@ docker-compose down -v
 - `postgres`: PostgreSQL database
 - `redis`: Redis cache
 - `elasticsearch`: Elasticsearch search engine
-- `server`: Fastify backend API (port 4318 HTTP, 4317 gRPC)
+- `report-worker`: Python FastAPI service for report embedding analysis (PCA, drift, coverage); internal URL `http://report-worker:8765`, host port **8765**
+- `server`: Fastify backend API — from the host, HTTP **4418** → container `SERVER_PORT` (default 4318), gRPC **4417** → `GRPC_PORT` (default 4317). Sets `REPORT_WORKER_URL` to the report worker automatically.
+- `mcp`: MCP HTTP/SSE server for Cursor / Claude Code — host **4419** → `MCP_PORT` (default 4319); calls the API at `http://server:<SERVER_PORT>` inside the compose network.
 - `nginx`: React frontend (port 4000)
+
+**Browser vs compose:** The webapp build defaults `VITE_AIQA_SERVER_URL` to `http://localhost:4318`. On the host, the API is published on **4418** by default, so for local Docker builds either pass `VITE_AIQA_SERVER_URL=http://localhost:4418` as a build arg for `nginx`, or use a reverse proxy that exposes the API on 4318.
 
 ## Environment Variables
 
@@ -73,8 +77,10 @@ TODO notes
 
 4. **Verify**:
    ```bash
-   docker-compose ps
-   curl http://localhost:4318/version
+   docker compose ps
+   curl http://localhost:4418/version
+   curl http://localhost:8765/health
+   curl http://localhost:4419/health
    ```
 
 ### Security
@@ -84,10 +90,12 @@ TODO notes
 - **HTTPS**: Use ALB with SSL termination or nginx reverse proxy with Let's Encrypt
 - **Database**: Change default `POSTGRES_PASSWORD` in `docker-compose.yml`
 
-### Ports
+### Ports (default `docker compose` host mappings)
 
 Typically you will have a web-server like nginx that listens for incoming traffic, handles SSL, and forwards to these ports.
 
 - **4000**: Webapp (React frontend)
-- **4318**: Server HTTP API
-- **4317**: Server gRPC (OTLP)
+- **4418**: Server HTTP API (maps to container port `SERVER_PORT`, default 4318)
+- **4417**: Server gRPC (OTLP)
+- **8765**: Report worker (`/health`, `/analyze`)
+- **4419**: MCP server (`/health`, `/sse`, `/message`)

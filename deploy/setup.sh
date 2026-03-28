@@ -29,12 +29,20 @@ fi
 # Create directories
 sudo mkdir -p /opt/aiqa/server
 sudo mkdir -p /opt/aiqa/webapp/dist
+sudo mkdir -p /opt/aiqa/server-python
+sudo mkdir -p /opt/aiqa/mcp
 sudo chown -R $USER:$USER /opt/aiqa
 
 echo "Installing systemd service files..."
 
 # Install server service
 sudo cp deploy/aiqa-server.service /etc/systemd/system/
+
+# Report worker (Python): install unit; you must still create venv + install deps under /opt/aiqa/server-python (see DEPLOYMENT.md)
+sudo cp deploy/aiqa-report-worker.service /etc/systemd/system/
+
+# MCP (Node): install unit; deploy code + .env via mcp-deploy workflow or manually (see DEPLOYMENT.md)
+sudo cp deploy/aiqa-mcp.service /etc/systemd/system/
 
 # Install nginx config for webapp
 sudo cp deploy/app-aiqa.nginx.conf /etc/nginx/sites-available/app-aiqa.nginx.conf
@@ -58,6 +66,7 @@ fi
 sudo mkdir -p /var/log/nginx/app-aiqa.winterwell.com
 sudo mkdir -p /var/log/nginx/aiqa.winterwell.com
 sudo mkdir -p /var/log/nginx/server-aiqa.winterwell.com  # if using server domain
+sudo mkdir -p /var/log/nginx/mcp-aiqa.winterwell.com    # if using MCP nginx site
 sudo chown -R www-data:www-data /var/log/nginx/
 
 # Disable default nginx site if it exists
@@ -75,8 +84,10 @@ echo "Setup complete!"
 echo ""
 echo "Next steps:"
 echo "1. If deploying from git, ensure submodules are initialized: git submodule update --init --recursive"
-echo "2. Configure /opt/aiqa/server/.env with your database credentials"
-echo "3. Enable services: sudo systemctl enable aiqa-server"
-echo "4. Start services: sudo systemctl start aiqa-server && sudo systemctl reload nginx"
-echo "5. Check status: sudo systemctl status aiqa-server && sudo systemctl status nginx"
+echo "2. Configure /opt/aiqa/server/.env with your database credentials (include REPORT_WORKER_URL if using the report worker)"
+echo "3. For report analysis: set up /opt/aiqa/server-python venv + sync code, then: sudo systemctl enable --now aiqa-report-worker"
+echo "4. For MCP: deploy /opt/aiqa/mcp (see mcp-deploy workflow), configure nginx mcp-aiqa.nginx.conf if needed, then: sudo systemctl enable --now aiqa-mcp"
+echo "5. Enable API: sudo systemctl enable aiqa-server"
+echo "6. Start: sudo systemctl start aiqa-server && sudo systemctl reload nginx"
+echo "7. Check status: sudo systemctl status aiqa-server aiqa-report-worker aiqa-mcp nginx"
 

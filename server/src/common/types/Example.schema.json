@@ -2,6 +2,33 @@
   "$ref": "#/definitions/Example",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "EmbeddingMeta": {
+      "additionalProperties": false,
+      "description": "Describes how the embedding vector was produced.",
+      "properties": {
+        "algorithm": {
+          "description": "e.g. deterministic_hash_v1, openai_embeddings_api",
+          "type": "string"
+        },
+        "dimensions": {
+          "description": "Semantic length of the vector (storage may pad to EMBEDDING_STORAGE_DIMS in ES)",
+          "type": "integer"
+        },
+        "model": {
+          "description": "Logical model id, e.g. openai:text-embedding-3-small",
+          "type": "string"
+        },
+        "version": {
+          "description": "Provider or pipeline version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "dimensions"
+      ],
+      "type": "object"
+    },
     "Example": {
       "additionalProperties": false,
       "properties": {
@@ -58,6 +85,28 @@
           "items": {
             "$ref": "#/definitions/Metric"
           }
+        },
+        "embedding_1": {
+          "description": "Primary cached embedding (default slot); omitted from default API responses",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "embeddingMeta_1": {
+          "$ref": "#/definitions/EmbeddingMeta",
+          "description": "Metadata for embedding_1"
+        },
+        "embedding_2": {
+          "description": "Secondary embedding slot; omitted from default API responses",
+          "items": {
+            "type": "number"
+          },
+          "type": "array"
+        },
+        "embeddingMeta_2": {
+          "$ref": "#/definitions/EmbeddingMeta",
+          "description": "Metadata for embedding_2"
         },
         "created": {
           "type": "string",

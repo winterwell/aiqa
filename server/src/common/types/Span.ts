@@ -1,4 +1,5 @@
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
+import type EmbeddingMeta from './EmbeddingMeta.js';
 
 /**
  * Stored on spans as attributes.feedback.{value,comment}
@@ -64,6 +65,12 @@ export default interface Span extends Omit<ReadableSpan, 'startTime' | 'endTime'
   start: number;
   /** End time in epoch milliseconds (overrides ReadableSpan's HrTime format) */
   end: number;
+  /** Primary cached embedding (default slot). Omitted from default GET /span responses. */
+  embedding_1?: number[];
+  embeddingMeta_1?: EmbeddingMeta;
+  /** Secondary embedding slot. Omitted from default GET responses. */
+  embedding_2?: number[];
+  embeddingMeta_2?: EmbeddingMeta;
 }
 
 export function getSpanInput(span: Span) {

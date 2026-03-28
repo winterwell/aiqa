@@ -10,6 +10,8 @@ export type { default as Dataset } from './Dataset.js';
 export type { default as Span } from './Span.js';
 export type { default as Example } from './Example.js';
 export type { default as Experiment } from './Experiment.js';
+export type { default as Report } from './Report.js';
+export type { default as EmbeddingMeta } from './EmbeddingMeta.js';
 
 export { getSpanId, getTraceId, getParentSpanId } from './Span.js';
 

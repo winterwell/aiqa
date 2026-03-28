@@ -28,7 +28,8 @@ const formatDate = (date: string | Date | undefined): string | null => {
 
 const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEditorFor, onUpdate }) => {
   const infoItems: Array<{ label: string; value: React.ReactNode }> = [];
-  const showEditorForNotes = showEditorFor?.includes("notes");
+  const editorForNotesOrDescriptionProp = showEditorFor?.find(prop => prop === "notes" || prop === "description");
+
   if (item.id) {
     infoItems.push({
       label: 'ID',
@@ -73,10 +74,11 @@ const ItemInfo: React.FC<ItemInfoProps> = ({ item, itemType, showToast, showEdit
           </ListGroupItem>
         ))}
       </ListGroup>
-      {showEditorForNotes && <PropInput readOnly={!onUpdate} className="flex-grow-1" type="textarea" item={item} prop="notes" onChange={e => onUpdate({ notes: e.target.value })} />}
-      {item.description && <div>
-        {item.description && <p>{item.description}</p>}
-      </div>}
+      {editorForNotesOrDescriptionProp && 
+         <PropInput readOnly={!onUpdate} className="flex-grow-1" type="textarea" 
+         item={item} prop={editorForNotesOrDescriptionProp} 
+         onChange={e => onUpdate({ [editorForNotesOrDescriptionProp]: e.target.value })} />}
+
     </div>
   );
 }; // end: ItemInfo

@@ -24,6 +24,11 @@ import {
   updateExperiment,
   deleteExperiment,
   deleteUser,
+  createReport,
+  getReport,
+  listReports,
+  updateReport,
+  deleteReport,
 } from '../dist/db/db_sql.js';
 
 dotenv.config();
@@ -69,7 +74,7 @@ tap.test('database initialization', async (t) => {
     t.equal(result.rows[0].exists, true, 'organisations table should exist');
     
     // Check that other tables exist too
-    const tables = ['users', 'api_keys', 'models', 'datasets', 'experiments'];
+    const tables = ['users', 'api_keys', 'models', 'datasets', 'experiments', 'reports'];
     for (const table of tables) {
       const tableResult = await client.query(`
         SELECT EXISTS (
@@ -1091,6 +1096,52 @@ tap.test('experiment full CRUD workflow', async (t) => {
   // Verify deletion
   const retrievedAfterDelete = await getExperiment(experiment.id);
   t.equal(retrievedAfterDelete, null, 'experiment should be deleted');
+  await deleteDataset(dataset.id);
+  await deleteOrganisation(org.id);
+});
+
+tap.test('report CRUD', async (t) => {
+  if (!dbAvailable) {
+    t.skip('Database not available');
+    return;
+  }
+  const org = await createOrganisation({
+    name: 'Test Org Report CRUD',
+    members: [],
+  });
+  const dataset = await createDataset({
+    organisation: org.id,
+    name: 'Test Dataset for Report',
+  });
+
+  const report = await createReport({
+    organisation: org.id,
+    kind: 'coverage',
+    dataset: dataset.id,
+    name: 'Coverage v1',
+    parameters: { clusterCount: 3 },
+  });
+  t.ok(report.id, 'report has id');
+  t.equal(report.kind, 'coverage');
+  t.equal(report.status, 'draft');
+
+  const got = await getReport(report.id);
+  t.same(got?.parameters, { clusterCount: 3 });
+
+  const listed = await listReports(org.id, null);
+  t.ok(listed.some((r) => r.id === report.id));
+
+  const upd = await updateReport(report.id, {
+    status: 'active',
+    summary: { ok: true },
+    results: { version: 1, clusters: [] },
+  });
+  t.equal(upd?.status, 'active');
+  t.same(upd?.summary, { ok: true });
+
+  t.equal(await deleteReport(report.id), true);
+  t.equal(await getReport(report.id), null);
+
   await deleteDataset(dataset.id);
   await deleteOrganisation(org.id);
 });

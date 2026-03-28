@@ -701,6 +701,98 @@ interface TableHeaderProps<T> {
   frozenRowTopOffsets?: number[];
 }
 
+type TableFlexRender = <TProps extends object>(comp: any, props: TProps) => React.ReactNode;
+
+/** Module-level component so React identity is stable; a nested `function Th` remounts every parent render and drops filter input focus. */
+function ColumnHeaderTh<T>({
+  header,
+  visibleColumnIndex,
+  columnHeaderRowIndex,
+  enableRowSelection,
+  table,
+  flexRender,
+  openFilter,
+  clearAndCloseFilter,
+  isHeaderFilterOpen,
+  frozenStyle,
+}: {
+  header: Header<T, unknown>;
+  visibleColumnIndex: number;
+  columnHeaderRowIndex: number;
+  enableRowSelection?: boolean;
+  table?: any;
+  flexRender: TableFlexRender;
+  openFilter: (columnId: string) => void;
+  clearAndCloseFilter: (header: Header<T, unknown>) => void;
+  isHeaderFilterOpen: (header: Header<T, unknown>) => boolean;
+  frozenStyle: React.CSSProperties;
+}) {
+  const toFilterValue = (value: string) => (value === '' ? undefined : value);
+  const isSelectColumn = enableRowSelection && header.id === 'select';
+  const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
+  const isFilterOpen = canFilter && isHeaderFilterOpen(header);
+  const extCol = header.column.columnDef as ExtendedColumnDef<any>;
+  const useCategoricalFilter = extCol.type === 'categorical' && extCol.categoricalValues && table;
+  return (
+    <th
+      className={extCol.headerClassName}
+      style={{
+        cursor: header.column.getCanSort() ? 'pointer' : 'default',
+        userSelect: 'none',
+        ...frozenStyle,
+      }}
+      onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
+    >
+      <div className="d-flex align-items-center justify-content-between">
+        <div className="d-flex align-items-center">
+          {extCol.headerCell ? extCol.headerCell(header) : flexRender(extCol.header, header.getContext())}
+          {header.column.getCanSort() && !isSelectColumn && (
+            <span className="ms-2">
+              {{
+                asc: ' ↑',
+                desc: ' ↓',
+              }[header.column.getIsSorted() as string] ?? ' ⇅'}
+            </span>
+          )}
+        </div>
+        {canFilter && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isFilterOpen) {
+                clearAndCloseFilter(header);
+              } else {
+                openFilter(header.id);
+              }
+            }}
+            aria-label={isFilterOpen ? `Clear filter for ${header.id}` : `Filter ${header.id}`}
+            className="btn btn-link p-0 ms-2 text-muted"
+            style={{ lineHeight: 1 }}
+          >
+            {isFilterOpen ? <FunnelXIcon /> : <FunnelIcon />}
+          </button>
+        )}
+      </div>
+      {canFilter &&
+        isFilterOpen &&
+        (useCategoricalFilter ? (
+          <CategoricalColumnFilter header={header} table={table} />
+        ) : (
+          <Input
+            type="search"
+            value={String(header.column.getFilterValue() ?? '')}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
+            placeholder="Filter..."
+            bsSize="sm"
+            className="mt-1"
+          />
+        ))}
+    </th>
+  );
+}
+
 function TableHeader<T>({
   headers,
   flexRender,
@@ -718,7 +810,6 @@ function TableHeader<T>({
 	const totalColumns = headers[0]?.headers.length || 0;
   const [openFilterInputs, setOpenFilterInputs] = useState<Record<string, boolean>>({});
 	const showToolbar = bulkActionsToolbar && hasSelectedRows && selectedRowIds && selectedRows;
-  const toFilterValue = (value: string) => (value === '' ? undefined : value);
   const frozenColumnCount = Math.max(0, Math.floor(freezeColumns));
   const frozenRowCount = Math.max(0, Math.floor(freezeRows));
 
@@ -756,82 +847,6 @@ function TableHeader<T>({
 
   let theadRowIndex = 0;
 
-  function Th({
-    header,
-    visibleColumnIndex,
-    columnHeaderRowIndex,
-  }: {
-    header: Header<T, unknown>;
-    visibleColumnIndex: number;
-    columnHeaderRowIndex: number;
-  }) {
-    const isSelectColumn = enableRowSelection && header.id === 'select';
-    const canFilter = header.column.getCanFilter() && !isSelectColumn && !header.isPlaceholder;
-    const isFilterOpen = canFilter && isHeaderFilterOpen(header);
-    const extCol = header.column.columnDef as ExtendedColumnDef<any>;
-    const useCategoricalFilter =
-      extCol.type === 'categorical' && extCol.categoricalValues && table;
-    const frozenStyle = headerCellStickyStyle(visibleColumnIndex, columnHeaderRowIndex);
-    return (
-      <th
-        className={extCol.headerClassName}
-        style={{
-          cursor: header.column.getCanSort() ? 'pointer' : 'default',
-          userSelect: 'none',
-          ...frozenStyle,
-        }}
-        onClick={isSelectColumn ? undefined : header.column.getToggleSortingHandler()}
-      >
-        <div className="d-flex align-items-center justify-content-between">
-          <div className="d-flex align-items-center">
-            {extCol.headerCell ? extCol.headerCell(header) : flexRender(extCol.header, header.getContext())}
-            {header.column.getCanSort() && !isSelectColumn && (
-              <span className="ms-2">
-                {{
-                  asc: ' ↑',
-                  desc: ' ↓',
-                }[header.column.getIsSorted() as string] ?? ' ⇅'}
-              </span>
-            )}
-          </div>
-          {canFilter && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isFilterOpen) {
-                  clearAndCloseFilter(header);
-                } else {
-                  openFilter(header.id);
-                }
-              }}
-              aria-label={isFilterOpen ? `Clear filter for ${header.id}` : `Filter ${header.id}`}
-              className="btn btn-link p-0 ms-2 text-muted"
-              style={{ lineHeight: 1 }}
-            >
-              {isFilterOpen ? <FunnelXIcon /> : <FunnelIcon />}
-            </button>
-          )}
-        </div>
-        {canFilter &&
-          isFilterOpen &&
-          (useCategoricalFilter ? (
-            <CategoricalColumnFilter header={header} table={table} />
-          ) : (
-            <Input
-              type="search"
-              value={String(header.column.getFilterValue() ?? '')}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}
-              placeholder="Filter..."
-              bsSize="sm"
-              className="mt-1"
-            />
-          ))}
-      </th>
-    );
-  }
-
   return (
     <thead>
       {headers.map((headerGroup) => {
@@ -843,11 +858,18 @@ function TableHeader<T>({
               {headerGroup.headers
                 .filter((h) => !isHidden(h.column.columnDef))
                 .map((header, visibleColumnIndex) => (
-                  <Th
+                  <ColumnHeaderTh
                     key={header.id}
                     header={header}
                     visibleColumnIndex={visibleColumnIndex}
                     columnHeaderRowIndex={columnHeaderRowIndex}
+                    enableRowSelection={enableRowSelection}
+                    table={table}
+                    flexRender={flexRender}
+                    openFilter={openFilter}
+                    clearAndCloseFilter={clearAndCloseFilter}
+                    isHeaderFilterOpen={isHeaderFilterOpen}
+                    frozenStyle={headerCellStickyStyle(visibleColumnIndex, columnHeaderRowIndex)}
                   />
                 ))}
             </tr>

@@ -1,7 +1,7 @@
 'use client';
 
 import { Label, Input } from "reactstrap"
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
 import HelpText from "./HelpText";
 
@@ -31,9 +31,11 @@ type PropInputProps = {
 	required?: boolean,
 	/** if true. display the label and input inline so e.g. it can be used in a heading */
 	inline?: boolean,
+	/** Fires after internal blur handling (commit local value to `item`, clear focus guard). Use to flush debounced saves. */
+	onBlur?: React.FocusEventHandler<HTMLInputElement>,
 }
 
-export default function PropInput({ label, item, prop, type, help, className, onChange, placeholder, multiple, list, readOnly, required, inline, ...rest }
+export default function PropInput({ label, item, prop, type, help, className, onChange, placeholder, multiple, list, readOnly, required, inline, onBlur: onBlurProp, ...rest }
 	: PropInputProps) 
 {
 	// console.log("PropInput render", { prop, type, item });
@@ -45,16 +47,41 @@ export default function PropInput({ label, item, prop, type, help, className, on
 		
 	const initialValue = item[prop] || "";	
 	const [localValue, setLocalValue] = useState(initialValue);
-	
+	const focusedRef = useRef(false);
+	const localValueRef = useRef(localValue);
+	localValueRef.current = localValue;
+
 	useEffect(() => {
-		// console.log("PropInput useEffect", { prop, value: item[prop] });
+		if (focusedRef.current) return;
 		const newValue = item[prop] || "";
-		if (newValue !== localValue) {
-			setLocalValue(newValue);
+		setLocalValue((prev) => {
+			if (newValue === prev) return prev;
+			return newValue;
+		});
+	}, [prop, item, item[prop]]);
+
+	/** Re-apply local edit to `item` when the parent replaces the object (e.g. react-query refetch) while we keep showing local text. */
+	const commitLocalToItem = () => {
+		let v: string | string[] | boolean = localValueRef.current as string | string[] | boolean;
+		if (type === "list" && typeof v === "string") {
+			v = v.split(",").map((s) => s.trim());
 		}
-	}, [prop, item, item[prop], localValue]);
+		item[prop] = v;
+	};
+
+	const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+		focusedRef.current = false;
+		if (!readOnly && (type === undefined || type === "text" || type === "textarea" || type === "number" || type === "date" || type === "list")) {
+			commitLocalToItem();
+		}
+		onBlurProp?.(e);
+	};
     // label="" means no label
 	if (label===null || label===undefined) label = prettyString(prop);
+	const handleFocus = () => {
+		focusedRef.current = true;
+	};
+
 	const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		let newValue: string | string[] | boolean = e.target.value;
 		
@@ -118,7 +145,9 @@ export default function PropInput({ label, item, prop, type, help, className, on
 		return (<div className={className} style={containerStyle}>
 			<_Input value={displayValue} 
 			className="me-1"
-			onChange={_onChange} 
+			onChange={_onChange}
+			onFocus={handleFocus}
+			onBlur={handleBlur}
 			type={type} {...rest} 
 			placeholder={placeholder} 
 				multiple={multiple} list={list} 
@@ -130,7 +159,7 @@ export default function PropInput({ label, item, prop, type, help, className, on
 	} // end: if checkbox
 	return (<div className={className} style={containerStyle}>
 		{$label}		
-		<_Input value={displayValue} onChange={_onChange} type={type} {...rest} placeholder={placeholder} 
+		<_Input value={displayValue} onChange={_onChange} onFocus={handleFocus} onBlur={handleBlur} type={type} {...rest} placeholder={placeholder} 
 			multiple={multiple} list={list} 
 			readOnly={readOnly}
 			style={isH1TextInput ? { fontSize: '2rem', fontWeight: 500, lineHeight: 1.2, height: 'auto' } : undefined}

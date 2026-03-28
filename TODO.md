@@ -1,5 +1,8 @@
 TODO
 
+Drift detection and test coverage / gaps feature:
+
+
 # Funding
 https://www.mozillafoundation.org/en/what-we-do/grantmaking/
 

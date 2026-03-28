@@ -27,15 +27,15 @@ set -e  # Exit on error
 #   echo "Warning: Dependencies may not be fully healthy, but continuing..."
 # fi
 
-echo "Building nginx and server containers (will rebuild if code changed)..."
-docker compose build nginx server
+echo "Building app containers (will rebuild if code changed)..."
+docker compose build nginx server report-worker mcp
 
 echo "Restarting containers with new images..."
 # up -d will recreate containers if images changed (detected by build above)
 # --no-deps ensures we don't restart dependencies unnecessarily
-docker compose up -d --no-deps nginx server
+docker compose up -d --no-deps nginx server report-worker mcp
 
 echo "Done! Containers rebuilt and restarted."
 echo ""
 echo "Container status:"
-docker compose ps nginx server
+docker compose ps nginx server report-worker mcp
