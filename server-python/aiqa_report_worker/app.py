@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from aiqa_report_worker.analysis import run_embedding_analysis
 
-app = FastAPI(title="AIQA Report Worker", version="1.0.0")
+app = FastAPI(title="AIQA Report Worker", version="0.9.0")
 
 
 class PointModel(BaseModel):

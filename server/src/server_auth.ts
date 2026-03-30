@@ -130,7 +130,7 @@ function hashApiKey(key: string): string {
  */
 async function authenticateWithApiKey(
 	request: AuthenticatedRequest,
-	reply: FastifyReply,
+	_reply: FastifyReply | undefined,
 	apiKeyPlaintext: string
 ): Promise<boolean> {
 	// Hash the incoming API key
@@ -158,7 +158,7 @@ async function authenticateWithApiKey(
  */
 async function authenticateWithJwt(
 	request: AuthenticatedRequest,
-	reply: FastifyReply,
+	reply: FastifyReply | undefined,
 	token: string
 ): Promise<boolean> {
 	const verificationResult = await verifyJwtToken(token);
@@ -189,7 +189,12 @@ async function authenticateWithJwt(
 
 		// If still not found, user doesn't exist yet (but may be created by this request)
 		if (!user) {
-			reply.code(403).send({ error: `User email:${verificationResult.email} sub:${verificationResult.userId} not found. Please log in via the web application first.` });
+			const msg = `User email:${verificationResult.email} sub:${verificationResult.userId} not found. Please log in via the web application first.`;
+			if (reply) {
+				reply.code(403).send({ error: msg });
+			} else {
+				throw new Error(`GRPC call rejected: ${msg}`);
+			}
 			return false;
 		}
 	} else if (verificationResult.userId) {
@@ -211,7 +216,12 @@ async function authenticateWithJwt(
 		// Verify user is a member of the requested organisation
 		const org = await getOrganisation(requestedOrg);
 		if (!org || !org.members || !org.members.includes(userId)) {
-			reply.code(403).send({ error: 'User is not a member of the specified organisation' });
+			const msg = 'User is not a member of the specified organisation';
+			if (reply) {
+				reply.code(403).send({ error: msg });
+			} else {
+				throw new Error(`GRPC call rejected: ${msg}`);
+			}
 			return false;
 		}
 		request.organisation = requestedOrg;
@@ -251,9 +261,9 @@ export async function authenticateWithJwtFromHeader(request: FastifyRequest): Pr
 /**
  * Fastify preHandler middleware for authentication (API key or JWT token).
  * Expects Authorization header:
- *   - "Bearer <jwt-token>" for JWT authentication
- *   - "ApiKey <api-key>" for API key authentication
- * 
+ *   - "Bearer <token>" for JWT (Auth0) first, then API key if JWT verification fails (same credential).
+ *   - "ApiKey <api-key>" for API key only (legacy; equivalent to Bearer for API keys).
+ *
  * For API keys: Looks up organisation from ApiKey table.
  * For JWT tokens: Verifies token, looks up user, then finds organisation from User's memberships.
  * 
@@ -290,22 +300,28 @@ export async function authenticate(
 		return;
 	}
 
-	// Check for JWT authentication: "Bearer <jwt-token>"
+	// "Bearer <token>": try JWT, then API key if JWT did not succeed (and no response sent yet).
 	if (authHeader.startsWith('Bearer ')) {
 		const token = authHeader.substring(7).trim();
 		const jwtSuccess = await authenticateWithJwt(authRequest, reply, token);
 		if (jwtSuccess) {
 			return;
 		}
-		// JWT authentication failed - only send error if reply hasn't been sent yet
+		if (reply.sent) {
+			return;
+		}
+		const apiKeySuccess = await authenticateWithApiKey(authRequest, reply, token);
+		if (apiKeySuccess) {
+			return;
+		}
 		if (!reply.sent) {
-			reply.code(401).send({ error: 'Invalid JWT token' });
+			reply.code(401).send({ error: 'Invalid Bearer token (JWT or API key).' });
 		}
 		return;
 	}
 
 	// Invalid Authorization header format
-	reply.code(401).send({ error: 'Invalid Authorization header format. Use "Bearer <jwt-token>" or "ApiKey <api-key>"' });
+	reply.code(401).send({ error: 'Invalid Authorization header format. Use "Bearer <jwt or api key>" or "ApiKey <api-key>"' });
 }
 
 /**
@@ -421,17 +437,21 @@ export async function authenticateFromGrpcMetadata(request: AuthenticatedRequest
     return;
   }
 
-  // Check for JWT authentication: "Bearer <jwt-token>"
+  // "Bearer <token>": JWT first, then API key (same as HTTP).
   if (authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7).trim();
-    const jwtSuccess = await authenticateWithJwt(request, null as any, token);
-    if (!jwtSuccess) {
-      throw new Error('Invalid JWT token');
+    const jwtSuccess = await authenticateWithJwt(request, undefined, token);
+    if (jwtSuccess) {
+      return;
+    }
+    const apiKeyOk = await authenticateWithApiKey(request, undefined, token);
+    if (!apiKeyOk) {
+      throw new Error('GRPC call rejected: Invalid JWT token or API key ***' + token.substring(Math.max(0, token.length - 4)));
     }
     return;
   }
 
-  throw new Error('Invalid Authorization header format. Use "Bearer <jwt-token>" or "ApiKey <api-key>"');
+  throw new Error('Invalid Authorization header format. Use "Bearer <jwt or api key>" or "ApiKey <api-key>"');
 }
 
 /**

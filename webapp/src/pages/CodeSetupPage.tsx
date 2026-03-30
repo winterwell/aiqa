@@ -242,7 +242,7 @@ function OpenTelemetryCodeSetupPane({}: { }) {
       <h5>Endpoint Configuration with your AIQA API Key</h5>
       <p>Set the following environment variables to configure the OTLP endpoint and headers:</p>
       <pre><code>{`OTEL_EXPORTER_OTLP_ENDPOINT=${endpointUrl}`}</code></pre>
-      <pre><code>{`OTEL_EXPORTER_OTLP_HEADERS=Authorization=ApiKey YOUR_API_KEY`}</code></pre>
+      <pre><code>{`OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer YOUR_API_KEY`}</code></pre>
       
       <h5>Example Attributes</h5>
       <p>

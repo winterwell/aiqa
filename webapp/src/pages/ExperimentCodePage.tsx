@@ -142,7 +142,9 @@ const ExperimentCodePage: React.FC = () => {
                       <br />
                       <code>GET /dataset/{'{datasetId}'}?organisation={'{organisationId}'}</code>
                       <br />
-                      <small className="text-muted">Headers: Authorization: Bearer {'{your-api-key}'}</small>
+                      <small className="text-muted">
+                        Header: <code>Authorization: Bearer {'{your-api-key}'}</code> (or legacy <code>ApiKey {'{your-api-key}'}</code>)
+                      </small>
                     </li>
                     <li>
                       <strong>Run your experiment:</strong>

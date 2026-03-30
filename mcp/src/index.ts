@@ -7,7 +7,7 @@ import cors from '@fastify/cors';
 import { AiqaApiClient } from './client.js';
 
 const SERVER_NAME = 'aiqa-mcp-server';
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '0.9.0';
 
 // Get configuration from environment variables
 const API_BASE_URL = process.env.AIQA_API_BASE_URL || 'http://localhost:4318';
@@ -466,7 +466,7 @@ fastify.get('/sse', async (request, reply) => {
   
   if (authHeader?.startsWith('Bearer ')) {
     apiKey = authHeader.substring(7).trim();
-  } else if (authHeader?.startsWith('ApiKey ')) {
+  } else if (authHeader?.startsWith('ApiKey ')) { // backward compatibility
     apiKey = authHeader.substring(7).trim();
   } else {
     // Fallback to query parameter (less secure, but some clients may need it)
@@ -474,7 +474,7 @@ fastify.get('/sse', async (request, reply) => {
   }
 
   if (!apiKey) {
-    reply.code(401).send({ error: 'API key required. Provide via Authorization header (Bearer <key> or ApiKey <key>) or ?apiKey= query parameter' });
+    reply.code(401).send({ error: 'API key required. Provide via Authorization header (Bearer <key>) or ?apiKey= query parameter' });
     return;
   }
 

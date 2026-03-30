@@ -17,7 +17,7 @@ export class AiqaApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
-      'Authorization': `ApiKey ${this.apiKey}`,
+      'Authorization': `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
     };
 

@@ -164,7 +164,7 @@ Users configure their Cursor or Claude Code clients to connect to the hosted MCP
     "aiqa": {
       "url": "https://mcp-aiqa.winterwell.com/sse",
       "headers": {
-        "Authorization": "ApiKey YOUR_API_KEY_HERE"
+        "Authorization": "Bearer YOUR_API_KEY_HERE"
       }
     }
   }
@@ -204,7 +204,7 @@ All query tools support:
 ### Server won't start
 
 - Check `.env` file exists and has correct permissions (600)
-- Verify API key is valid: `curl -H "Authorization: ApiKey $AIQA_API_KEY" $AIQA_API_BASE_URL/health`
+- Verify API key is valid: `curl -H "Authorization: Bearer $AIQA_API_KEY" $AIQA_API_BASE_URL/health`
 - Check systemd logs: `sudo journalctl -u aiqa-mcp -f`
 
 ### Tools not appearing in Cursor/Claude Code

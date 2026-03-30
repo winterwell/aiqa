@@ -12,7 +12,7 @@ interface ApiKeyHowToUseSectionProps {
 export const ApiKeyHowToUseSection: React.FC<ApiKeyHowToUseSectionProps> = ({ organisationId, newlyGeneratedKey }) => {
   const { showToast } = useToast();
   const curlCommand = `curl -X GET "${API_BASE_URL}/api-key" \\
-  -H "Authorization: ApiKey ${newlyGeneratedKey || 'YOUR_API_KEY'}" \\
+  -H "Authorization: Bearer ${newlyGeneratedKey || 'YOUR_API_KEY'}" \\
   -H "Content-Type: application/json"`;
 
   return (

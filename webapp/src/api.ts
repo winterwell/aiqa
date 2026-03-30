@@ -229,6 +229,23 @@ export async function deleteExperiment(id: string) {
 }
 
 // Report endpoints (drift / coverage analysis)
+export async function createReport(
+	organisationId: string,
+	body: {
+		kind: 'drift' | 'coverage';
+		name?: string;
+		dataset?: string;
+		parameters?: Record<string, unknown>;
+	}
+) {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/report?${params.toString()}`, {
+		method: 'POST',
+		body: JSON.stringify(body),
+	});
+}
+
 export async function listReports(organisationId: string, query?: string) {
 	const params = new URLSearchParams();
 	addOrganisationParam(params, organisationId);

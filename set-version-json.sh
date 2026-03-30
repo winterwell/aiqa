@@ -83,6 +83,46 @@ else
     echo "Warning: $GO_CONSTANTS_FILE not found, skipping VERSION update"
 fi
 
+# MCP server: package.json and runtime SERVER_VERSION (src; rebuild dist separately)
+MCP_PACKAGE_JSON="mcp/package.json"
+if [ -f "$MCP_PACKAGE_JSON" ]; then
+    echo "Updating $MCP_PACKAGE_JSON version"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" "$MCP_PACKAGE_JSON"
+    else
+        sed -i "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" "$MCP_PACKAGE_JSON"
+    fi
+    echo "Updated version to $VERSION in $MCP_PACKAGE_JSON"
+else
+    echo "Warning: $MCP_PACKAGE_JSON not found, skipping version update"
+fi
+MCP_INDEX_TS="mcp/src/index.ts"
+if [ -f "$MCP_INDEX_TS" ]; then
+    echo "Updating $MCP_INDEX_TS SERVER_VERSION"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^const SERVER_VERSION = '.*';/const SERVER_VERSION = '$VERSION';/" "$MCP_INDEX_TS"
+    else
+        sed -i "s/^const SERVER_VERSION = '.*';/const SERVER_VERSION = '$VERSION';/" "$MCP_INDEX_TS"
+    fi
+    echo "Updated SERVER_VERSION to $VERSION in $MCP_INDEX_TS"
+else
+    echo "Warning: $MCP_INDEX_TS not found, skipping SERVER_VERSION update"
+fi
+
+# Report worker (server-python): FastAPI OpenAPI /docs version string
+SERVER_PYTHON_APP="server-python/aiqa_report_worker/app.py"
+if [ -f "$SERVER_PYTHON_APP" ]; then
+    echo "Updating $SERVER_PYTHON_APP FastAPI version"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|app = FastAPI(title=\"AIQA Report Worker\", version=\".*\")|app = FastAPI(title=\"AIQA Report Worker\", version=\"$VERSION\")|" "$SERVER_PYTHON_APP"
+    else
+        sed -i "s|app = FastAPI(title=\"AIQA Report Worker\", version=\".*\")|app = FastAPI(title=\"AIQA Report Worker\", version=\"$VERSION\")|" "$SERVER_PYTHON_APP"
+    fi
+    echo "Updated FastAPI version to $VERSION in $SERVER_PYTHON_APP"
+else
+    echo "Warning: $SERVER_PYTHON_APP not found, skipping FastAPI version update"
+fi
+
 echo "Version info:"
 echo `cat $VERSION_INFO_FILE`
 

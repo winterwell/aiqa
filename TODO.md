@@ -2,6 +2,8 @@ TODO
 
 Drift detection and test coverage / gaps feature:
 
+Tracing without otel? ...
+Browser extension?
 
 # Funding
 https://www.mozillafoundation.org/en/what-we-do/grantmaking/

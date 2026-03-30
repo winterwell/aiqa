@@ -4,7 +4,7 @@ Test tool for OpenTelemetry endpoints. Sends a test span using standard OTEL env
 
 Usage:
     export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
-    export OTEL_EXPORTER_OTLP_HEADERS="Authorization=ApiKey your-key"  # optional
+    export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer your-key"  # optional
     export OTEL_SERVICE_NAME=test-service  # optional, default: "test-service"
     python test_otel_endpoint.py
 
