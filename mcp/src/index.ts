@@ -7,7 +7,7 @@ import cors from '@fastify/cors';
 import { AiqaApiClient } from './client.js';
 
 const SERVER_NAME = 'aiqa-mcp-server';
-const SERVER_VERSION = '0.9.0';
+const SERVER_VERSION = '0.9.1';
 
 // Get configuration from environment variables
 const API_BASE_URL = process.env.AIQA_API_BASE_URL || 'http://localhost:4318';
