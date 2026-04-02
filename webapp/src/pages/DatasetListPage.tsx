@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, CardBody, CardHeader, Input, Table, Button, Form, FormGroup, Label, Alert } from 'reactstrap';
+import { Row, Col, Card, CardBody, CardHeader, Input, Button, Form, FormGroup, Label, Alert } from 'reactstrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listDatasets, createDataset } from '../api';
-import { Dataset } from '../common/types';
-import Spinner from '../components/generic/Spinner';
+import { listDatasets, createDataset, getDatasetStats, deleteDataset } from '../api';
+import type { DatasetStatsMap } from '../api';
+import type { Dataset } from '../common/types';
+import TableUsingAPI, { ExtendedColumnDef, PageableData } from '../components/generic/TableUsingAPI';
+import ConfirmDialog from '../components/generic/ConfirmDialog';
+import Page from '../components/generic/Page';
 import { populateDatasetFromRecentTraces, type TraceSampleWindow } from '../datasetPopulateFromTraces';
 import { useToast } from '../utils/toast';
+import { TrashIcon } from '@phosphor-icons/react';
+import A from '../components/generic/A';
 
 const DatasetListPage: React.FC = () => {
   const { organisationId } = useParams<{ organisationId: string }>();
@@ -18,10 +23,16 @@ const DatasetListPage: React.FC = () => {
   const [datasetDescription, setDatasetDescription] = useState('');
   const [populateExampleCount, setPopulateExampleCount] = useState(20);
   const [traceSampleWindow, setTraceSampleWindow] = useState<TraceSampleWindow>('1d');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<Dataset[]>([]);
 
-  const { data: datasets, isLoading, error } = useQuery({
-    queryKey: ['datasets', organisationId],
-    queryFn: () => listDatasets(organisationId),
+  const {
+    data: statsByDataset,
+    isLoading: statsLoading,
+    isError: statsError,
+  } = useQuery({
+    queryKey: ['dataset-stats', organisationId],
+    queryFn: () => getDatasetStats(organisationId!),
     enabled: !!organisationId,
   });
 
@@ -48,6 +59,8 @@ const DatasetListPage: React.FC = () => {
     },
     onSuccess: ({ newDataset, populate }) => {
       queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-stats', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['table-data', 'datasets', organisationId] });
       queryClient.invalidateQueries({ queryKey: ['examples'] });
       queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, newDataset.id] });
       setShowCreateForm(false);
@@ -88,42 +101,136 @@ const DatasetListPage: React.FC = () => {
     });
   };
 
-  if (isLoading) {
-    return (
-      <Container>
-        <Spinner centered />
-      </Container>
-    );
-  }
+  const loadData = async (query: string): Promise<PageableData<Dataset>> => {
+    const hits = await listDatasets(organisationId!, query || undefined);
+    const list = Array.isArray(hits) ? hits : [];
+    return { hits: list, total: list.length };
+  };
 
-  if (error) {
-    return (
-      <Container>
-        <div className="alert alert-danger">
-          <h4>Error</h4>
-          <p>Failed to load datasets: {error instanceof Error ? error.message : 'Unknown error'}</p>
-        </div>
-      </Container>
-    );
-  }
+  const stat = (datasetId: string, key: 'examples' | 'experiments', map: DatasetStatsMap | undefined) => {
+    if (statsError) return '—';
+    if (statsLoading) return '…';
+    return map?.[datasetId]?.[key] ?? 0;
+  };
 
-  const filteredDatasets = datasets || [];
+  const columns = useMemo<ExtendedColumnDef<Dataset>[]>(() => {
+    const map = statsByDataset;
+    return [
+      {
+        id: 'name',
+        header: 'Name',
+        accessorKey: 'name',
+        cell: ({ row }) => (
+          <A href={`/organisation/${organisationId}/dataset/${row.original.id}`}>
+            <strong>{row.original.name}</strong>
+          </A>
+        ),
+        csvValue: (row) => row.name ?? '',
+        enableSorting: true,
+      },
+      {
+        id: 'description',
+        header: 'Description',
+        accessorFn: (row) => row.description ?? '',
+        cell: ({ row }) => row.original.description || <span className="text-muted">-</span>,
+        csvValue: (row) => row.description ?? '',
+        enableSorting: true,
+      },
+      {
+        id: 'tags',
+        header: 'Tags',
+        accessorFn: (row) => (row.tags && row.tags.length ? row.tags.join(', ') : ''),
+        cell: ({ row }) =>
+          row.original.tags && row.original.tags.length > 0 ? (
+            <div>
+              {row.original.tags.map((tag, idx) => (
+                <span key={idx} className="badge bg-secondary me-1">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-muted">-</span>
+          ),
+        csvValue: (row) => (row.tags && row.tags.length ? row.tags.join('; ') : ''),
+        enableSorting: true,
+      },
+      {
+        id: 'examples',
+        header: 'Examples',
+        accessorFn: (row) => map?.[row.id]?.examples ?? 0,
+        cell: ({ row }) => (
+          <span className={statsLoading && !statsError ? 'text-muted' : undefined}>
+            {stat(row.original.id, 'examples', map)}
+          </span>
+        ),
+        csvValue: (row) => String(map?.[row.id]?.examples ?? ''),
+        enableSorting: true,
+      },
+      {
+        id: 'experiments',
+        header: 'Experiments',
+        accessorFn: (row) => map?.[row.id]?.experiments ?? 0,
+        cell: ({ row }) => (
+          <span className={statsLoading && !statsError ? 'text-muted' : undefined}>
+            {stat(row.original.id, 'experiments', map)}
+          </span>
+        ),
+        csvValue: (row) => String(map?.[row.id]?.experiments ?? ''),
+        enableSorting: true,
+      },
+      {
+        id: 'created',
+        header: 'Created',
+        accessorFn: (row) => new Date(row.created).getTime(),
+        cell: ({ row }) => new Date(row.original.created).toLocaleString(),
+        csvValue: (row) => new Date(row.created).toISOString(),
+        enableSorting: true,
+      },
+      {
+        id: 'updated',
+        header: 'Updated',
+        accessorFn: (row) => new Date(row.updated).getTime(),
+        cell: ({ row }) => new Date(row.original.updated).toLocaleString(),
+        csvValue: (row) => new Date(row.updated).toISOString(),
+        enableSorting: true,
+      },
+    ];
+  }, [organisationId, statsByDataset, statsLoading, statsError]);
+
+  const openBulkDelete = (_ids: string[], rows: Dataset[]) => {
+    setSelectedRows(rows);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    const toDelete = selectedRows;
+    if (toDelete.length === 0) {
+      setDeleteModalOpen(false);
+      return;
+    }
+    try {
+      await Promise.all(toDelete.map((r) => deleteDataset(r.id)));
+      queryClient.invalidateQueries({ queryKey: ['datasets', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-stats', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['table-data', 'datasets', organisationId] });
+      queryClient.invalidateQueries({ queryKey: ['experiments', organisationId] });
+      setDeleteModalOpen(false);
+      setSelectedRows([]);
+      showToast(`Deleted ${toDelete.length} dataset(s).`, 'success');
+    } catch (err) {
+      console.error(err);
+      showToast(err instanceof Error ? err.message : 'Delete failed', 'error');
+    }
+  };
 
   return (
-    <Container className="mt-4">
+    <Page fluid header="Datasets" back={`/organisation/${organisationId}`} backLabel="Organisation">
       <Row>
-        <Col>
-          <Link to={`/organisation/${organisationId}`} className="btn btn-link mb-3">
-            ← Back to Organisation
-          </Link>
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <h1>Datasets</h1>
-            </div>
-            <Button color="primary" onClick={() => setShowCreateForm(true)}>
-              Create New Dataset
-            </Button>
-          </div>
+        <Col className="d-flex justify-content-end mb-3">
+          <Button color="primary" onClick={() => setShowCreateForm(true)}>
+            Create New Dataset
+          </Button>
         </Col>
       </Row>
 
@@ -193,19 +300,25 @@ const DatasetListPage: React.FC = () => {
                     <Button color="primary" type="submit" disabled={createDatasetMutation.isPending}>
                       {createDatasetMutation.isPending ? 'Creating...' : 'Create Dataset'}
                     </Button>
-                    <Button color="secondary" onClick={() => {
-                      setShowCreateForm(false);
-                      setDatasetName('');
-                      setDatasetDescription('');
-                      setPopulateExampleCount(20);
-                      setTraceSampleWindow('1d');
-                    }}>
+                    <Button
+                      color="secondary"
+                      onClick={() => {
+                        setShowCreateForm(false);
+                        setDatasetName('');
+                        setDatasetDescription('');
+                        setPopulateExampleCount(20);
+                        setTraceSampleWindow('1d');
+                      }}
+                    >
                       Cancel
                     </Button>
                   </div>
                   {createDatasetMutation.isError && (
                     <Alert color="danger" className="mt-3">
-                      Failed to create dataset: {createDatasetMutation.error instanceof Error ? createDatasetMutation.error.message : 'Unknown error'}
+                      Failed to create dataset:{' '}
+                      {createDatasetMutation.error instanceof Error
+                        ? createDatasetMutation.error.message
+                        : 'Unknown error'}
                     </Alert>
                   )}
                 </Form>
@@ -215,63 +328,55 @@ const DatasetListPage: React.FC = () => {
         </Row>
       )}
 
-      <Row className="mt-3">
+      <Row className="mt-1">
         <Col>
-          <Card>
-            <CardBody>
-              {filteredDatasets.length === 0 ? (
-                <p className="text-muted">No datasets found.</p>
-              ) : (
-                <Table hover>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Description</th>
-                      <th>Tags</th>
-                      {/* TODO - wants load-stats to avoid loading all examples <th>Examples</th> */}
-                      <th>Created</th>
-                      <th>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDatasets.map((dataset: Dataset) => (
-                      <tr 
-                        key={dataset.id}
-                        onClick={() => navigate(`/organisation/${organisationId}/dataset/${dataset.id}`)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <td>
-                          <strong>{dataset.name}</strong>
-                        </td>
-                        <td>{dataset.description || <span className="text-muted">-</span>}</td>
-                        <td>
-                          {dataset.tags && dataset.tags.length > 0 ? (
-                            <div>
-                              {dataset.tags.map((tag, idx) => (
-                                <span key={idx} className="badge bg-secondary me-1">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-muted">-</span>
-                          )}
-                        </td>
-    
-                        <td>{new Date(dataset.created).toLocaleString()}</td>
-                        <td>{new Date(dataset.updated).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              )}
-            </CardBody>
-          </Card>
+          <TableUsingAPI<Dataset>
+            loadData={loadData}
+            columns={columns}
+            queryKeyPrefix={['datasets', organisationId]}
+            searchPlaceholder="Search datasets (Gmail-style syntax)"
+            getRowId={(row) => row.id}
+            onRowClick={(row) => navigate(`/organisation/${organisationId}/dataset/${row.id}`)}
+            enableRowSelection
+            bulkActionsToolbar={(_ids, rows) => (
+              <>
+                <Button
+                  color="primary"
+                  size="sm"
+                  disabled={rows.length !== 2}
+                  onClick={() =>
+                    navigate(
+                      `/organisation/${organisationId}/dataset/compare/${rows[0].id}/v/${rows[1].id}`
+                    )
+                  }
+                  title={
+                    rows.length === 2
+                      ? 'Compare selected datasets'
+                      : 'Select exactly two datasets to compare'
+                  }
+                >
+                  Compare
+                </Button>
+                <Button color="danger" size="sm" onClick={() => openBulkDelete(_ids, rows)} title="Delete selected datasets">
+                  <TrashIcon size={16} className="me-1" />
+                  Delete
+                </Button>
+              </>
+            )}
+          />
+          <ConfirmDialog
+            isOpen={deleteModalOpen}
+            toggle={() => setDeleteModalOpen(false)}
+            header="Delete selected datasets"
+            body={`Delete ${selectedRows.length} dataset(s)? Experiments that use them are removed (cascade). This cannot be undone.`}
+            onConfirm={confirmBulkDelete}
+            confirmButtonText="Delete"
+            confirmButtonColor="danger"
+          />
         </Col>
       </Row>
-    </Container>
+    </Page>
   );
 };
 
 export default DatasetListPage;
-

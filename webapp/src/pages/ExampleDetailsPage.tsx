@@ -20,7 +20,30 @@ import { getMetrics } from '../utils/metric-utils';
 import { searchSpans } from '../api';
 import { asArray } from '../common/utils/miscutils';
 import { getExampleInput, getFirstSpan, getExampleTraceId } from '../utils/example-utils';
-import { space } from '../common/utils/miscutils';
+import MultiTurnExampleInputEditor from '../components/MultiTurnExampleInputEditor';
+import {
+  isMultiTurnTaggedInputString,
+  parseMultiTurnTaggedInput,
+  serializeMultiTurnTaggedInput,
+  type MultiTurnTurn,
+} from '../utils/multiTurnExampleInput';
+
+function MultiTurnInputView({ text }: { text: string }) {
+  const turns = parseMultiTurnTaggedInput(text);
+  if (!turns) return <TextWithStructureViewer text={text} />;
+  return (
+    <div>
+      {turns.map((turn, i) => (
+        <div key={i} className="mb-2">
+          <div className="small text-muted mb-1">{turn.role === 'user' ? 'User' : 'Assistant'}</div>
+          <div className="border rounded p-2 bg-light small" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {turn.content}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // InputCard component
 function InputCard({ 
@@ -32,14 +55,25 @@ function InputCard({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  /** When set, input is edited as multi-turn tagged segments; otherwise single textarea (`editValue`). */
+  const [multiTurnDraft, setMultiTurnDraft] = useState<MultiTurnTurn[] | null>(null);
   const inputThing = getExampleInput(example);
   const usesInput = example.input !== undefined && example.input !== null;
+  const stringIsMultiTurn =
+    typeof inputThing === 'string' && isMultiTurnTaggedInputString(inputThing);
 
   const handleEdit = () => {
-    // Initialize edit value: if string, use as-is; otherwise stringify
     if (typeof inputThing === 'string') {
-      setEditValue(inputThing);
+      const parsed = parseMultiTurnTaggedInput(inputThing);
+      if (parsed) {
+        setMultiTurnDraft(parsed);
+        setEditValue('');
+      } else {
+        setMultiTurnDraft(null);
+        setEditValue(inputThing);
+      }
     } else {
+      setMultiTurnDraft(null);
       setEditValue(JSON.stringify(inputThing, null, 2));
     }
     setIsEditing(true);
@@ -47,32 +81,48 @@ function InputCard({
 
   const handleSave = () => {
     try {
-      // Try to parse as JSON first, fall back to string if it fails
-      let parsedValue: any;
-      try {
-        parsedValue = JSON.parse(editValue);
-      } catch {
-        // If JSON parsing fails, use as string
-        parsedValue = editValue;
+      if (multiTurnDraft) {
+        onUpdateInput(serializeMultiTurnTaggedInput(multiTurnDraft));
+      } else {
+        let parsedValue: any;
+        try {
+          parsedValue = JSON.parse(editValue);
+        } catch {
+          parsedValue = editValue;
+        }
+        onUpdateInput(parsedValue);
       }
-      onUpdateInput(parsedValue);
       setIsEditing(false);
+      setMultiTurnDraft(null);
+      setEditValue('');
     } catch (error) {
-      // This shouldn't happen, but handle gracefully
       console.error('Error saving input:', error);
       setIsEditing(false);
+      setMultiTurnDraft(null);
     }
   };
 
   const handleCancel = () => {
     setIsEditing(false);
     setEditValue('');
+    setMultiTurnDraft(null);
+  };
+
+  const switchMultiToRawText = () => {
+    if (!multiTurnDraft) return;
+    setEditValue(serializeMultiTurnTaggedInput(multiTurnDraft));
+    setMultiTurnDraft(null);
   };
 
   return (
     <Card className="mb-3">
       <CardHeader className="d-flex justify-content-between align-items-center">
-        <h5>Input</h5>
+        <h5 className="mb-0">
+          Input
+          {stringIsMultiTurn && !isEditing && (
+            <span className="ms-2 small text-muted fw-normal">(multi-turn)</span>
+          )}
+        </h5>
         {usesInput && !isEditing && (
           <Button color="primary" size="sm" onClick={handleEdit}>
             Edit
@@ -82,13 +132,22 @@ function InputCard({
       <CardBody>
         {isEditing ? (
           <div>
-            <Input
-              type="textarea"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              rows={10}
-              style={{ fontFamily: 'monospace' }}
-            />
+            {multiTurnDraft ? (
+              <>
+                <MultiTurnExampleInputEditor turns={multiTurnDraft} onChange={setMultiTurnDraft} />
+                <Button color="link" size="sm" className="ps-0 mb-2" onClick={switchMultiToRawText}>
+                  Edit as raw text
+                </Button>
+              </>
+            ) : (
+              <Input
+                type="textarea"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                rows={10}
+                style={{ fontFamily: 'monospace' }}
+              />
+            )}
             <div className="mt-2 d-flex gap-2">
               <Button color="success" size="sm" onClick={handleSave}>
                 Save
@@ -101,7 +160,7 @@ function InputCard({
         ) : (
           <div>
             {typeof inputThing === 'string' ? (
-              <TextWithStructureViewer text={inputThing} />
+              <MultiTurnInputView text={inputThing} />
             ) : (
               <JsonObjectViewer json={inputThing} textComponent={TextWithStructureViewer} />
             )}

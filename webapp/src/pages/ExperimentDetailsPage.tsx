@@ -19,6 +19,7 @@ import { getMetricValue, getMetrics } from '../utils/metric-utils';
 import { COST_METRIC_ID, DURATION_METRIC_ID, SPAN_COUNT_METRIC_ID, TIME_TO_FIRST_TOKEN_METRIC_ID, TOTAL_TOKENS_METRIC_ID } from '../common/defaultSystemMetrics';
 import LinkId from '../components/LinkId';
 import { getTruncatedDisplayString, getExampleInput } from '../utils/example-utils';
+import { formatMultiTurnForCompactDisplay, isMultiTurnTaggedInputString } from '../utils/multiTurnExampleInput';
 import { getSpanOutput } from '../common/types/Span';
 import { useRootSpansForTraces } from '../hooks/useSpanData';
 import ExpandCollapseControl from '../components/generic/ExpandCollapseControl';
@@ -161,9 +162,14 @@ const ExperimentDetailsPage: React.FC = () => {
         cell: ({ row }: any) => {
           const example = examplesByIdRef.current?.[row.original.example];
           const raw = getExampleInput(example);
-          const display = getTruncatedDisplayString(raw, TRACE_OUTPUT_MAX_LEN);
+          const display =
+            typeof raw === 'string' && isMultiTurnTaggedInputString(raw)
+              ? formatMultiTurnForCompactDisplay(raw, TRACE_OUTPUT_MAX_LEN)
+              : getTruncatedDisplayString(raw, TRACE_OUTPUT_MAX_LEN);
           if (!display) return <span className="text-muted">—</span>;
-          return <span className="small" title={typeof raw === 'string' ? raw : JSON.stringify(raw)}>{display}</span>;
+          const title =
+            typeof raw === 'string' ? raw : raw !== undefined && raw !== null ? JSON.stringify(raw) : '';
+          return <span className="small" title={title}>{display}</span>;
         },
       },
       {

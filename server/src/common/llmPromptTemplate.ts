@@ -21,7 +21,15 @@ Assistant: 5
 <output>{"score":0,"message":"The answer is wrong"}</output>
 </example>
 
-Output in json using the format: 
-{score:[0,1], message:string}`;
+Output JSON that conforms to this JSON Schema:
+{
+  "type": "object",
+  "properties": {
+    "score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "message": { "type": "string", "maxLength": 240 }
+  },
+  "required": ["score", "message"],
+  "additionalProperties": false
+}`;
 }
 

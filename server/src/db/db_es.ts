@@ -889,6 +889,40 @@ export async function searchExamples(
 }
 
 /**
+ * Example counts per dataset for an organisation (Elasticsearch terms aggregation; does not load documents).
+ */
+export async function aggregateExampleCountsByDatasetForOrganisation(
+  organisationId: string
+): Promise<Record<string, number>> {
+  try {
+    const c = getClient();
+    const result = await c.search({
+      index: DATASET_EXAMPLES_INDEX_ALIAS,
+      size: 0,
+      track_total_hits: false,
+      query: { term: { organisation: organisationId } },
+      aggs: {
+        by_dataset: {
+          terms: { field: 'dataset', size: 10000 },
+        },
+      },
+    });
+    const buckets = (result.aggregations as { by_dataset?: { buckets?: Array<{ key: string; doc_count: number }> } })
+      ?.by_dataset?.buckets;
+    const out: Record<string, number> = {};
+    for (const b of buckets ?? []) {
+      if (b.key != null && b.key !== '') {
+        out[String(b.key)] = b.doc_count;
+      }
+    }
+    return out;
+  } catch (error: any) {
+    console.error('aggregateExampleCountsByDatasetForOrganisation:', error?.message ?? error);
+    return {};
+  }
+}
+
+/**
  * Delete an index. Useful for testing.
  */
 export async function deleteIndex(indexName: string): Promise<void> {

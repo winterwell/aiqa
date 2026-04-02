@@ -149,7 +149,7 @@ const LeftNav: React.FC = () => {
 				);
 			})}
 
-			{organisationId && (
+			{organisationId && false && ( /* TODO */
 				<>
 					<hr className="my-2" />
 					<NavItem className="mb-1">

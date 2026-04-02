@@ -5,9 +5,30 @@ import {
   listDatasets,
   updateDataset,
   deleteDataset,
+  listDatasetIdsForOrganisation,
+  countExperimentsByDatasetForOrganisation,
 } from '../db/db_sql.js';
+import { aggregateExampleCountsByDatasetForOrganisation } from '../db/db_es.js';
 import { authenticate, AuthenticatedRequest } from '../server_auth.js';
 import { checkAccessDeveloper, getOrganisationId, parseSearchQuery, send400, send404, validateUuid } from './route_helpers.js';
+
+type DatasetStatsEntry = { examples: number; experiments: number };
+
+async function buildDatasetStatsMap(organisationId: string): Promise<Record<string, DatasetStatsEntry>> {
+  const [datasetIds, examplesByDataset, experimentsByDataset] = await Promise.all([
+    listDatasetIdsForOrganisation(organisationId),
+    aggregateExampleCountsByDatasetForOrganisation(organisationId),
+    countExperimentsByDatasetForOrganisation(organisationId),
+  ]);
+  const out: Record<string, DatasetStatsEntry> = {};
+  for (const id of datasetIds) {
+    out[id] = {
+      examples: examplesByDataset[id] ?? 0,
+      experiments: experimentsByDataset[id] ?? 0,
+    };
+  }
+  return out;
+}
 
 /**
  * Register dataset endpoints with Fastify
@@ -20,6 +41,15 @@ export async function registerDatasetRoutes(fastify: FastifyInstance): Promise<v
     if (!organisationId) return;
     const dataset = await createDataset(request.body as any);
     return dataset;
+  });
+
+  // Security: Authenticated users only. Organisation-scoped; uses ES aggregation + SQL counts (no full example/experiment loads).
+  // Registered before GET /dataset/:id so "stats" is not parsed as a UUID.
+  fastify.get('/dataset/stats', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
+    if (!checkAccessDeveloper(request, reply)) return;
+    const organisationId = getOrganisationId(request, reply);
+    if (!organisationId) return;
+    return buildDatasetStatsMap(organisationId);
   });
 
   // Security: Authenticated users only. No organisation check - any authenticated user can view any dataset by ID.

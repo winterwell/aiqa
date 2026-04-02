@@ -192,6 +192,15 @@ export async function deleteDataset(id: string) {
 	});
 }
 
+/** Per-dataset example (ES) and experiment (SQL) counts; organisation-scoped. */
+export type DatasetStatsMap = Record<string, { examples: number; experiments: number }>;
+
+export async function getDatasetStats(organisationId: string): Promise<DatasetStatsMap> {
+	const params = new URLSearchParams();
+	addOrganisationParam(params, organisationId);
+	return fetchWithAuth(`/dataset/stats?${params.toString()}`);
+}
+
 // Experiment endpoints
 export async function getExperiment(id: string) {
 	return fetchWithAuth(`/experiment/${id}`);

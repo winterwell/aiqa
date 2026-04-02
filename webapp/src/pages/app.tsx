@@ -13,6 +13,7 @@ import OrganisationListPage from './OrganisationListPage';
 import TracesListPage from './TracesListPage';
 import TraceDetailsPage from './TraceDetailsPage';
 import DatasetListPage from './DatasetListPage';
+import DatasetComparePage from './DatasetComparePage';
 import DatasetDetailsPage from './DatasetDetailsPage';
 import ExampleDetailsPage from './ExampleDetailsPage';
 import ExperimentsListPage from './ExperimentsListPage';
@@ -200,6 +201,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <DatasetListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organisation/:organisationId/dataset/compare/:datasetAId/v/:datasetBId"
+        element={
+          <ProtectedRoute>
+            <DatasetComparePage />
           </ProtectedRoute>
         }
       />

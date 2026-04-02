@@ -894,6 +894,29 @@ export async function deleteDataset(id: string): Promise<boolean> {
 	return deleteEntity('datasets', id);
 }
 
+/** Experiment counts per dataset for an organisation (single GROUP BY query). */
+export async function countExperimentsByDatasetForOrganisation(
+	organisationId: string
+): Promise<Record<string, number>> {
+	const result = await doQuery<{ dataset: string; c: number }>(
+		`SELECT dataset::text AS dataset, COUNT(*)::int AS c FROM experiments WHERE organisation = $1 GROUP BY dataset`,
+		[organisationId]
+	);
+	const out: Record<string, number> = {};
+	for (const row of result.rows) {
+		out[row.dataset] = row.c;
+	}
+	return out;
+}
+
+export async function listDatasetIdsForOrganisation(organisationId: string): Promise<string[]> {
+	const result = await doQuery<{ id: string }>(
+		`SELECT id::text AS id FROM datasets WHERE organisation = $1`,
+		[organisationId]
+	);
+	return result.rows.map((r) => r.id);
+}
+
 // Helper function to transform Experiment JSON fields
 function transformExperiment(row: any): Experiment {
 	let results = row.results;
