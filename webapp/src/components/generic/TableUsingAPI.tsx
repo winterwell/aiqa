@@ -781,6 +781,7 @@ function ColumnHeaderTh<T>({
         ) : (
           <Input
             type="search"
+            autoFocus={true}
             value={String(header.column.getFilterValue() ?? '')}
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => header.column.setFilterValue(toFilterValue(e.target.value))}

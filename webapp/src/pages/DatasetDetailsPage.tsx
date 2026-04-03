@@ -28,6 +28,7 @@ import MetricModal, { addOrEditMetric } from '../components/MetricModal';
 import AddExampleModal from '../components/AddExampleModal';
 import PropInput from '../components/generic/PropInput';
 import Tags from '../components/generic/Tags';
+import BulkTagChips from '../components/generic/BulkTagChips';
 import NameAndDeleteHeader from '../components/generic/NameAndDeleteHeader';
 import Page from '../components/generic/Page';
 import Spinner from '../components/generic/Spinner';
@@ -59,6 +60,10 @@ const DatasetDetailsPage: React.FC = () => {
   const [copyPhase, setCopyPhase] = useState<'confirm' | 'fetching' | 'copying' | 'error'>('confirm');
   const [copyProgress, setCopyProgress] = useState({ current: 0, total: 0 });
   const [copyError, setCopyError] = useState<string | null>(null);
+  /** Bump to remount examples table and clear row selection after bulk ops */
+  const [examplesTableResetKey, setExamplesTableResetKey] = useState(0);
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteIds, setBulkDeleteIds] = useState<string[]>([]);
 
   useEffect(() => {
     setCopyModalOpen(false);
@@ -104,6 +109,105 @@ const DatasetDetailsPage: React.FC = () => {
     },
     onError: (error: Error) => {
       showToast(`Failed to delete example: ${error.message}`, 'error');
+    },
+  });
+
+  const bulkDeleteExamplesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => deleteExample(organisationId!, id)));
+    },
+    onSuccess: (_, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, datasetId] });
+      setBulkDeleteModalOpen(false);
+      setBulkDeleteIds([]);
+      setExamplesTableResetKey((k) => k + 1);
+      showToast(`Deleted ${ids.length} example${ids.length === 1 ? '' : 's'}`, 'success');
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to delete examples: ${error.message}`, 'error');
+    },
+  });
+
+  const bulkRemoveTagMutation = useMutation({
+    mutationFn: async ({ rows, tag }: { rows: Example[]; tag: string }) => {
+      let applied = 0;
+      await Promise.all(
+        rows.map(async (row) => {
+          const id = row.id;
+          if (!id) return;
+          const cur = row.tags ?? [];
+          if (!cur.includes(tag)) return;
+          const next = cur.filter((t) => t !== tag);
+          await updateExample(organisationId!, id, { tags: next });
+          applied += 1;
+        }),
+      );
+      return { applied, tag };
+    },
+    onSuccess: (result, { rows, tag }) => {
+      const applied = result?.applied ?? 0;
+      if (applied > 0) {
+        queryClient.invalidateQueries({ queryKey: ['table-data'] });
+        queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, datasetId] });
+        setExamplesTableResetKey((k) => k + 1);
+        showToast(
+          `Removed tag "${tag}" from ${applied} example${applied === 1 ? '' : 's'}`,
+          'success',
+        );
+      } else {
+        showToast(
+          rows.length === 0
+            ? 'No examples to update'
+            : `Tag "${tag}" was not on any selected example`,
+          'success',
+        );
+      }
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to remove tag: ${error.message}`, 'error');
+    },
+  });
+
+  const bulkAddTagMutation = useMutation({
+    mutationFn: async ({ rows, tag }: { rows: Example[]; tag: string }) => {
+      const t = tag.trim();
+      if (!t) return { applied: 0, tag: t };
+      let applied = 0;
+      await Promise.all(
+        rows.map(async (row) => {
+          const id = row.id;
+          if (!id) return;
+          const cur = row.tags ?? [];
+          if (cur.includes(t)) return;
+          await updateExample(organisationId!, id, { tags: [...cur, t] });
+          applied += 1;
+        }),
+      );
+      return { applied, tag: t };
+    },
+    onSuccess: (result, { rows, tag }) => {
+      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+      queryClient.invalidateQueries({ queryKey: ['dataset-examples', organisationId, datasetId] });
+      setExamplesTableResetKey((k) => k + 1);
+      const applied = result?.applied ?? 0;
+      const label = tag.trim();
+      if (applied === 0) {
+        showToast(
+          rows.length === 0
+            ? 'No examples to update'
+            : `Tag "${label}" was already on all selected examples`,
+          'success',
+        );
+      } else {
+        showToast(
+          `Added tag "${label}" to ${applied} example${applied === 1 ? '' : 's'}`,
+          'success',
+        );
+      }
+    },
+    onError: (error: Error) => {
+      showToast(`Failed to add tag: ${error.message}`, 'error');
     },
   });
 
@@ -225,23 +329,28 @@ const DatasetDetailsPage: React.FC = () => {
           cell: ({ row }) => {
             const example = row.original;
             return (
-              <Tags
-                compact={true}
-                tags={example.tags}
-                setTags={async (newTags) => {
-                  try {
-                    if (example.id && organisationId) {
-                      await updateExample(organisationId, example.id, {
-                        tags: newTags,
-                      });
-                      queryClient.invalidateQueries({ queryKey: ['table-data'] });
+              <span
+                role="presentation"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Tags
+                  compact={true}
+                  tags={example.tags}
+                  setTags={async (newTags) => {
+                    try {
+                      if (example.id && organisationId) {
+                        await updateExample(organisationId, example.id, {
+                          tags: newTags,
+                        });
+                        queryClient.invalidateQueries({ queryKey: ['table-data'] });
+                      }
+                    } catch (error) {
+                      console.error('Failed to update example tags:', error);
+                      showToast(`Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
                     }
-                  } catch (error) {
-                    console.error('Failed to update example tags:', error);
-                    showToast(`Failed to update tags: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-                  }
-                }}
-              />
+                  }}
+                />
+              </span>
             );
           },
           enableSorting: true,
@@ -472,7 +581,9 @@ const DatasetDetailsPage: React.FC = () => {
             </Button>
           </div>
           <TableUsingAPI
-          freezeRows={1}
+            key={`dataset-examples-${datasetId}-${examplesTableResetKey}`}
+            freezeRows={1}
+            freezeColumns={1}
             loadData={loadExamplesData}
             onDataLoaded={(data) => {
               setExamplesData(data.hits);
@@ -485,6 +596,42 @@ const DatasetDetailsPage: React.FC = () => {
             pageSize={50}
             enableInMemoryFiltering={true}
             queryKeyPrefix={['dataset-examples', organisationId, datasetId]}
+            enableRowSelection
+            getRowId={(row) => row.id ?? ''}
+            bulkActionsToolbar={(selectedRowIds, selectedRows) => {
+              const unionTags = [...new Set(selectedRows.flatMap((r) => r.tags ?? []))].sort((a, b) =>
+                a.localeCompare(b),
+              );
+              const ids = selectedRowIds.filter(Boolean);
+              const rowsWithId = selectedRows.filter((r): r is Example & { id: string } => Boolean(r.id));
+              const busy =
+                bulkRemoveTagMutation.isPending ||
+                bulkAddTagMutation.isPending ||
+                bulkDeleteExamplesMutation.isPending;
+              return (
+                <>
+                  <span className="small text-muted">{ids.length} selected</span>
+                  <BulkTagChips
+                    tags={unionTags}
+                    disabled={busy}
+                    onRemoveTag={(tag) => bulkRemoveTagMutation.mutate({ rows: rowsWithId, tag })}
+                    onAddTag={(tag) => bulkAddTagMutation.mutate({ rows: rowsWithId, tag })}
+                  />
+                  <Button
+                    color="danger"
+                    size="sm"
+                    onClick={() => {
+                      setBulkDeleteIds(ids);
+                      setBulkDeleteModalOpen(true);
+                    }}
+                    disabled={busy}
+                  >
+                    <Trash size={16} className="me-1" aria-hidden />
+                    Delete
+                  </Button>
+                </>
+              );
+            }}
             onRowClick={(example) => {
               if (example.id && organisationId) {
                 navigate(`/organisation/${organisationId}/example/${example.id}`);
@@ -545,6 +692,53 @@ const DatasetDetailsPage: React.FC = () => {
             {deleteExampleMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
           <Button color="secondary" onClick={() => setDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      <Modal
+        isOpen={bulkDeleteModalOpen}
+        toggle={() => {
+          if (!bulkDeleteExamplesMutation.isPending) {
+            setBulkDeleteModalOpen(false);
+            setBulkDeleteIds([]);
+          }
+        }}
+      >
+        <ModalHeader
+          toggle={() => {
+            if (!bulkDeleteExamplesMutation.isPending) {
+              setBulkDeleteModalOpen(false);
+              setBulkDeleteIds([]);
+            }
+          }}
+        >
+          Delete examples
+        </ModalHeader>
+        <ModalBody>
+          <p>
+            Are you sure you want to delete {bulkDeleteIds.length} example
+            {bulkDeleteIds.length === 1 ? '' : 's'}?
+          </p>
+          <p className="text-danger mb-0">This action cannot be undone.</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            color="danger"
+            onClick={() => bulkDeleteExamplesMutation.mutate(bulkDeleteIds)}
+            disabled={bulkDeleteExamplesMutation.isPending || bulkDeleteIds.length === 0}
+          >
+            {bulkDeleteExamplesMutation.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+          <Button
+            color="secondary"
+            onClick={() => {
+              setBulkDeleteModalOpen(false);
+              setBulkDeleteIds([]);
+            }}
+            disabled={bulkDeleteExamplesMutation.isPending}
+          >
             Cancel
           </Button>
         </ModalFooter>
