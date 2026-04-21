@@ -16,13 +16,14 @@
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 	<!-- Custom styles -->
 	<link href="/style/main.css" rel="stylesheet">
-<meta name='generator' content='Jerbil v1.3.0' />
 </head>
 <body>
 	<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
 	<div class="container">
-		<a class="navbar-brand fw-bold" href="/">
-			<i class="bi bi-shield-check me-2"></i>AIQA
+		<a class="navbar-brand fw-bold d-flex align-items-center" href="/">
+			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
+			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
+			AIQA
 		</a>
 		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
 			aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,20 +32,20 @@
 		<div class="collapse navbar-collapse" id="navbarNav">
 			<ul class="navbar-nav me-auto">
 				<li class="nav-item">
-					<a class="nav-link" href="/">Home</a>
+					<a class="nav-link " href="/">Home</a>
 				</li>
 				<li class="nav-item">
-					<a class="nav-link" href="/about.html">About</a>
+					<a class="nav-link " href="/about.html">About</a>
 				</li>
 				<li class="nav-item">
-					<a class="nav-link" href="/docs.html">Docs</a>
+					<a class="nav-link active" href="/docs.html">Docs</a>
 				</li>
 			</ul>
-			<div class="d-flex gap-2">
-				<a class="btn btn-light" href="https://aiqa.winterwell.com" rel="noopener">
+			<div class="d-flex flex-column flex-lg-row gap-2">
+				<a class="btn btn-light" href="https://app-aiqa.winterwell.com" rel="noopener">
 					<i class="bi bi-box-arrow-in-right me-1"></i>Login
 				</a>
-				<a class="btn btn-outline-light" href="https://aiqa.winterwell.com" rel="noopener">
+				<a class="btn btn-outline-light" href="https://app-aiqa.winterwell.com" rel="noopener">
 					<i class="bi bi-person-plus me-1"></i>Sign Up
 				</a>
 			</div>
@@ -52,18 +53,32 @@
 	</div>
 </nav>
 
+
 	<main>
-		<div class="container py-5">
+		
+<div class="container py-5">
 	<div class="row">
 		<div class="col-lg-10 mx-auto">
 			<h1 class="display-4 fw-bold mb-4">Documentation</h1>
 			
-			<p class="lead mb-5">
-				Get started with AIQA in minutes. Choose your language and follow the quick start guide.
+			<p class="lead mb-3">
+				Start by adding tracking in your codebase, then run experiments in the app. You can also hook up our MCP server so Cursor or Claude Code can query traces and work with datasets from your editor.
+			</p>
+			<ul class="list-inline mb-5 text-muted">
+				<li class="list-inline-item"><a href="#add-tracking">Add tracking</a></li>
+				<li class="list-inline-item">·</li>
+				<li class="list-inline-item"><a href="#run-experiments">Run experiments</a></li>
+				<li class="list-inline-item">·</li>
+				<li class="list-inline-item"><a href="#mcp-server">MCP server</a></li>
+			</ul>
+
+			<h2 id="add-tracking" class="h2 fw-bold mb-3">Add tracking</h2>
+			<p class="text-muted mb-4">
+				Install a client, add decorators or wrappers, and send traces to AIQA. Pick a language below.
 			</p>
 
 			<div class="row g-4 mb-5">
-				<div class="col-md-4">
+				<div class="col-md-6">
 					<div class="card h-100 border-primary">
 						<div class="card-body">
 							<h3 class="h4 fw-bold mb-3">
@@ -74,7 +89,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="col-md-4">
+				<div class="col-md-6">
 					<div class="card h-100 border-success">
 						<div class="card-body">
 							<h3 class="h4 fw-bold mb-3">
@@ -82,17 +97,6 @@
 							</h3>
 							<p class="text-muted mb-3">TypeScript client for Node.js applications.</p>
 							<a href="#javascript" class="btn btn-success">Get Started</a>
-						</div>
-					</div>
-				</div>
-				<div class="col-md-4">
-					<div class="card h-100 border-info">
-						<div class="card-body">
-							<h3 class="h4 fw-bold mb-3">
-								<i class="bi bi-filetype-go text-info me-2"></i>Go
-							</h3>
-							<p class="text-muted mb-3">Go client for tracing Go applications.</p>
-							<a href="#go" class="btn btn-info">Get Started</a>
 						</div>
 					</div>
 				</div>
@@ -175,47 +179,104 @@ async function myAiFunction(prompt: string) {
 				</div>
 			</div>
 
-			<hr/>
-			<h2 id="go" class="h2 fw-bold mt-5 mb-4">Go Quick Start</h2>
-			
-			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
-			<div class="card bg-dark text-light mb-4">
-				<div class="card-body">
-					<pre class="mb-0"><code>go get github.com/winterwell/aiqa-client-go</code></pre>
-				</div>
-			</div>
-
-			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
-			<div class="card bg-dark text-light mb-4">
-				<div class="card-body">
-					<pre class="mb-0"><code>import "github.com/winterwell/aiqa-client-go"
-
-func MyAIFunction(prompt string) string {
-    // Your AI code here
-    return aiModel.Generate(prompt)
-}</code></pre>
-				</div>
-			</div>
-
-			<hr/>
-			<h2 class="h2 fw-bold mt-5 mb-4">Key Concepts</h2>
-
-			<h3 class="h4 fw-bold mt-4 mb-3">Tracing</h3>
+			<hr class="my-5"/>
+			<h3 class="h4 fw-bold mb-3">Tracing</h3>
 			<p>
 				AIQA uses OpenTelemetry tracing to capture function calls, inputs, outputs, and performance metrics. 
 				Each traced function creates a span that includes all relevant information.
-			</p>
-
-			<h3 class="h4 fw-bold mt-4 mb-3">Experiments</h3>
-			<p>
-				Run systematic experiments to test your AI across different scenarios. Compare results, 
-				track improvements, and identify regressions.
 			</p>
 
 			<h3 class="h4 fw-bold mt-4 mb-3">Conversations</h3>
 			<p>
 				Group related traces together using conversation IDs. This is especially useful for 
 				multi-step AI interactions or user sessions.
+			</p>
+
+			<hr class="my-5"/>
+			<h2 id="run-experiments" class="h2 fw-bold mb-3">Run experiments</h2>
+			<p class="text-muted mb-4">
+				After traces are flowing, use the AIQA app to run systematic experiments across scenarios: compare prompts, models, or inputs, track improvements over time, and catch regressions. You can drive experiments from code with the same Python and JavaScript clients: create a dataset in the app, define metrics, then use <code>ExperimentRunner</code> to execute your model on each example and upload scores.
+			</p>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">Python (<code>aiqa-client</code>)</h3>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>import asyncio
+from aiqa import ExperimentRunner
+
+async def main():
+    runner = ExperimentRunner(
+        dataset_id="YOUR_DATASET_ID",
+        organisation_id="YOUR_ORGANISATION_ID",
+    )
+    runner.create_experiment({"name": "My experiment"})
+
+    # The runner needs a function to call your model. It will pass in the Example input data and any parameters.
+    async def my_engine(input_data, parameters):
+        return await my_model(input_data, parameters)
+
+    await runner.run(my_engine)
+	
+    print(runner.get_summaries())
+
+asyncio.run(main())</code></pre>
+				</div>
+			</div>
+
+			<h3 class="h4 fw-bold mt-4 mb-3">JavaScript / TypeScript (<code>@aiqa/client-js</code>)</h3>
+			<p class="text-muted">Install <code>npm install @aiqa/client-js</code>, set the same environment variables, then use <code>ExperimentRunner</code> from the package. Pass <code>datasetId</code> and <code>organisationId</code>, call <code>createExperiment</code>, then <code>await runner.run(myEngine, scorer)</code>. The optional <code>scorer(output, example)</code> returns numeric metric scores. Use <code>getSummaryResults()</code> for aggregate stats. For more control, call <code>runExample</code> in a loop over <code>getExampleInputs()</code>.</p>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>import { ExperimentRunner } from '@aiqa/client-js';
+
+async function main() {
+  const runner = new ExperimentRunner({
+    datasetId: 'YOUR_DATASET_ID',
+    organisationId: 'YOUR_ORGANISATION_ID',
+  });
+  await runner.createExperiment({ name: 'My experiment' });
+
+  async function myEngine(input) {
+    return await runYourModel(input);
+  }
+  async function scorer(output, example) {
+    return { /* metricIdOrName: score */ };
+  }
+
+  await runner.run(myEngine, scorer);
+  console.log(await runner.getSummaryResults());
+}
+
+main();</code></pre>
+				</div>
+			</div>
+
+			<hr class="my-5"/>
+			<h2 id="mcp-server" class="h2 fw-bold mb-3">MCP server</h2>
+			<p class="text-muted mb-3">
+				Prefer to stay in your editor? We host an <abbr title="Model Context Protocol">MCP</abbr> server so assistants such as Cursor or Claude Code can list traces, datasets, and experiments using the same API you use in the app—handy when you are debugging or designing evals next to your code.
+			</p>
+			<ol class="mb-4">
+				<li class="mb-2">In the AIQA app, open <strong>API Keys</strong> and create a key with the permissions you need.</li>
+				<li class="mb-0">In your client&rsquo;s MCP settings, add an HTTP/SSE server pointed at our endpoint and pass your key in the <code>Authorization</code> header (Bearer token).</li>
+			</ol>
+			<p class="small text-muted mb-2">Example for Cursor (<code>mcpServers</code>):</p>
+			<div class="card bg-dark text-light mb-0">
+				<div class="card-body">
+					<pre class="mb-0"><code>{
+  "mcpServers": {
+    "aiqa": {
+      "url": "https://mcp-aiqa.winterwell.com/sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}</code></pre>
+				</div>
+			</div>
+			<p class="small text-muted mt-3 mb-0">
+				Replace <code>YOUR_API_KEY</code> with your real key. Any MCP client that supports HTTP/SSE can use the same URL and headers.
 			</p>
 
 			<div class="alert alert-info mt-5" role="alert">
@@ -230,6 +291,7 @@ func MyAIFunction(prompt string) string {
 		</div>
 	</div>
 </div>
+
 	</main>
 
 	<footer class="bg-dark text-light py-4 mt-5">
@@ -237,7 +299,7 @@ func MyAIFunction(prompt string) string {
 		<div class="row">
 			<div class="col-md-6">
 				<div class="d-flex align-items-center mb-3">
-					<img src="/img/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
+					<img src="/common/icons/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
 					<h5 class="mb-0">AIQA</h5>
 				</div>
 				<p class="text-muted">AI Quality Assurance made simple. Test your AI systems with confidence.</p>
@@ -259,6 +321,7 @@ func MyAIFunction(prompt string) string {
 		</div>
 	</div>
 </footer>
+
 
 	<!-- Bootstrap JS -->
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
