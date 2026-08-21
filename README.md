@@ -15,6 +15,12 @@ See the repositories:
 Using ElasticSearch as the storage database.
 OpenTelemetry as the tracing system.
 
+## Shared Code
+
+The folder aiqa/server/src/common is the canonical source for those files, which includes shared types and utils.
+There are symlinks and scripts to copy this folder into other places.
+Any edits to those files MUST be made to the server/src/common folder, not to a copy.
+
 ## The AIQA Servers
 
 https://app-aiqa.winterwell.com - production webapp
