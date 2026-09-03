@@ -11,6 +11,15 @@ import { authenticate, authenticateWithJwtFromHeader, AuthenticatedRequest, chec
 import SearchQuery from '../common/SearchQuery.js';
 import type User from '../common/types/User.js';
 import { isSuperAdmin } from '../server_auth.js';
+
+/** Attach computed isSuperAdmin so the frontend can show admin-only UI. */
+async function withSuperAdminFlag(user: User): Promise<User> {
+  if (await isSuperAdmin(user.id)) {
+    user.isSuperAdmin = true;
+  }
+  return user;
+}
+
 /**
  * Helper to process pending members for a user after creation/update.
  * Extracted to avoid code duplication.
@@ -104,7 +113,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
         const returnedUser = await updateUserEmailFromJwt(existingUser, newUser.email);
         await processPendingMembersForUser(returnedUser);
         console.log(`Not creating user - Returning existing user by sub ${returnedUser.id} with email ${returnedUser.email}`);
-        return returnedUser;
+        return withSuperAdminFlag(returnedUser);
       } // end if existingUsersBySub.length > 0
     }
     
@@ -127,7 +136,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
           const returnedUser = await updateUserEmailFromJwt(matchingUser, newUser.email);
           await processPendingMembersForUser(returnedUser);
           console.log(`Not creating user - Returning existing user by email ${returnedUser.id} with email ${returnedUser.email}`);
-          return returnedUser;
+          return withSuperAdminFlag(returnedUser);
         }
       }
     }
@@ -135,7 +144,7 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
     console.log("creating user: "+newUser.email+" "+newUser.sub+" from JWT token "+JSON.stringify(jwtToken));
     const user = await createUser(newUser);
     await processPendingMembersForUser(user);
-    return user;
+    return withSuperAdminFlag(user);
   });
 
   // Security: No authentication required. Any user can view any user by ID (or use "jwt" to get own user via JWT token).
@@ -163,20 +172,15 @@ export async function registerUserRoutes(fastify: FastifyInstance): Promise<void
         const updatedUser = await updateUserEmailFromJwt(user, jwtToken.email);
         // Process pending members in case email changed or user was invited
         await processPendingMembersForUser(updatedUser);
-        return updatedUser;
+        return withSuperAdminFlag(updatedUser);
       }
       const user = await getUser(id);
       if (!user) {
         reply.code(404).send({ error: 'User not found' });
         return;
       }
-      // HACK let the frontend know if the user is a super admin
-      const superAdmin = await isSuperAdmin(user.id);
-      if (superAdmin) {
-        user.isSuperAdmin = true;
-      }
       console.log(`GET /user/${id} - Found user ${user.id}, email: ${user.email}`);
-      return user;
+      return withSuperAdminFlag(user);
   });
 
   // Security: Authenticated users only. No organisation filtering - returns all users matching search query.
