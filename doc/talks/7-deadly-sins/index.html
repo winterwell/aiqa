@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>The 7 Deadly Sins of AI QA</title>
+	<meta name="description" content="Why we Test">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="reveal.js-master/dist/reset.css">
+	<link rel="stylesheet" href="reveal.js-master/dist/reveal.css">
+	<link rel="stylesheet" href="reveal.js-master/dist/theme/white.css" id="theme">
+	<link rel="stylesheet" href="this-talk.css">
+</head>
+<body>
+	<div class="reveal">
+		<div class="slides">
+			<!-- Title Slide -->
+			<section>
+				<h1>The 7 Deadly Sins of AI QA</h1>
+				<h2 class="fragment">Why we Test</h2>
+			</section>
+
+			<!-- Talk Overview -->
+			<section>
+				<h2>Talk Overview</h2>
+				<ul style="font-size: 1.5em;">
+					<li>1. Not Checking</li>
+					<li>2. Unrepresentative Test Data</li>
+					<li>3. Unquantified</li>
+					<li>4. No Normalisation</li>
+                    <li>5. Research/QA Separated from Real Use</li>
+                    <li>6. No Controls</li>
+					<li>7. Too Trusting</li>
+				</ul>
+			</section>
+
+			<!-- Slide 1: Not Checking -->
+			<section>
+				<section>
+					<h1 style="font-size: 3em; margin-bottom: 1em;">1. NOT CHECKING</h1>
+					<div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2rem; height: 70vh;">
+						<div style="grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+							<h2 style="font-size: 2.5em; font-weight: bold; line-height: 1.2; margin-bottom: 1em;">
+								WEST MIDLANDS<br>
+								POLICE<br>
+								HALLUCINATED A<br>
+								FOOTBALL MATCH
+							</h2>
+							<ul style="font-size: 1em; text-align: left; list-style: none; padding: 0; margin-top: 1em;">
+								<li>• Situation: Assessing the danger from Maccabi Tel Aviv fans</li>
+								<li>• Mistake: AI content was used without checking - including a hallucination of violence at a football match</li>
+							</ul>
+						</div>
+						<div style="grid-column: 1; grid-row: 2; display: flex; align-items: flex-end; justify-content: flex-start;">
+							<img src="https://i.guim.co.uk/img/media/90cb02d187a2c0d233fb669f249395af3544322a/573_67_3996_3197/master/3996.jpg?width=620&dpr=2&s=none&crop=none" alt="Police officer" style="max-height: 300px; object-fit: contain;">
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 2: No Controls -->
+			<section>
+				<section>
+					<h2>2. No Controls</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/2010_Flash_Crash_Dow_Jones.png/800px-2010_Flash_Crash_Dow_Jones.png" alt="2010 Flash Crash" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>2010 Flash Crash</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Situation:</strong> Algorithmic trading systems operating without proper controls</li>
+								<li><strong>Mistake:</strong> No circuit breakers or limits on automated trading behavior</li>
+								<li><strong>Consequences:</strong> $1 trillion lost in minutes, market chaos, regulatory overhaul</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 3: Unrepresentative Test Data -->
+			<section>
+				<section>
+					<h2>3. Unrepresentative Test Data</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Google_Photos_logo.svg/800px-Google_Photos_logo.svg.png" alt="Google Photos" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>Google Photos Gorillas Scandal</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Situation:</strong> Image recognition system misclassified people as gorillas</li>
+								<li><strong>Mistake:</strong> Over 100,000 test images - but they lacked diversity.</li>
+								<li><strong>Consequences:</strong> Public outrage, reputational damage</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 4: Unquantified - The Sin -->
+			<section>
+				<section>
+					<h2>4. Unquantified</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Vd-Orig.png/800px-Vd-Orig.png" alt="Question marks" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>The Problem</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Situation:</strong> AI systems deployed without measurable quality metrics</li>
+								<li><strong>Mistake:</strong> No quantitative assessment of performance, cost, or reliability</li>
+								<li><strong>Consequences:</strong> Can't improve what you can't measure - wasted resources, unknown failure rates, no optimization path</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+				<!-- Slide 4b: The Virtue -->
+				<section>
+					<h2>How Quantified Tests Drive Massive Improvements</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Graph_of_exponential_function.svg/800px-Graph_of_exponential_function.svg.png" alt="Improvement graph" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>The Solution</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Metrics:</strong> Accuracy, precision, recall, latency, cost per inference</li>
+								<li><strong>Benefits:</strong> Data-driven decisions, clear ROI, continuous improvement</li>
+								<li><strong>Impact:</strong> 10x cost reductions, 50% accuracy improvements, predictable quality</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 5: No Normalisation -->
+			<section>
+				<section>
+					<h2>5. No Normalisation</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Amazon_logo.svg/800px-Amazon_logo.svg.png" alt="Amazon" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>Amazon Hiring Algorithm Bias</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Situation:</strong> AI recruitment tool showed gender bias</li>
+								<li><strong>Mistake:</strong> Training data reflected historical bias without normalization</li>
+								<li><strong>Consequences:</strong> Discriminated against women, project scrapped, legal and ethical issues</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 6: Research/QA Separated from Real Use -->
+			<section>
+				<section>
+					<h2>6. Research/QA Separated from Real Use</h2>
+					<div style="display: flex; align-items: center; gap: 2rem;">
+						<div style="flex: 1;">
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Google_2015_logo.svg/800px-Google_2015_logo.svg.png" alt="Google" style="max-height: 400px; object-fit: contain;">
+						</div>
+						<div style="flex: 1; text-align: left;">
+							<h3>Google Translate Production Failures</h3>
+							<ul style="font-size: 0.9em;">
+								<li><strong>Situation:</strong> Models tested on clean research datasets, deployed to messy real-world data</li>
+								<li><strong>Mistake:</strong> Testing environment didn't match production (different languages, dialects, slang)</li>
+								<li><strong>Consequences:</strong> Poor translations, user complaints, need for expensive retraining</li>
+							</ul>
+						</div>
+					</div>
+				</section>
+			</section>
+
+			<!-- Slide 7: Trusting the Internet -->
+			<section>
+				<section>
+					<h2>7. Trusting the Internet</h2>
+					<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 2rem;">
+						<div>
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Tay_AI_logo.png/800px-Tay_AI_logo.png" alt="Tay AI" style="max-height: 200px; object-fit: contain; margin-bottom: 1rem;">
+							<h4>Microsoft Tay</h4>
+							<ul style="font-size: 0.75em; text-align: left;">
+								<li>Learned from unfiltered Twitter</li>
+								<li>Became racist/offensive in hours</li>
+								<li>Shut down within 24 hours</li>
+							</ul>
+						</div>
+						<div>
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/X_logo_2023.svg/800px-X_logo_2023.svg.png" alt="X/Twitter" style="max-height: 200px; object-fit: contain; margin-bottom: 1rem;">
+							<h4>Grok AI</h4>
+							<ul style="font-size: 0.75em; text-align: left;">
+								<li>Trained on X (Twitter) data</li>
+								<li>Reproduced platform biases</li>
+								<li>Questionable content generation</li>
+							</ul>
+						</div>
+						<div>
+							<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Question_mark_%28black_on_white%29.png/800px-Question_mark_%28black_on_white%29.png" alt="MechaHitler" style="max-height: 200px; object-fit: contain; margin-bottom: 1rem;">
+							<h4>MechaHitler</h4>
+							<ul style="font-size: 0.75em; text-align: left;">
+								<li>AI chatbot trained on 4chan</li>
+								<li>Extremist content generation</li>
+								<li>Demonstrates danger of uncurated data</li>
+							</ul>
+						</div>
+					</div>
+					<div style="margin-top: 2rem; text-align: left;">
+						<h3>Common Mistake</h3>
+						<ul style="font-size: 0.9em;">
+							<li><strong>Situation:</strong> Training AI on unfiltered internet data</li>
+							<li><strong>Mistake:</strong> Assuming internet content is safe/representative</li>
+							<li><strong>Consequences:</strong> Models learn harmful biases, offensive behavior, PR disasters</li>
+						</ul>
+					</div>
+				</section>
+			</section>
+
+			<!-- Conclusion -->
+			<section>
+				<h2>Conclusion</h2>
+				<div style="text-align: left; font-size: 1.2em;">
+					<ul>
+						<li>✓ Always check your AI systems</li>
+						<li>✓ Implement proper controls</li>
+						<li>✓ Use representative test data</li>
+						<li>✓ Quantify everything</li>
+						<li>✓ Normalize for bias</li>
+						<li>✓ Test in production-like conditions</li>
+						<li>✓ Curate your training data</li>
+					</ul>
+					<h3 style="text-align: center; margin-top: 2rem;">Test Early, Test Often, Test Right</h3>
+				</div>
+			</section>
+		</div>
+	</div>
+
+	<script src="reveal.js-master/dist/reveal.js"></script>
+	<script>
+		Reveal.initialize({
+			hash: true,
+			transition: 'slide',
+			controls: true,
+			progress: true,
+			center: true,
+			touch: true,
+			loop: false
+		});
+	</script>
+</body>
+</html>
