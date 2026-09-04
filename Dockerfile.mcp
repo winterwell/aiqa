@@ -6,10 +6,10 @@ RUN npm install -g pnpm
 
 WORKDIR /app/mcp
 
-COPY mcp/package.json mcp/tsconfig.json ./
+COPY mcp/package.json mcp/pnpm-lock.yaml mcp/tsconfig.json ./
 COPY mcp/src ./src
 
-RUN pnpm install && pnpm run build
+RUN pnpm install --frozen-lockfile && pnpm run build
 
 FROM node:20-slim
 

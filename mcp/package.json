@@ -10,14 +10,17 @@
     "start": "node dist/index.js",
     "test": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
     "test:unit": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
-    "test:integration": "pnpm run build && node --loader ts-node/esm test/integration/integration.test.ts"
+    "test:integration": "pnpm run build && node --loader ts-node/esm test/integration/integration.test.ts",
+    "test:protocol": "pnpm run build && node --loader ts-node/esm test/integration/mcp-protocol.test.ts",
+    "spike:oauth": "node --loader ts-node/esm test/spike/oauth-fastify-express.spike.ts"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.1",
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "fastify": "^4.24.3"
+    "@fastify/cors": "^11.3.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "fastify": "^5.12.3"
   },
   "devDependencies": {
+    "@fastify/express": "4.0.7",
     "@types/node": "^20.11.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"

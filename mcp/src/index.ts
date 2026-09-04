@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
+import { timingSafeEqual } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import Fastify from 'fastify';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { AiqaApiClient } from './client.js';
 
@@ -13,12 +18,29 @@ const SERVER_VERSION = '0.9.1';
 const API_BASE_URL = process.env.AIQA_API_BASE_URL || 'http://localhost:4318';
 const MCP_PORT = parseInt(process.env.MCP_PORT || '4319', 10);
 
+// Optional OAuth authorization server. Until this is configured the server only
+// accepts pre-issued AIQA API keys, and its metadata says so rather than
+// pointing clients at an authorization server that does not exist.
+const OAUTH_ISSUER = process.env.AIQA_OAUTH_ISSUER;
+
+// Public base URL, used in the discovery document. Derived from the request when
+// unset, so it stays correct behind nginx without extra configuration.
+const PUBLIC_URL = process.env.MCP_PUBLIC_URL;
+
+// X-Forwarded-* headers are only trustworthy when we know a proxy sets them.
+// Off by default: otherwise any client could rewrite the URLs we advertise.
+// Accepts 'true' (trust whatever peer connects) or a comma-separated IP/CIDR
+// allowlist. Fastify rejects hop-count trust as unsafe, so a bare number here
+// trusts nothing, and an unparseable value fails at startup.
+// Setting MCP_PUBLIC_URL is preferable: it doesn't depend on request headers.
+const TRUST_PROXY = process.env.MCP_TRUST_PROXY;
+
 // Function to set up tool handlers for a server instance
 function setupToolHandlers(server: Server, apiKey: string) {
   const client = new AiqaApiClient(API_BASE_URL, apiKey);
 
   // Tool: create_dataset
-  server.setRequestHandler('tools/list' as any, async () => ({
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: 'create_dataset',
@@ -275,8 +297,8 @@ function setupToolHandlers(server: Server, apiKey: string) {
 }));
 
   // Handle tool calls - use the client created for this connection
-  server.setRequestHandler('tools/call' as any, async (request) => {
-    const { name, arguments: args } = request.params;
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args = {} } = request.params;
 
   try {
     switch (name) {
@@ -447,6 +469,7 @@ const fastify = Fastify({
   logger: {
     level: process.env.LOG_LEVEL || 'info',
   },
+  trustProxy: TRUST_PROXY === 'true' ? true : TRUST_PROXY || false,
 });
 
 // Register CORS
@@ -455,43 +478,118 @@ fastify.register(cors, {
   credentials: true,
 });
 
-// Store API keys per connection (in production, use a proper session store)
-const connectionApiKeys = new Map<string, string>();
+// Active SSE sessions, keyed by session ID. Client->server messages arrive as
+// separate POSTs, so they can only be delivered to the right MCP server instance
+// by looking the session up here. The key that opened the session is kept with
+// it: the session's tool handlers are already bound to that key, so a POST
+// carrying any other key must not be allowed to drive it.
+interface McpSession {
+  transport: SSEServerTransport;
+  apiKey: string;
+}
+
+const sessions = new Map<string, McpSession>();
+
+// Compare in constant time, so this can't be used as an oracle for guessing keys.
+function keysMatch(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+// reply.hijack() skips Fastify's send path, which is where plugin headers (CORS,
+// most importantly) would have been flushed. Copy them onto the raw response
+// first, or cross-origin clients get a response the browser refuses to read.
+function hijackPreservingHeaders(reply: FastifyReply): void {
+  if (!reply.raw.headersSent) {
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) {
+        reply.raw.setHeader(name, value);
+      }
+    }
+  }
+  reply.hijack();
+}
+
+// Extract the API key from the Authorization header, falling back to a query
+// parameter (less secure, but some clients need it).
+function getApiKey(request: { headers: Record<string, any>; query?: unknown }): string | undefined {
+  const authHeader = request.headers.authorization as string | undefined;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+  if (authHeader?.startsWith('ApiKey ')) { // backward compatibility
+    return authHeader.substring(7).trim();
+  }
+  return (request.query as any)?.apiKey;
+}
+
+function publicBaseUrl(request: FastifyRequest): string {
+  if (PUBLIC_URL) {
+    return PUBLIC_URL.replace(/\/$/, '');
+  }
+  // request.protocol/host reflect X-Forwarded-* only when trustProxy is
+  // configured, so an untrusted client cannot redirect the URLs we advertise.
+  return `${request.protocol}://${request.host}`;
+}
+
+function resourceMetadataUrl(request: FastifyRequest): string {
+  return `${publicBaseUrl(request)}/.well-known/oauth-protected-resource`;
+}
+
+// Reject with a Bearer challenge. Without this header a client has no
+// standards-defined way to discover that it needs a token, or where to look for
+// the details, so it can only fail with an opaque error.
+function sendUnauthorized(request: FastifyRequest, reply: FastifyReply, description: string) {
+  reply
+    .code(401)
+    .header(
+      'WWW-Authenticate',
+      `Bearer error="invalid_token", error_description="${description}", resource_metadata="${resourceMetadataUrl(request)}"`,
+    )
+    .send({ error: 'invalid_token', error_description: description });
+}
+
+// RFC 9728 protected resource metadata - the document MCP clients look for when
+// they get a 401. `authorization_servers` is omitted until one is configured:
+// the field is optional, and advertising a non-existent server would send
+// clients into a discovery flow that cannot succeed.
+fastify.get('/.well-known/oauth-protected-resource', async (request, reply) => {
+  // Only cacheable when the resource URL comes from config; otherwise it varies
+  // by request host and a shared cache could serve one host's document to another.
+  reply.header('Cache-Control', PUBLIC_URL ? 'public, max-age=3600' : 'no-store');
+  return {
+    resource: publicBaseUrl(request),
+    ...(OAUTH_ISSUER ? { authorization_servers: [OAUTH_ISSUER] } : {}),
+    bearer_methods_supported: ['header'],
+  };
+});
 
 // MCP SSE endpoint - handles server-to-client messages
 fastify.get('/sse', async (request, reply) => {
-  // Extract API key from Authorization header or query parameter
-  const authHeader = request.headers.authorization;
-  let apiKey: string | undefined;
-  
-  if (authHeader?.startsWith('Bearer ')) {
-    apiKey = authHeader.substring(7).trim();
-  } else if (authHeader?.startsWith('ApiKey ')) { // backward compatibility
-    apiKey = authHeader.substring(7).trim();
-  } else {
-    // Fallback to query parameter (less secure, but some clients may need it)
-    apiKey = (request.query as any).apiKey;
-  }
+  const apiKey = getApiKey(request);
 
   if (!apiKey) {
-    reply.code(401).send({ error: 'API key required. Provide via Authorization header (Bearer <key>) or ?apiKey= query parameter' });
+    sendUnauthorized(request, reply, 'API key required. Provide via Authorization header (Bearer <key>) or ?apiKey= query parameter');
     return;
   }
 
-  // Generate connection ID
-  const connectionId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-  connectionApiKeys.set(connectionId, apiKey);
+  // Disable nginx buffering; the transport's start() writes the other SSE headers.
+  reply.raw.setHeader('X-Accel-Buffering', 'no');
 
-  // Set up SSE headers
-  reply.raw.setHeader('Content-Type', 'text/event-stream');
-  reply.raw.setHeader('Cache-Control', 'no-cache');
-  reply.raw.setHeader('Connection', 'keep-alive');
-  reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  // The transport owns this socket from here on, so stop Fastify from also
+  // trying to send a response on it.
+  hijackPreservingHeaders(reply);
 
-  // Create transport and store API key on it
-  const transport = new SSEServerTransport('/sse', reply.raw);
-  (transport as any).apiKey = apiKey;
-  
+  // Tell the client to POST its messages to /message?sessionId=...
+  // If the key came from the query string rather than a header, carry it over:
+  // the client posts back to exactly this URL and would otherwise be unauthorised.
+  const keyFromQuery = !request.headers.authorization && (request.query as any)?.apiKey;
+  const messageEndpoint = keyFromQuery
+    ? `/message?apiKey=${encodeURIComponent(apiKey)}`
+    : '/message';
+  const transport = new SSEServerTransport(messageEndpoint, reply.raw);
+
   // Create a new server instance for this connection (MCP servers are typically per-connection)
   const connectionServer = new Server(
     {
@@ -507,35 +605,66 @@ fastify.get('/sse', async (request, reply) => {
 
   // Register tool handlers on this connection's server
   setupToolHandlers(connectionServer, apiKey);
-  
-  await connectionServer.connect(transport);
-  
+
+  // Registered before connect() so the session is always known, but note the
+  // transport only accepts messages once connect() has called start(): a POST
+  // arriving in that window is rejected by the SDK rather than 404-ing here.
+  sessions.set(transport.sessionId, { transport, apiKey });
+
   // Clean up on connection close
   reply.raw.on('close', () => {
-    connectionApiKeys.delete(connectionId);
+    sessions.delete(transport.sessionId);
   });
+
+  try {
+    await connectionServer.connect(transport);
+  } catch (error) {
+    sessions.delete(transport.sessionId);
+    fastify.log.error({ err: error }, 'Failed to establish MCP SSE connection');
+    reply.raw.end();
+  }
 });
 
 // MCP message endpoint - handles client-to-server messages
 fastify.post('/message', async (request, reply) => {
-  // For POST messages, API key should be in Authorization header
-  const authHeader = request.headers.authorization;
-  let apiKey: string | undefined;
-  
-  if (authHeader?.startsWith('Bearer ')) {
-    apiKey = authHeader.substring(7).trim();
-  } else if (authHeader?.startsWith('ApiKey ')) {
-    apiKey = authHeader.substring(7).trim();
-  }
+  const apiKey = getApiKey(request);
 
   if (!apiKey) {
-    reply.code(401).send({ error: 'API key required in Authorization header' });
+    sendUnauthorized(request, reply, 'API key required in Authorization header');
     return;
   }
 
-  // Find the transport for this API key (in a real implementation, you'd use session management)
-  // For now, we'll handle this in the tool handler by creating a new client per request
-  reply.send({ received: true });
+  const sessionId = (request.query as any)?.sessionId;
+  if (!sessionId) {
+    reply.code(400).send({ error: 'sessionId query parameter required. Use the endpoint URL sent by the SSE connection.' });
+    return;
+  }
+
+  const session = sessions.get(sessionId);
+  if (!session) {
+    reply.code(404).send({ error: 'Unknown or expired sessionId. Re-connect to /sse.' });
+    return;
+  }
+
+  // The session's tool handlers run with the key that opened it, so only that
+  // key may drive it. Without this check, knowing a session ID would be enough
+  // to act as its owner against server-aiqa.
+  if (!keysMatch(apiKey, session.apiKey)) {
+    sendUnauthorized(request, reply, 'API key does not match this session');
+    return;
+  }
+
+  // handlePostMessage writes the response itself, so Fastify must not.
+  hijackPreservingHeaders(reply);
+
+  try {
+    // Pass the already-parsed body: Fastify has consumed the raw stream.
+    await session.transport.handlePostMessage(request.raw, reply.raw, request.body);
+  } catch (error) {
+    // handlePostMessage has already written a response, so just record it
+    // rather than letting it surface as an unhandled rejection.
+    fastify.log.error({ err: error, sessionId }, 'Failed to deliver MCP message');
+  }
 });
 
 // Health check endpoint
@@ -551,6 +680,18 @@ async function main() {
     console.log(`MCP SSE endpoint: http://localhost:${MCP_PORT}/sse`);
     console.log(`MCP message endpoint: http://localhost:${MCP_PORT}/message`);
     console.log(`Health check: http://localhost:${MCP_PORT}/health`);
+
+    // Behind TLS termination the advertised scheme comes out as http unless one
+    // of these is set, and clients would be pointed at the wrong URL. Warn
+    // rather than fail, since neither is needed for a direct local run.
+    if (!PUBLIC_URL && !TRUST_PROXY) {
+      console.warn(
+        'WARNING: neither MCP_PUBLIC_URL nor MCP_TRUST_PROXY is set. Discovery URLs ' +
+          '(WWW-Authenticate and /.well-known/oauth-protected-resource) will be derived ' +
+          'from the request, which gives the wrong scheme behind an HTTPS proxy. ' +
+          'Set MCP_PUBLIC_URL to the public base URL in production.',
+      );
+    }
   } catch (error) {
     console.error('Fatal error:', error);
     process.exit(1);

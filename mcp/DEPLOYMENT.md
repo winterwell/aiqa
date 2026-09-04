@@ -47,6 +47,9 @@ export MCP_PORT=4319
 
 Note: The MCP server doesn't need an API key in its environment - users provide their API keys when connecting.
 
+For a local run that is all you need. For anything served through a proxy, also
+set the URL configuration below.
+
 4. Run the server:
 ```bash
 pnpm start
@@ -76,6 +79,63 @@ pnpm run test:integration
 
 **Note:** The `.env` file is for the MCP server runtime configuration, not for tests. Integration tests read API keys directly from environment variables.
 
+## Public URL and Proxy Configuration
+
+The server publishes two discovery documents that contain its own URL:
+
+- the `resource_metadata` pointer in the `WWW-Authenticate` header sent with a `401`
+- the `resource` field of `GET /.well-known/oauth-protected-resource`
+
+MCP clients follow those to work out how to authenticate, so the URL has to be
+the one clients actually reach. Two variables control it.
+
+### `MCP_PUBLIC_URL` (recommended in production)
+
+The public base URL, e.g. `https://mcp-aiqa.winterwell.com`. When set, the
+advertised URL is exactly this value and does not depend on request headers.
+
+If unset, the URL is derived from the incoming request. Behind TLS-terminating
+nginx that produces `http://...` rather than `https://...`, pointing clients at
+the wrong scheme. Setting it also makes the discovery document cacheable
+(`max-age=3600` instead of `no-store`), because the response no longer varies by
+request host.
+
+The server logs a warning at startup if neither this nor `MCP_TRUST_PROXY` is set.
+
+### `MCP_TRUST_PROXY` (optional)
+
+Whether to trust `X-Forwarded-*` headers. **Default: off.** These headers are
+client-supplied, so trusting them unconditionally would let any caller choose
+the URLs advertised to other clients.
+
+Accepted values:
+
+| Value | Effect |
+|-------|--------|
+| unset / `false` | Forwarded headers ignored. Safe default. |
+| `127.0.0.1` (IP/CIDR, comma-separated) | Trusted only when the connecting peer matches. |
+| `true` | Trusts whatever connects - only safe if nothing but the proxy can reach the port. |
+| a number, e.g. `2` | **Silently trusts nothing.** Fastify rejects hop-count trust as unsafe. |
+| anything unparseable | Fails at startup with `invalid IP address`. |
+
+`deploy/mcp-aiqa.nginx.conf` proxies from the same host
+(`proxy_pass http://localhost:4319`) and sets `X-Forwarded-For` and
+`X-Forwarded-Proto`, so the correct value there is:
+
+```bash
+export MCP_TRUST_PROXY=127.0.0.1
+```
+
+This is what makes `X-Forwarded-For` take effect, so request logs show the real
+client IP instead of the proxy's. It is **not** required for correct URLs when
+`MCP_PUBLIC_URL` is set - the two solve different problems, and setting both is
+the recommended production configuration:
+
+```bash
+export MCP_PUBLIC_URL=https://mcp-aiqa.winterwell.com   # correct advertised URLs
+export MCP_TRUST_PROXY=127.0.0.1                        # real client IPs in logs
+```
+
 ## Production Deployment
 
 ### Automated Deployment (GitHub Actions)
@@ -92,6 +152,8 @@ The repository includes a GitHub Actions workflow (`.github/workflows/mcp-deploy
 - `AIQA_API_BASE_URL`: Base URL for server-aiqa API (default: https://server-aiqa.winterwell.com)
 - `MCP_PORT`: Port for MCP server (default: 4319)
 - `LOG_LEVEL`: Log level (default: info)
+- `MCP_PUBLIC_URL`: Public base URL used in the discovery documents (e.g. `https://mcp-aiqa.winterwell.com`). See [Public URL and Proxy Configuration](#public-url-and-proxy-configuration).
+- `MCP_TRUST_PROXY`: Proxy addresses whose `X-Forwarded-*` headers are trusted (`127.0.0.1` for the bundled nginx config). Optional; off by default.
 
 ## Systemd Service
 
