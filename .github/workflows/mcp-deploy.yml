@@ -2,6 +2,8 @@ name: Deploy MCP Server
 
 on:
   push:
+    branches:
+      - main
     paths:
       - 'mcp/**'
       - '.github/workflows/mcp-deploy.yml'
@@ -102,12 +104,19 @@ jobs:
           AIQA_API_BASE_URL: ${{ vars.AIQA_API_BASE_URL || 'https://server-aiqa.winterwell.com' }}
           MCP_PORT: ${{ vars.MCP_PORT || '4319' }}
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'info' }}
+          # Public base URL used in the discovery documents the server publishes
+          # about itself. Without it the advertised URLs are derived from the
+          # request, which yields http:// behind the HTTPS proxy.
+          MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
+          # Proxy addresses whose X-Forwarded-* headers are trusted; '127.0.0.1'
+          # for the bundled nginx config. Left empty means trust nothing.
+          MCP_TRUST_PROXY: ${{ vars.MCP_TRUST_PROXY }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ env.DEPLOY_PORT }}
-          envs: AIQA_API_BASE_URL,MCP_PORT,LOG_LEVEL
+          envs: AIQA_API_BASE_URL,MCP_PORT,LOG_LEVEL,MCP_PUBLIC_URL,MCP_TRUST_PROXY
           script: |
             cd /opt/aiqa/mcp
             # Ensure directory is writable by deployment user
@@ -133,10 +142,17 @@ jobs:
             fi
             echo "Dependencies installed successfully"
             # Create .env file
+            # NB: this rewrites .env from scratch on every deploy, so anything
+            # the server needs must be passed through above - hand edits on the
+            # box are lost.
+            # if-blocks rather than "[ -n .. ] &&", which would return non-zero
+            # for an unset variable and could abort the script.
             {
               echo "AIQA_API_BASE_URL=${AIQA_API_BASE_URL:-https://server-aiqa.winterwell.com}"
               echo "MCP_PORT=${MCP_PORT:-4319}"
               echo "LOG_LEVEL=${LOG_LEVEL:-info}"
+              if [ -n "${MCP_PUBLIC_URL}" ]; then echo "MCP_PUBLIC_URL=${MCP_PUBLIC_URL}"; fi
+              if [ -n "${MCP_TRUST_PROXY}" ]; then echo "MCP_TRUST_PROXY=${MCP_TRUST_PROXY}"; fi
             } > .env
             # Set all permissions to winterwell
             sudo chown -R winterwell:winterwell /opt/aiqa/mcp
