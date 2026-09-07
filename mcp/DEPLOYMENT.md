@@ -52,8 +52,13 @@ set the URL configuration below.
 
 4. Run the server:
 ```bash
-pnpm start
+pnpm start          # uses whatever is already exported
+pnpm run start:local # loads mcp/.env (needs Node 20.6+ for --env-file)
 ```
+
+`pnpm start` does not read `.env` - nothing in the package does. In production
+systemd supplies the environment via `EnvironmentFile`, so `start:local` exists
+to get the same thing on a development machine.
 
 The server runs as an HTTP service on port 4319 (configurable via MCP_PORT).
 
@@ -197,9 +202,14 @@ The configuration handles:
 - HTTP to HTTPS redirect
 - SSE endpoint (`/sse`) with proper buffering disabled
 - Message endpoint (`/message`) for client-to-server communication
+- Discovery documents (`/.well-known/`) - required: the `401` from `/sse` points
+  clients at `/.well-known/oauth-protected-resource`, so without this location
+  block a client that follows the pointer gets nginx's 404 page
 - Health check endpoint (`/health`)
 - CORS headers for MCP clients
 - SSL/TLS with modern best practices
+
+Verify all of these after a deploy with `./scripts/check-live.sh` from the repo root.
 
 Enable and start:
 ```bash
@@ -209,6 +219,187 @@ sudo systemctl start aiqa-mcp
 ```
 
 **Important:** Make sure nginx is configured and running before starting the MCP service, as clients will connect through nginx.
+
+## Key Validation
+
+When a client connects to `/sse`, the server checks the supplied credential
+against server-aiqa before creating a session, and refuses the connection with a
+`401` if it is rejected. The check is a `GET /dataset` with the `organisation`
+parameter left off, so server-aiqa authenticates the caller and then refuses the
+request with a `400` before doing any work - only the authentication outcome is
+of interest.
+
+This is about diagnosability as much as access control. Without the check any
+non-empty string opened a session: the client reported a healthy connection and
+a working `tools/list`, then failed on every tool call with an upstream `401`
+wrapped inside a tool result - which is not something a client can
+re-authenticate from, and reads to the user as "the MCP server is broken".
+
+Two consequences worth knowing:
+
+- Verdicts are cached for 60s, keyed by a hash of the key. A revoked key keeps
+  working for up to a minute on new connections.
+- If server-aiqa cannot be reached, the connection is allowed and a warning is
+  logged. Refusing would turn a server outage into an MCP outage for no gain,
+  since the tool calls fail either way. It also means a local MCP run with no
+  backend still accepts connections.
+
+The expected `400`, and a `403` from a credential that authenticated but lacks
+the role, both count as valid: what a credential may actually do stays the API's
+decision, per request. One consequence worth knowing is that a `trace`-role key,
+or an OAuth token for a user who has never logged into the webapp, will connect
+successfully and then fail on each tool call with server-aiqa's own message.
+Refusing those at connect time would be tidier, but a `401` tells a client to go
+and get a new token, which in neither case would help.
+
+## OAuth (self-connection from Cursor / Claude)
+
+By default the MCP server only accepts pre-issued AIQA API keys: a user creates
+a key in the webapp and pastes it into their client config. With OAuth
+configured, a user instead points their client at the server URL, logs in
+through Auth0 in a browser, and the client obtains a token by itself. No key
+handling.
+
+**Status: the code is complete, and verified against the live tenant as far as
+it can be without a browser login.** Dynamic client registration is enabled on
+winterstein.eu.auth0.com and works through the broker; registration, the
+`/authorize` handoff and token-endpoint passthrough were all exercised against
+the real Auth0. What remains is creating the API (step 1 below): until it exists,
+`/authorize` fails with `access_denied: Service not found: <audience>`.
+
+### Why this server brokers the flow
+
+Clients cannot simply be pointed at Auth0. Auth0 only issues a verifiable JWT
+when the request names a registered API in its non-standard `audience`
+parameter, and MCP clients do not send it - they send RFC 8707 `resource`. A
+client talking to Auth0 directly would come back holding an opaque token that
+server-aiqa cannot verify.
+
+So this server advertises *itself* as the authorization server, and forwards
+each request to Auth0 with `audience` added:
+
+```
+/.well-known/oauth-protected-resource   ->  authorization_servers: [this server]
+/.well-known/oauth-authorization-server ->  this server's brokered endpoints
+/authorize  ->  302 to Auth0 /authorize, with `audience` added
+/token      ->  POST to Auth0, verbatim
+/register   ->  POST to Auth0 /oidc/register, verbatim
+/revoke     ->  POST to Auth0, verbatim
+```
+
+The broker holds no state. Auth0 remains the only place that registers clients,
+validates redirect URIs and checks PKCE, so there is no client store to persist
+and nothing to rebuild after a restart. A client's own `audience`, if it sends
+one, is overridden - otherwise it could ask for a token valid against a
+different API.
+
+### Auth0 setup
+
+1. **Create an API** (Applications -> APIs) - *still outstanding*. Identifier
+   `https://server-aiqa.winterwell.com`, signing algorithm RS256. The
+   identifier is the audience; it does not have to resolve to anything.
+   Enable *Allow Offline Access*, or refresh tokens are never issued however the
+   client is registered, and users get sent back to the browser whenever a token
+   expires.
+2. **Enable dynamic client registration** - done. Settings -> Advanced -> *OIDC
+   Dynamic Application Registration*. Equivalent Management API call:
+   `PATCH /api/v2/tenants/settings` with
+   `{"flags":{"enable_dynamic_client_registration":true}}`.
+   Note this leaves an unauthenticated registration endpoint open on the tenant:
+   anyone may POST to `/oidc/register` and create third-party application
+   entries (they appear with a `tpc_` client_id prefix). That is inherent to
+   DCR, and it is what lets clients self-register.
+3. **Promote the login connection to domain level.** DCR-created applications
+   are *third-party* in Auth0's model, and third-party applications can only use
+   domain-level connections. Whichever connection your users log in with needs
+   this, or registration succeeds and login then fails. This cannot be checked
+   without a browser login, so it is the most likely remaining surprise.
+4. Users will see Auth0's **consent screen** - third-party applications cannot
+   skip it. For a connector granting access to an editor, that is arguably
+   right, but it is a visible change.
+
+Observed from the live tenant: DCR accepts `http://localhost:9999/callback` as a
+redirect URI, accepts `token_endpoint_auth_method: none` (public client + PKCE,
+which is what MCP clients use), and grants `refresh_token` to a client that asks
+for it - but only `authorization_code` to one that does not.
+
+### Server configuration
+
+MCP server (`mcp/.env`, or the GitHub Actions variables of the same names):
+
+```bash
+AIQA_OAUTH_ISSUER=https://winterstein.eu.auth0.com/
+AIQA_OAUTH_AUDIENCE=https://server-aiqa.winterwell.com
+```
+
+Both or neither. The endpoints Auth0 is called on are read from its
+`/.well-known/openid-configuration` at startup, so nothing else needs
+configuring - and nothing is hardcoded to Auth0's URL shapes.
+
+server-aiqa (`server/.env`) must accept tokens for the new audience. Add it to
+the existing list rather than replacing the value, so webapp tokens keep
+verifying:
+
+```bash
+AUTH0_AUDIENCE=https://winterstein.eu.auth0.com/api/v2/,https://server-aiqa.winterwell.com
+```
+
+The **first** audience in that list gets admin access; the ones after it get
+developer. That is deliberate: an OAuth-connected editor should not be able to
+delete users or organisations (the only two admin-only endpoints), while the
+webapp keeps working exactly as before. `AUTH0_ADMIN_AUDIENCES` overrides the
+split if you need something else. Both servers log what they resolved at
+startup.
+
+### Failure behaviour
+
+OAuth is additive and switched off by default, so a problem with it cannot take
+API-key clients down:
+
+- Unset `AIQA_OAUTH_ISSUER`/`AIQA_OAUTH_AUDIENCE` and restart: back to
+  API-key-only, immediately.
+- If the configuration is incomplete, or Auth0's metadata cannot be read at
+  startup, OAuth stays off, `/health` reports `oauth: "error"`, and the reason
+  is logged. The server does not exit: the unit restarts on failure, so exiting
+  would mean a crash loop over a fault that is not the API-key users'.
+  `./scripts/check-live.sh` fails on this state.
+- `/health` reports `oauth` as `disabled`, `enabled` or `error`.
+
+### Client configuration
+
+With OAuth enabled, the config carries no secret:
+
+```json
+{
+  "mcpServers": {
+    "aiqa": {
+      "url": "https://mcp-aiqa.winterwell.com/sse"
+    }
+  }
+}
+```
+
+The client discovers it needs a token from the `401`, registers itself, opens a
+browser for login, and stores the token. API keys continue to work unchanged for
+anyone who prefers them, or for scripted use:
+
+```json
+{
+  "mcpServers": {
+    "aiqa": {
+      "url": "https://mcp-aiqa.winterwell.com/sse",
+      "headers": { "Authorization": "Bearer YOUR_API_KEY_HERE" }
+    }
+  }
+}
+```
+
+### Testing without Auth0
+
+`pnpm run test:protocol` covers the broker against a stub identity provider:
+metadata contents, `audience` injection and override, verbatim forwarding of
+registration and token requests, and both failure modes. It needs no tenant and
+no network.
 
 ## User Configuration (Cursor/Claude Code)
 

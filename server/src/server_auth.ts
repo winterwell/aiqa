@@ -22,6 +22,8 @@ export interface AuthenticatedRequest extends FastifyRequest {
 	userId?: string;
 	apiKeyId?: string;
 	apiKey?: ApiKey; // Full API key object (only set when authenticated with API key)
+	/** Effective role, whichever credential was used. See checkAccess. */
+	role?: 'trace' | 'developer' | 'admin';
 }
 
 /**
@@ -29,6 +31,71 @@ export interface AuthenticatedRequest extends FastifyRequest {
  */
 function getAuth0Domain(): string | null {
 	return process.env.AUTH0_DOMAIN || null;
+}
+
+/** Split a comma-separated environment variable into trimmed, non-empty values. */
+function parseList(raw: string | undefined): string[] {
+	return (raw ?? '').split(',').map(value => value.trim()).filter(Boolean);
+}
+
+/**
+ * JWT audiences this server accepts, from AUTH0_AUDIENCE.
+ *
+ * A list rather than a single value: the webapp and OAuth-connected MCP clients
+ * hold tokens for different Auth0 APIs, and both have to verify here.
+ */
+export function acceptedAudiences(env: NodeJS.ProcessEnv = process.env): string[] {
+	return parseList(env.AUTH0_AUDIENCE);
+}
+
+/**
+ * Audiences whose tokens get admin access, from AUTH0_ADMIN_AUDIENCES.
+ *
+ * Defaults to the first entry of AUTH0_AUDIENCE: the audience that was already
+ * in use back when there was only one, which is the webapp's. So adding a new
+ * audience for MCP clients gives them developer access without anything else
+ * having to be configured, and without changing what the webapp can do.
+ *
+ * Order therefore matters, which is why the resolved split is logged at startup
+ * (logAuthConfig) rather than left to be inferred.
+ */
+export function adminAudiences(env: NodeJS.ProcessEnv = process.env): string[] {
+	const explicit = parseList(env.AUTH0_ADMIN_AUDIENCES);
+	return explicit.length ? explicit : acceptedAudiences(env).slice(0, 1);
+}
+
+/**
+ * Effective role for a JWT caller, from the token's audience.
+ *
+ * JWT callers used to be admin unconditionally, which was fine while the webapp
+ * was the only one. OAuth-connected MCP clients are JWT callers too, and a
+ * connected editor has no business deleting users or organisations, so anything
+ * outside adminAudiences gets developer instead.
+ */
+export function roleForJwt(
+	aud: string | string[] | undefined,
+	env: NodeJS.ProcessEnv = process.env
+): 'developer' | 'admin' {
+	const admin = adminAudiences(env);
+	const tokenAudiences = Array.isArray(aud) ? aud : aud ? [aud] : [];
+	return tokenAudiences.some(audience => admin.includes(audience)) ? 'admin' : 'developer';
+}
+
+/**
+ * Log the resolved authentication configuration at startup, so which audiences
+ * are accepted - and which of them carry admin - is visible in the service log
+ * instead of having to be worked out from the environment.
+ */
+export function logAuthConfig(): void {
+	const accepted = acceptedAudiences();
+	if (!accepted.length) {
+		console.warn('AUTH0_AUDIENCE is not set: JWT audiences are not verified, and JWT callers get developer access');
+		return;
+	}
+	const admin = adminAudiences();
+	const developer = accepted.filter(audience => !admin.includes(audience));
+	console.log(`Auth: accepted JWT audiences: ${accepted.join(', ')}`);
+	console.log(`Auth: admin audiences: ${admin.join(', ') || '(none)'}; developer audiences: ${developer.join(', ') || '(none)'}`);
 }
 
 /**
@@ -58,6 +125,7 @@ interface JwtVerificationResult {
 	userId?: string; // Database user ID (for symmetric JWTs) or Auth0 sub (for Auth0 tokens)
 	email?: string; // Email from token (for Auth0 tokens)
 	isAuth0: boolean; // Whether this is an Auth0 token
+	aud?: string | string[]; // Audience the token was issued for - decides the caller's role
 }
 
 /**
@@ -89,8 +157,11 @@ async function verifyJwtToken(token: string): Promise<JwtVerificationResult | nu
 			const verifyOptions: jwt.VerifyOptions = {
 				issuer: `https://${auth0Domain}/`,
 			};
-			if (process.env.AUTH0_AUDIENCE) {
-				verifyOptions.audience = process.env.AUTH0_AUDIENCE;
+			const audiences = acceptedAudiences();
+			if (audiences.length) {
+				// jsonwebtoken takes an array here and accepts a token matching any of
+				// them. Its type wants a non-empty tuple, which the check above ensures.
+				verifyOptions.audience = audiences as [string, ...string[]];
 			}
 			const verified = jwt.verify(token, signingKey, verifyOptions);
 			if (typeof verified === 'string') {
@@ -99,13 +170,14 @@ async function verifyJwtToken(token: string): Promise<JwtVerificationResult | nu
 			if (!verified || typeof verified !== 'object') {
 				return null;
 			}
-			const verifiedPayload = verified as { userId?: string; sub?: string; email?: string };
+			const verifiedPayload = verified as { userId?: string; sub?: string; email?: string; aud?: string | string[] };
 			// Auth0 uses 'sub' claim for user ID (format: "google-oauth2|109424848053592856653")
 			// and 'email' claim for email address
 			return {
 				userId: verifiedPayload.sub || verifiedPayload.userId || undefined,
 				email: verifiedPayload.email,
 				isAuth0: true,
+				aud: verifiedPayload.aud,
 			};
 		}
 		// fail - to avoid token email spoofing
@@ -149,6 +221,7 @@ async function authenticateWithApiKey(
 	request.organisation = apiKey.organisation;
 	request.apiKeyId = apiKey.id;
 	request.apiKey = apiKey; // Store full API key for permission checks
+	request.role = apiKey.role;
 	request.authenticatedWith = 'api_key';
 	return true;
 }
@@ -234,6 +307,7 @@ async function authenticateWithJwt(
 	}
 
 	request.userId = userId;
+	request.role = roleForJwt(verificationResult.aud);
 	request.authenticatedWith = 'jwt';
 	return true;
 }
@@ -326,10 +400,12 @@ export async function authenticate(
 
 /**
  * Check if the authenticated request has the required access permissions.
- * JWT users always have full access (equivalent to admin role).
- * API keys are checked against their role and the list of allowed roles.
- * Admin role always has access (can be omitted from allowedRoles, but can be specified for clarity).
- * 
+ *
+ * Both credential kinds are checked the same way, against the role recorded by
+ * the authenticate middleware: an API key's own role, or for a JWT the role its
+ * audience is entitled to (see roleForJwt). Admin always has access, so it can
+ * be omitted from allowedRoles, though listing it does no harm.
+ *
  * @param request - Authenticated request
  * @param reply - Fastify reply object
  * @param allowedRoles - Array of roles that are allowed to access this endpoint. Admin is always allowed.
@@ -342,43 +418,37 @@ export function checkAccess(request: AuthenticatedRequest, reply: FastifyReply, 
 		reply.code(403).send({ error: 'User is not a member of this organisation' });
 		return false;
 	}
-	// JWT users always have full access (equivalent to admin)
-	if (request.authenticatedWith === 'jwt') {
+
+	// This should not happen if authentication middleware worked correctly
+	if (!request.authenticatedWith) {
+		console.error('checkAccess: authenticatedWith is not set or has unexpected value', request.authenticatedWith);
+		reply.code(500).send({ error: 'Internal error: authentication state invalid' });
+		return false;
+	}
+	if (request.authenticatedWith === 'api_key' && !request.apiKey) {
+		console.error('checkAccess: authenticatedWith is api_key but apiKey is not set');
+		reply.code(500).send({ error: 'Internal error: API key object missing' });
+		return false;
+	}
+
+	const credential = request.authenticatedWith === 'api_key' ? 'API key' : 'Token';
+	const role = request.role;
+	if (!role) {
+		reply.code(403).send({ error: `${credential} does not have a role` });
+		return false;
+	}
+
+	// Admin role always has access
+	if (role === 'admin') {
 		return true;
 	}
 
-	// For API keys, check role
-	if (request.authenticatedWith === 'api_key') {
-		if (!request.apiKey) {
-			console.error('checkAccess: authenticatedWith is api_key but apiKey is not set');
-			reply.code(500).send({ error: 'Internal error: API key object missing' });
-			return false;
-		}
-		
-		const apiKeyRole = request.apiKey.role;
-		if (!apiKeyRole) {
-			reply.code(403).send({ error: 'API key does not have a role' });
-			return false;
-		}
-		
-		// Admin role always has access
-		if (apiKeyRole === 'admin') {
-			return true;
-		}
-		
-		// Check if the API key's role is in the allowed roles list
-		if (!allowedRoles.includes(apiKeyRole)) {
-			reply.code(403).send({ error: `API key role '${apiKeyRole}' is not allowed. Required roles: ${allowedRoles.join(', ')}` });
-			return false;
-		}
-		
-		return true;
+	if (!allowedRoles.includes(role)) {
+		reply.code(403).send({ error: `${credential} role '${role}' is not allowed. Required roles: ${allowedRoles.join(', ')}` });
+		return false;
 	}
-	
-	// This should not happen if authentication middleware worked correctly
-	console.error('checkAccess: authenticatedWith is not set or has unexpected value', request.authenticatedWith);
-	reply.code(500).send({ error: 'Internal error: authentication state invalid' });
-	return false;
+
+	return true;
 }
 
 
@@ -423,17 +493,10 @@ export async function authenticateFromGrpcMetadata(request: AuthenticatedRequest
   // Check for API key authentication: "ApiKey <api-key>"
   if (authHeader.startsWith('ApiKey ')) {
     const apiKey = authHeader.substring(7).trim();
-    const hash = hashApiKey(apiKey);
-    const apiKeyRecord = await getApiKeyByHash(hash);
-    
-    if (!apiKeyRecord) {
-      throw new Error('GRPC call rejected: Invalid API key ***' + apiKey.substring(apiKey.length - 4));
+    // Delegates to the HTTP path so both record the same fields, role included.
+    if (!(await authenticateWithApiKey(request, undefined, apiKey))) {
+      throw new Error('GRPC call rejected: Invalid API key ***' + apiKey.substring(Math.max(0, apiKey.length - 4)));
     }
-    
-    request.organisation = apiKeyRecord.organisation;
-    request.apiKeyId = apiKeyRecord.id;
-    request.apiKey = apiKeyRecord;
-    request.authenticatedWith = 'api_key';
     return;
   }
 

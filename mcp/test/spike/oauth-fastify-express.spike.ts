@@ -1,5 +1,12 @@
 /**
- * SPIKE - not part of the shipped server.
+ * SPIKE - not part of the shipped server, and not what was built.
+ *
+ * Outcome: yes, the SDK's Express routers can be mounted in Fastify - but the
+ * implementation does not use them. A brokered OAuth flow needs no client
+ * store, no local PKCE validation and no authorization codes of its own (the
+ * identity provider owns all three), so src/oauth.ts serves the four endpoints
+ * directly in Fastify instead. That drops Express, @fastify/express and the
+ * SDK's auth layer from the request path. Kept for the record.
  *
  * Question: can we use the MCP SDK's Express-based OAuth routers from our
  * Fastify server, instead of migrating the MCP server to Express?

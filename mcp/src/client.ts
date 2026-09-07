@@ -45,6 +45,34 @@ export class AiqaApiClient {
     return {} as T;
   }
 
+  /**
+   * Check whether server-aiqa accepts this credential, without doing anything
+   * else with it. Used to turn away bad keys when a client connects, instead of
+   * letting the connection look healthy and fail on every tool call.
+   *
+   * `GET /dataset` works for both API keys and JWTs, and the `organisation`
+   * parameter it requires is deliberately omitted: the request is then refused
+   * with 400 after authentication but before any work, which is all we need.
+   *
+   * So only a 401 means the credential itself was rejected. The expected 400,
+   * and a 403 from a key that authenticated but lacks the role, both mean the
+   * credential is real - whether it may make a particular call stays the API's
+   * decision, per request.
+   */
+  async validateCredential(timeoutMs = 5000): Promise<'valid' | 'invalid' | 'unknown'> {
+    try {
+      const response = await fetch(`${this.baseUrl}/dataset?limit=1`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${this.apiKey}` },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      return response.status === 401 ? 'invalid' : 'valid';
+    } catch {
+      // Unreachable or timed out, so we cannot tell. Don't claim the key is bad.
+      return 'unknown';
+    }
+  }
+
   // Dataset operations
   async createDataset(dataset: {
     organisation: string;

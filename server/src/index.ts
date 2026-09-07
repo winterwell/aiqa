@@ -23,7 +23,7 @@ import {
   updateUser,
   deleteUser,
 } from './db/db_sql.js';
-import { authenticate, AuthenticatedRequest, checkAccess } from './server_auth.js';
+import { authenticate, AuthenticatedRequest, checkAccess, logAuthConfig } from './server_auth.js';
 import SearchQuery from './common/SearchQuery.js';
 import { AIQA_ORG_ID, ANYONE_EMAIL } from './constants.js';
 import { registerExperimentRoutes } from './routes/experiments.js';
@@ -245,6 +245,9 @@ const start = async () => {
     fastify.ready(() => {
       fastify.swagger();
     });
+
+    // Which JWT audiences are accepted, and which of them carry admin
+    logAuthConfig();
 
     const port = parseInt(process.env.PORT || '4318');
     // Bind to 0.0.0.0 to allow external connections (not just localhost)

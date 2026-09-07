@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
@@ -10,6 +10,12 @@ import {
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { AiqaApiClient } from './client.js';
+import {
+  discoverUpstream,
+  loadOAuthConfig,
+  registerOAuthProxy,
+  type OAuthState,
+} from './oauth.js';
 
 const SERVER_NAME = 'aiqa-mcp-server';
 const SERVER_VERSION = '0.9.2';
@@ -18,10 +24,12 @@ const SERVER_VERSION = '0.9.2';
 const API_BASE_URL = process.env.AIQA_API_BASE_URL || 'http://localhost:4318';
 const MCP_PORT = parseInt(process.env.MCP_PORT || '4319', 10);
 
-// Optional OAuth authorization server. Until this is configured the server only
+// Optional OAuth support, configured via AIQA_OAUTH_ISSUER and
+// AIQA_OAUTH_AUDIENCE (see oauth.ts). Until both are set the server only
 // accepts pre-issued AIQA API keys, and its metadata says so rather than
 // pointing clients at an authorization server that does not exist.
-const OAUTH_ISSUER = process.env.AIQA_OAUTH_ISSUER;
+// Set during startup, before any request can be served.
+let oauthState: OAuthState = 'disabled';
 
 // Public base URL, used in the discovery document. Derived from the request when
 // unset, so it stays correct behind nginx without extra configuration.
@@ -497,6 +505,47 @@ function keysMatch(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+// Validating every connection means an upstream call per connect, and clients
+// reconnect often, so verdicts are cached briefly - short enough that a revoked
+// key stops working promptly.
+const KEY_CACHE_TTL_MS = 60_000;
+const KEY_CACHE_MAX = 1000;
+const keyCache = new Map<string, { valid: boolean; expires: number }>();
+
+// Keyed by hash, so the cache never holds a user's key in memory.
+function keyCacheId(apiKey: string): string {
+  return createHash('sha256').update(apiKey).digest('hex');
+}
+
+// Ask server-aiqa whether this key is real before handing out a session.
+// Without this any non-empty string connects: the client reports success and
+// lists the tools, then fails on every call with an upstream 401 buried in a
+// tool result, which is not something a client can re-authenticate from.
+async function isKeyAccepted(apiKey: string): Promise<boolean> {
+  const id = keyCacheId(apiKey);
+  const cached = keyCache.get(id);
+  if (cached && cached.expires > Date.now()) {
+    return cached.valid;
+  }
+
+  const result = await new AiqaApiClient(API_BASE_URL, apiKey).validateCredential();
+  if (result === 'unknown') {
+    // server-aiqa is unreachable. Refusing every connection would turn its
+    // outage into an MCP outage for no security gain - the tool calls fail
+    // either way - so let this one through, and don't cache the non-answer.
+    fastify.log.warn('Could not validate API key: server-aiqa did not respond');
+    return true;
+  }
+
+  // Bounded so a flood of junk keys cannot grow the map without limit. Clearing
+  // wholesale is crude, but the only cost is a round of re-validation.
+  if (keyCache.size >= KEY_CACHE_MAX) {
+    keyCache.clear();
+  }
+  keyCache.set(id, { valid: result === 'valid', expires: Date.now() + KEY_CACHE_TTL_MS });
+  return result === 'valid';
+}
+
 // reply.hijack() skips Fastify's send path, which is where plugin headers (CORS,
 // most importantly) would have been flushed. Copy them onto the raw response
 // first, or cross-origin clients get a response the browser refuses to read.
@@ -523,6 +572,11 @@ function getApiKey(request: { headers: Record<string, any>; query?: unknown }): 
   }
   return (request.query as any)?.apiKey;
 }
+
+// The discovery documents are only cacheable when their URLs come from config.
+// Otherwise they vary by request host, and a shared cache could serve one
+// host's document to another.
+const DISCOVERY_CACHE_CONTROL = PUBLIC_URL ? 'public, max-age=3600' : 'no-store';
 
 function publicBaseUrl(request: FastifyRequest): string {
   if (PUBLIC_URL) {
@@ -551,16 +605,15 @@ function sendUnauthorized(request: FastifyRequest, reply: FastifyReply, descript
 }
 
 // RFC 9728 protected resource metadata - the document MCP clients look for when
-// they get a 401. `authorization_servers` is omitted until one is configured:
-// the field is optional, and advertising a non-existent server would send
-// clients into a discovery flow that cannot succeed.
+// they get a 401. `authorization_servers` names this server, because clients
+// have to come through its brokered endpoints for the provider's `audience` to
+// be added (see oauth.ts). The field is optional, and is omitted while OAuth is
+// off rather than sending clients into a flow that cannot succeed.
 fastify.get('/.well-known/oauth-protected-resource', async (request, reply) => {
-  // Only cacheable when the resource URL comes from config; otherwise it varies
-  // by request host and a shared cache could serve one host's document to another.
-  reply.header('Cache-Control', PUBLIC_URL ? 'public, max-age=3600' : 'no-store');
+  reply.header('Cache-Control', DISCOVERY_CACHE_CONTROL);
   return {
     resource: publicBaseUrl(request),
-    ...(OAUTH_ISSUER ? { authorization_servers: [OAUTH_ISSUER] } : {}),
+    ...(oauthState === 'enabled' ? { authorization_servers: [publicBaseUrl(request)] } : {}),
     bearer_methods_supported: ['header'],
   };
 });
@@ -571,6 +624,13 @@ fastify.get('/sse', async (request, reply) => {
 
   if (!apiKey) {
     sendUnauthorized(request, reply, 'API key required. Provide via Authorization header (Bearer <key>) or ?apiKey= query parameter');
+    return;
+  }
+
+  // Check the key before the reply is hijacked: once the SSE transport owns the
+  // socket there is no way left to send a 401.
+  if (!(await isKeyAccepted(apiKey))) {
+    sendUnauthorized(request, reply, 'API key was rejected by server-aiqa. Check the key is correct and still active.');
     return;
   }
 
@@ -669,12 +729,53 @@ fastify.post('/message', async (request, reply) => {
 
 // Health check endpoint
 fastify.get('/health', async () => {
-  return { status: 'ok', service: SERVER_NAME, version: SERVER_VERSION };
+  // oauth is reported so a misconfigured deploy is visible here rather than
+  // only when a user tries to connect: 'error' means configured but not usable.
+  return { status: 'ok', service: SERVER_NAME, version: SERVER_VERSION, oauth: oauthState };
 });
+
+/**
+ * Set up the brokered OAuth endpoints, if OAuth is configured.
+ *
+ * Nothing here is fatal. A bad OAuth configuration and an unreachable provider
+ * both leave the server running as API-key only: the unit restarts on failure,
+ * so exiting would turn either into a crash loop and take API-key clients down
+ * over a fault that is not theirs. Both are instead reported loudly - in the
+ * log, and as oauth: 'error' on /health, which check-live.sh asserts on.
+ */
+async function setupOAuth(): Promise<void> {
+  try {
+    const config = loadOAuthConfig();
+    if (!config) {
+      return;
+    }
+    const endpoints = await discoverUpstream(config.issuer);
+    registerOAuthProxy(fastify, {
+      config,
+      endpoints,
+      publicBaseUrl,
+      cacheControl: DISCOVERY_CACHE_CONTROL,
+    });
+    oauthState = 'enabled';
+    console.log(`OAuth enabled: brokering to ${config.issuer} for audience ${config.audience}`);
+  } catch (error) {
+    // Advertising an authorization server we cannot broker to would send every
+    // client into a dead end, so stay API-key only and say so loudly.
+    oauthState = 'error';
+    console.error(
+      'OAuth DISABLED by a configuration or provider error.',
+      'API keys still work; OAuth clients cannot connect.',
+      error,
+    );
+  }
+}
 
 // Start server
 async function main() {
   try {
+    // Before listen(): routes cannot be added once the server is accepting.
+    await setupOAuth();
+
     await fastify.listen({ port: MCP_PORT, host: '0.0.0.0' });
     console.log(`${SERVER_NAME} v${SERVER_VERSION} listening on port ${MCP_PORT}`);
     console.log(`MCP SSE endpoint: http://localhost:${MCP_PORT}/sse`);

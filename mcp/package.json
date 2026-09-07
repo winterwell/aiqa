@@ -8,6 +8,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
+    "start:local": "node --env-file=.env dist/index.js",
     "test": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
     "test:unit": "pnpm run build && node --loader ts-node/esm test/unit/client.test.ts",
     "test:integration": "pnpm run build && node --loader ts-node/esm test/integration/integration.test.ts",

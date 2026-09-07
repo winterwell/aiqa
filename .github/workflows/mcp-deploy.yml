@@ -111,12 +111,17 @@ jobs:
           # Proxy addresses whose X-Forwarded-* headers are trusted; '127.0.0.1'
           # for the bundled nginx config. Left empty means trust nothing.
           MCP_TRUST_PROXY: ${{ vars.MCP_TRUST_PROXY }}
+          # OAuth: identity provider issuer, and the API identifier tokens are
+          # requested for. Both or neither - the server refuses to start when
+          # only one is set. Unset means API-key-only, the default.
+          AIQA_OAUTH_ISSUER: ${{ vars.AIQA_OAUTH_ISSUER }}
+          AIQA_OAUTH_AUDIENCE: ${{ vars.AIQA_OAUTH_AUDIENCE }}
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ env.DEPLOY_PORT }}
-          envs: AIQA_API_BASE_URL,MCP_PORT,LOG_LEVEL,MCP_PUBLIC_URL,MCP_TRUST_PROXY
+          envs: AIQA_API_BASE_URL,MCP_PORT,LOG_LEVEL,MCP_PUBLIC_URL,MCP_TRUST_PROXY,AIQA_OAUTH_ISSUER,AIQA_OAUTH_AUDIENCE
           script: |
             cd /opt/aiqa/mcp
             # Ensure directory is writable by deployment user
@@ -153,6 +158,8 @@ jobs:
               echo "LOG_LEVEL=${LOG_LEVEL:-info}"
               if [ -n "${MCP_PUBLIC_URL}" ]; then echo "MCP_PUBLIC_URL=${MCP_PUBLIC_URL}"; fi
               if [ -n "${MCP_TRUST_PROXY}" ]; then echo "MCP_TRUST_PROXY=${MCP_TRUST_PROXY}"; fi
+              if [ -n "${AIQA_OAUTH_ISSUER}" ]; then echo "AIQA_OAUTH_ISSUER=${AIQA_OAUTH_ISSUER}"; fi
+              if [ -n "${AIQA_OAUTH_AUDIENCE}" ]; then echo "AIQA_OAUTH_AUDIENCE=${AIQA_OAUTH_AUDIENCE}"; fi
             } > .env
             # Set all permissions to winterwell
             sudo chown -R winterwell:winterwell /opt/aiqa/mcp
