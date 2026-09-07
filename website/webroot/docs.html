@@ -257,10 +257,10 @@ main();</code></pre>
 			<hr class="my-5"/>
 			<h2 id="mcp-server" class="h2 fw-bold mb-3">MCP server</h2>
 			<p class="text-muted mb-3">
-				Prefer to stay in your editor? We host an <abbr title="Model Context Protocol">MCP</abbr> server so assistants such as Cursor or Claude Code can list traces, datasets, and experiments using the same API you use in the app—handy when you are debugging or designing evals next to your code.
+				Prefer to stay in your editor? We host an <abbr title="Model Context Protocol">MCP</abbr> server so assistants such as Cursor or Claude Code can query traces, datasets and experiments—and create datasets, evals and experiments—using the same API you use in the app. Handy when you are debugging or designing evals next to your code.
 			</p>
 			<ol class="mb-4">
-				<li class="mb-2">In the AIQA app, open <strong>API Keys</strong> and create a key with the permissions you need.</li>
+				<li class="mb-2">In the AIQA app, open <strong>API Keys</strong> and create a key with the <strong>developer</strong> role. That covers every tool the MCP server offers—admin adds nothing for editor use.</li>
 				<li class="mb-0">In your client&rsquo;s MCP settings, add an HTTP/SSE server pointed at our endpoint and pass your key in the <code>Authorization</code> header (Bearer token).</li>
 			</ol>
 			<p class="small text-muted mb-2">Example for Cursor (<code>mcpServers</code>):</p>
