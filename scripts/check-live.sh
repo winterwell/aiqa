@@ -70,6 +70,17 @@ json_field() {
     fi
 }
 
+# As json_field, but for the first element of an array-valued field.
+json_first_in_array() {
+    if command -v jq >/dev/null 2>&1; then
+        jq -r --arg k "$2" '.[$k][0] // empty' "$1" 2>/dev/null
+    else
+        tr -d '\n' < "$1" 2>/dev/null \
+            | grep -o "\"$2\"[[:space:]]*:[[:space:]]*\[[[:space:]]*\"[^\"]*\"" \
+            | head -1 | sed 's/.*"\([^"]*\)"$/\1/'
+    fi
+}
+
 BODY=$(mktemp)
 trap 'rm -f "$BODY"' EXIT
 
@@ -207,7 +218,9 @@ check_status "mcp /sse rejects anonymous access" "$MCP_URL/sse" 401
 # That 401 points clients at the discovery document, so it has to resolve - it
 # needs a location block in the nginx config, which is easy to miss on deploy
 if check_status "mcp discovery document" "$MCP_URL/.well-known/oauth-protected-resource" 200; then
-    advertises_as=$(grep -c authorization_servers "$BODY" 2>/dev/null || true)
+    # Read now: every later fetch overwrites $BODY
+    advertises_as=$(json_first_in_array "$BODY" authorization_servers)
+    prm_resource=$(json_field "$BODY" resource)
 fi
 
 # OAuth is optional, so 'disabled' is a normal answer - but 'error' means it is
@@ -216,26 +229,29 @@ fi
 case "$mcp_oauth" in
     enabled)
         ok "mcp oauth is enabled"
-        if [ "${advertises_as:-0}" -eq 0 ]; then
+        if [ -z "${advertises_as:-}" ]; then
             bad "mcp oauth is enabled but the discovery document advertises no authorization_servers"
         else
-            ok "mcp discovery document advertises an authorization server"
+            ok "mcp points clients at $advertises_as"
         fi
-        if check_status "mcp authorization server metadata" \
-            "$MCP_URL/.well-known/oauth-authorization-server" 200; then
-            as_issuer=$(json_field "$BODY" issuer)
-            reg_endpoint=$(json_field "$BODY" registration_endpoint)
-            if [ "$as_issuer" = "$MCP_URL" ]; then
-                ok "mcp authorization server issuer is $as_issuer"
+        # The resource is what clients send as RFC 8707 `resource`, and so the
+        # audience the provider issues for. If it is not the public URL, no
+        # provider-side API identifier can match it, and every tool call 401s
+        # after an otherwise clean login - the hardest failure here to read.
+        if [ "${prm_resource:-}" = "$MCP_URL" ]; then
+            ok "mcp declares its own URL as the resource"
+        else
+            bad "mcp resource is '${prm_resource:-}', expected $MCP_URL (check MCP_PUBLIC_URL)"
+        fi
+        # Clients discover the provider themselves now, so its metadata is on
+        # the critical path. Without dynamic registration they cannot connect at
+        # all: neither Cursor nor Claude will ask a user for a client_id.
+        if [ -n "${advertises_as:-}" ] && check_status "provider metadata" \
+            "${advertises_as%/}/.well-known/openid-configuration" 200; then
+            if [ -n "$(json_field "$BODY" registration_endpoint)" ]; then
+                ok "provider advertises dynamic client registration"
             else
-                bad "mcp authorization server issuer is '$as_issuer', expected $MCP_URL (check MCP_PUBLIC_URL)"
-            fi
-            # Without dynamic registration, Cursor and Claude cannot connect at
-            # all: neither will ask a user for a client_id.
-            if [ -n "$reg_endpoint" ]; then
-                ok "mcp advertises dynamic client registration"
-            else
-                bad "mcp advertises no registration_endpoint - clients cannot self-register"
+                bad "provider advertises no registration_endpoint - clients cannot self-register"
             fi
         fi
         ;;

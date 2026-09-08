@@ -86,13 +86,19 @@ pnpm run test:integration
 
 ## Public URL and Proxy Configuration
 
-The server publishes two discovery documents that contain its own URL:
+The server advertises its own URL in two places:
 
 - the `resource_metadata` pointer in the `WWW-Authenticate` header sent with a `401`
 - the `resource` field of `GET /.well-known/oauth-protected-resource`
 
 MCP clients follow those to work out how to authenticate, so the URL has to be
 the one clients actually reach. Two variables control it.
+
+With OAuth enabled this URL does more than point clients at the right host: it
+is what they send as RFC 8707 `resource`, and therefore the audience Auth0
+issues tokens for. It has to match an Auth0 API identifier and an audience
+server-aiqa accepts, so getting it wrong there fails *after* a successful login
+rather than during discovery. See [OAuth](#oauth-self-connection-from-cursor--claude).
 
 ### `MCP_PUBLIC_URL` (recommended in production)
 
@@ -157,7 +163,7 @@ The repository includes a GitHub Actions workflow (`.github/workflows/mcp-deploy
 - `AIQA_API_BASE_URL`: Base URL for server-aiqa API (default: https://server-aiqa.winterwell.com)
 - `MCP_PORT`: Port for MCP server (default: 4319)
 - `LOG_LEVEL`: Log level (default: info)
-- `MCP_PUBLIC_URL`: Public base URL used in the discovery documents (e.g. `https://mcp-aiqa.winterwell.com`). See [Public URL and Proxy Configuration](#public-url-and-proxy-configuration).
+- `MCP_PUBLIC_URL`: Public base URL used in the discovery document, and the OAuth audience (e.g. `https://mcp-aiqa.winterwell.com`). See [Public URL and Proxy Configuration](#public-url-and-proxy-configuration).
 - `MCP_TRUST_PROXY`: Proxy addresses whose `X-Forwarded-*` headers are trusted (`127.0.0.1` for the bundled nginx config). Optional; off by default.
 
 ## Systemd Service
@@ -262,46 +268,58 @@ handling.
 
 **Status: the code is complete, and verified against the live tenant as far as
 it can be without a browser login.** Dynamic client registration is enabled on
-winterstein.eu.auth0.com and works through the broker; registration, the
-`/authorize` handoff and token-endpoint passthrough were all exercised against
-the real Auth0. What remains is creating the API (step 1 below): until it exists,
-`/authorize` fails with `access_denied: Service not found: <audience>`.
+winterstein.eu.auth0.com and works; registration was exercised against the real
+Auth0. What remains is the tenant configuration in *Auth0 setup* below - until
+it is done, Auth0 fails the login and no token is issued.
 
-### Why this server brokers the flow
+### Why clients go straight to Auth0
 
-Clients cannot simply be pointed at Auth0. Auth0 only issues a verifiable JWT
-when the request names a registered API in its non-standard `audience`
-parameter, and MCP clients do not send it - they send RFC 8707 `resource`. A
-client talking to Auth0 directly would come back holding an opaque token that
-server-aiqa cannot verify.
+They did not always. Auth0 only issues a verifiable JWT when the request names
+a registered API, and it historically read that from its own non-standard
+`audience` parameter. MCP clients do not send `audience` - they send RFC 8707
+`resource`. A client talking to Auth0 directly came back holding an opaque
+token that server-aiqa could not verify, so this server used to broker the
+whole flow, forwarding `/authorize`, `/token`, `/register` and `/revoke` with
+`audience` added on the way through.
 
-So this server advertises *itself* as the authorization server, and forwards
-each request to Auth0 with `audience` added:
+Auth0's **Resource Parameter Compatibility Profile** makes Auth0 read
+`resource` and use it as the token's audience. That removes the reason for the
+broker, so it is gone: no proxied endpoints, no authorization server metadata
+of our own, and nothing of ours in the login path. Auth0 is the authorization
+server clients discover and talk to, which is what RFC 9728 describes.
 
 ```
-/.well-known/oauth-protected-resource   ->  authorization_servers: [this server]
-/.well-known/oauth-authorization-server ->  this server's brokered endpoints
-/authorize  ->  302 to Auth0 /authorize, with `audience` added
-/token      ->  POST to Auth0, verbatim
-/register   ->  POST to Auth0 /oidc/register, verbatim
-/revoke     ->  POST to Auth0, verbatim
+/.well-known/oauth-protected-resource  ->  resource: this server's public URL
+                                           authorization_servers: [Auth0]
 ```
 
-The broker holds no state. Auth0 remains the only place that registers clients,
-validates redirect URIs and checks PKCE, so there is no client store to persist
-and nothing to rebuild after a restart. A client's own `audience`, if it sends
-one, is overridden - otherwise it could ask for a token valid against a
-different API.
+The trade is that Auth0 now sees the `resource` the *client* chose, where the
+broker used to overwrite it. So the value this server advertises has to line up
+with an Auth0 API identifier, and a client that sends something else - the
+`/sse` path appended, say - gets `access_denied` rather than being silently
+corrected. That is the one regression risk in dropping the broker, and the
+`resource` check in `./scripts/check-live.sh` is there to catch the half of it
+that is our own misconfiguration.
 
 ### Auth0 setup
 
-1. **Create an API** (Applications -> APIs) - *still outstanding*. Identifier
-   `https://server-aiqa.winterwell.com`, signing algorithm RS256. The
-   identifier is the audience; it does not have to resolve to anything.
-   Enable *Allow Offline Access*, or refresh tokens are never issued however the
-   client is registered, and users get sent back to the browser whenever a token
-   expires.
-2. **Enable dynamic client registration** - done. Settings -> Advanced -> *OIDC
+1. **Enable the Resource Parameter Compatibility Profile.** Settings ->
+   Advanced -> *Resource Parameter Compatibility Profile*. Without it Auth0
+   ignores `resource`, and every client gets an opaque token that server-aiqa
+   rejects. Auth0 also recommends enabling *Include Issuer in Authorization
+   Responses* (RFC 9207) alongside it.
+2. **Create an API** (Applications -> APIs) with identifier exactly
+   `https://mcp-aiqa.winterwell.com` - the MCP server's public URL, i.e.
+   `MCP_PUBLIC_URL`, because that is the `resource` its clients ask for. Signing
+   algorithm RS256. Enable *Allow Offline Access*, or refresh tokens are never
+   issued and users get sent back to the browser whenever a token expires.
+
+   Note this is **not** the existing `https://server-aiqa.winterwell.com` API.
+   The audience identifies the resource the client is talking to, which is the
+   MCP server; server-aiqa is told to accept it (see below). Reusing the
+   server-aiqa identifier would mean advertising a `resource` that is not this
+   server's own URL, which clients are entitled to reject.
+3. **Enable dynamic client registration** - done. Settings -> Advanced -> *OIDC
    Dynamic Application Registration*. Equivalent Management API call:
    `PATCH /api/v2/tenants/settings` with
    `{"flags":{"enable_dynamic_client_registration":true}}`.
@@ -309,12 +327,22 @@ different API.
    anyone may POST to `/oidc/register` and create third-party application
    entries (they appear with a `tpc_` client_id prefix). That is inherent to
    DCR, and it is what lets clients self-register.
-3. **Promote the login connection to domain level.** DCR-created applications
-   are *third-party* in Auth0's model, and third-party applications can only use
-   domain-level connections. Whichever connection your users log in with needs
-   this, or registration succeeds and login then fails. This cannot be checked
-   without a browser login, so it is the most likely remaining surprise.
-4. Users will see Auth0's **consent screen** - third-party applications cannot
+4. **Turn off the tenant-wide Classic login page.** The global *All
+   Applications* client carries `custom_login_page_on: true` with no page
+   behind it, which forces the Classic experience, and Auth0 refuses to serve
+   Classic to third-party clients: *"Third Party clients are not allowed to use
+   the Classic Universal Login experience."* DCR clients are all third-party, so
+   login fails for every one of them until this is cleared:
+   `PATCH /api/v2/clients/efvPvXGgmdOYVMd6jGc18eGPIexaJ_Z0` with
+   `{"custom_login_page_on":false}`. Existing `tpc_` clients need the same patch
+   individually; the tenant flags themselves are already correct
+   (`new_universal_login_experience_enabled: true`).
+5. **Promote the login connection to domain level.** Third-party applications
+   can only use domain-level connections. Whichever connection your users log in
+   with needs this, or registration succeeds and login then fails. This cannot
+   be checked without a browser login, so it is the most likely remaining
+   surprise.
+6. Users will see Auth0's **consent screen** - third-party applications cannot
    skip it. For a connector granting access to an editor, that is arguably
    right, but it is a visible change.
 
@@ -329,19 +357,23 @@ MCP server (`mcp/.env`, or the GitHub Actions variables of the same names):
 
 ```bash
 AIQA_OAUTH_ISSUER=https://winterstein.eu.auth0.com/
-AIQA_OAUTH_AUDIENCE=https://server-aiqa.winterwell.com
 ```
 
-Both or neither. The endpoints Auth0 is called on are read from its
-`/.well-known/openid-configuration` at startup, so nothing else needs
-configuring - and nothing is hardcoded to Auth0's URL shapes.
+There is no audience variable. The audience is `MCP_PUBLIC_URL`, because that is
+what clients send as `resource` - so **`MCP_PUBLIC_URL` must be set in
+production**, and must match the Auth0 API identifier from step 2. Everything
+else about Auth0 is read from its `/.well-known/openid-configuration` at
+startup, so nothing is hardcoded to Auth0's URL shapes.
 
-server-aiqa (`server/.env`) must accept tokens for the new audience. Add it to
-the existing list rather than replacing the value, so webapp tokens keep
-verifying:
+(`AIQA_OAUTH_AUDIENCE` was the broker's audience setting. It is no longer read;
+the server logs a warning if it is still set, and it can be deleted from the
+GitHub Actions variables.)
+
+server-aiqa (`server/.env`) must accept tokens for that audience. Add it to the
+existing list rather than replacing the value, so webapp tokens keep verifying:
 
 ```bash
-AUTH0_AUDIENCE=https://winterstein.eu.auth0.com/api/v2/,https://server-aiqa.winterwell.com
+AUTH0_AUDIENCE=https://winterstein.eu.auth0.com/api/v2/,https://mcp-aiqa.winterwell.com
 ```
 
 The **first** audience in that list gets admin access; the ones after it get
@@ -351,19 +383,31 @@ webapp keeps working exactly as before. `AUTH0_ADMIN_AUDIENCES` overrides the
 split if you need something else. Both servers log what they resolved at
 startup.
 
+### Deployment order
+
+The pieces have to land in this order, or there is a window where login
+succeeds and every tool call then 401s:
+
+1. Auth0: the compatibility profile, the API, and the Classic login page fix.
+2. server-aiqa: `AUTH0_AUDIENCE` extended, deployed.
+3. MCP server: this code, deployed.
+
 ### Failure behaviour
 
 OAuth is additive and switched off by default, so a problem with it cannot take
 API-key clients down:
 
-- Unset `AIQA_OAUTH_ISSUER`/`AIQA_OAUTH_AUDIENCE` and restart: back to
-  API-key-only, immediately.
-- If the configuration is incomplete, or Auth0's metadata cannot be read at
-  startup, OAuth stays off, `/health` reports `oauth: "error"`, and the reason
-  is logged. The server does not exit: the unit restarts on failure, so exiting
-  would mean a crash loop over a fault that is not the API-key users'.
-  `./scripts/check-live.sh` fails on this state.
+- Unset `AIQA_OAUTH_ISSUER` and restart: back to API-key-only, immediately.
+- If Auth0's metadata cannot be read at startup, or it does not advertise
+  dynamic registration, OAuth stays off, `/health` reports `oauth: "error"`,
+  and the reason is logged. The server does not exit: the unit restarts on
+  failure, so exiting would mean a crash loop over a fault that is not the
+  API-key users'. `./scripts/check-live.sh` fails on this state.
 - `/health` reports `oauth` as `disabled`, `enabled` or `error`.
+
+What startup checks *cannot* catch is a missing or mismatched Auth0 API - that
+needs a browser login. It shows up as `access_denied: Service not found:
+<resource>` from Auth0, or as a clean login followed by 401s from server-aiqa.
 
 ### Client configuration
 
@@ -379,9 +423,10 @@ With OAuth enabled, the config carries no secret:
 }
 ```
 
-The client discovers it needs a token from the `401`, registers itself, opens a
-browser for login, and stores the token. API keys continue to work unchanged for
-anyone who prefers them, or for scripted use:
+The client discovers it needs a token from the `401`, follows the metadata to
+Auth0, registers itself there, opens a browser for login, and stores the token.
+API keys continue to work unchanged for anyone who prefers them, or for scripted
+use:
 
 ```json
 {
@@ -396,10 +441,11 @@ anyone who prefers them, or for scripted use:
 
 ### Testing without Auth0
 
-`pnpm run test:protocol` covers the broker against a stub identity provider:
-metadata contents, `audience` injection and override, verbatim forwarding of
-registration and token requests, and both failure modes. It needs no tenant and
-no network.
+`pnpm run test:protocol` covers the discovery handoff against a stub identity
+provider: that clients are pointed at the provider's own issuer, that the
+`resource` is this server's public URL, that none of the old broker endpoints
+are served, that nothing is forwarded to the provider, and both failure modes.
+It needs no tenant and no network.
 
 ## User Configuration (Cursor/Claude Code)
 

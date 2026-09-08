@@ -10,12 +10,7 @@ import {
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { AiqaApiClient } from './client.js';
-import {
-  discoverUpstream,
-  loadOAuthConfig,
-  registerOAuthProxy,
-  type OAuthState,
-} from './oauth.js';
+import { discoverIssuer, loadOAuthConfig, type OAuthState } from './oauth.js';
 
 const SERVER_NAME = 'aiqa-mcp-server';
 const SERVER_VERSION = '0.9.2';
@@ -24,12 +19,15 @@ const SERVER_VERSION = '0.9.2';
 const API_BASE_URL = process.env.AIQA_API_BASE_URL || 'http://localhost:4318';
 const MCP_PORT = parseInt(process.env.MCP_PORT || '4319', 10);
 
-// Optional OAuth support, configured via AIQA_OAUTH_ISSUER and
-// AIQA_OAUTH_AUDIENCE (see oauth.ts). Until both are set the server only
-// accepts pre-issued AIQA API keys, and its metadata says so rather than
-// pointing clients at an authorization server that does not exist.
-// Set during startup, before any request can be served.
+// Optional OAuth support, configured via AIQA_OAUTH_ISSUER (see oauth.ts).
+// Until it is set the server only accepts pre-issued AIQA API keys, and its
+// metadata says so rather than pointing clients at an authorization server that
+// does not exist.
 let oauthState: OAuthState = 'disabled';
+// The issuer clients are sent to, as the provider names itself. Set together
+// with oauthState during startup, before any request can be served, and only
+// once the provider has been checked - so it is never advertised speculatively.
+let authorizationServer: string | undefined;
 
 // Public base URL, used in the discovery document. Derived from the request when
 // unset, so it stays correct behind nginx without extra configuration.
@@ -605,15 +603,23 @@ function sendUnauthorized(request: FastifyRequest, reply: FastifyReply, descript
 }
 
 // RFC 9728 protected resource metadata - the document MCP clients look for when
-// they get a 401. `authorization_servers` names this server, because clients
-// have to come through its brokered endpoints for the provider's `audience` to
-// be added (see oauth.ts). The field is optional, and is omitted while OAuth is
-// off rather than sending clients into a flow that cannot succeed.
+// they get a 401. `authorization_servers` names the identity provider, which
+// clients now talk to directly (see oauth.ts). The field is optional, and is
+// omitted while OAuth is off rather than sending clients into a flow that
+// cannot succeed.
+//
+// `resource` is not just an identifier here: it is the value clients send as
+// RFC 8707 `resource`, and therefore the audience the provider issues tokens
+// for. It has to match a registered API on the provider, and an audience
+// server-aiqa accepts, or login succeeds and every tool call then 401s. That
+// makes MCP_PUBLIC_URL load-bearing in production - see DEPLOYMENT.md.
 fastify.get('/.well-known/oauth-protected-resource', async (request, reply) => {
   reply.header('Cache-Control', DISCOVERY_CACHE_CONTROL);
   return {
     resource: publicBaseUrl(request),
-    ...(oauthState === 'enabled' ? { authorization_servers: [publicBaseUrl(request)] } : {}),
+    ...(oauthState === 'enabled' && authorizationServer
+      ? { authorization_servers: [authorizationServer] }
+      : {}),
     bearer_methods_supported: ['header'],
   };
 });
@@ -735,7 +741,7 @@ fastify.get('/health', async () => {
 });
 
 /**
- * Set up the brokered OAuth endpoints, if OAuth is configured.
+ * Work out whether OAuth can be offered, if it is configured.
  *
  * Nothing here is fatal. A bad OAuth configuration and an unreachable provider
  * both leave the server running as API-key only: the unit restarts on failure,
@@ -749,19 +755,14 @@ async function setupOAuth(): Promise<void> {
     if (!config) {
       return;
     }
-    const endpoints = await discoverUpstream(config.issuer);
-    registerOAuthProxy(fastify, {
-      config,
-      endpoints,
-      publicBaseUrl,
-      cacheControl: DISCOVERY_CACHE_CONTROL,
-    });
+    authorizationServer = await discoverIssuer(config.issuer);
     oauthState = 'enabled';
-    console.log(`OAuth enabled: brokering to ${config.issuer} for audience ${config.audience}`);
+    console.log(`OAuth enabled: clients authenticate directly with ${authorizationServer}`);
   } catch (error) {
-    // Advertising an authorization server we cannot broker to would send every
-    // client into a dead end, so stay API-key only and say so loudly.
+    // Advertising an authorization server that cannot serve the flow would send
+    // every client into a dead end, so stay API-key only and say so loudly.
     oauthState = 'error';
+    authorizationServer = undefined;
     console.error(
       'OAuth DISABLED by a configuration or provider error.',
       'API keys still work; OAuth clients cannot connect.',
@@ -773,7 +774,8 @@ async function setupOAuth(): Promise<void> {
 // Start server
 async function main() {
   try {
-    // Before listen(): routes cannot be added once the server is accepting.
+    // Before listen(): the metadata document and /health both read this state,
+    // and a client that sees 'disabled' on its first try will not come back.
     await setupOAuth();
 
     await fastify.listen({ port: MCP_PORT, host: '0.0.0.0' });

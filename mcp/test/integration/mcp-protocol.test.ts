@@ -28,7 +28,6 @@ const MCP_PORT_BROKEN = 4394;
 const IDP_PORT = 4392;
 // Deliberately never bound, for the unreachable-provider case.
 const IDP_PORT_UNUSED = 4391;
-const OAUTH_AUDIENCE = 'https://server-aiqa.test';
 
 // A broken server tends to hang rather than refuse, so every test run is
 // bounded: CI should get a failure, not a stuck job.
@@ -91,7 +90,11 @@ const idpCalls: Array<{ method: string; url: string; body: string; contentType?:
 
 /**
  * Minimal stand-in for Auth0. Only has to be shaped like an OAuth provider:
- * these tests are about what the broker forwards and adds, not about Auth0.
+ * these tests are about what this server advertises, not about Auth0.
+ *
+ * Two issuers are served: the root one supports dynamic registration, and
+ * /no-dcr does not, which is the difference between OAuth being offered and
+ * being reported as broken.
  */
 function startStubIdp(): Promise<HttpServer> {
   const base = `http://localhost:${IDP_PORT}`;
@@ -111,6 +114,8 @@ function startStubIdp(): Promise<HttpServer> {
       if (url.pathname === '/.well-known/openid-configuration') {
         res.end(
           JSON.stringify({
+            // Deliberately carries the trailing slash the configured issuer
+            // lacks: this is the value clients must be given.
             issuer: `${base}/`,
             authorization_endpoint: `${base}/authorize`,
             token_endpoint: `${base}/oauth/token`,
@@ -122,6 +127,21 @@ function startStubIdp(): Promise<HttpServer> {
         );
         return;
       }
+      // A provider with no dynamic registration. Clients cannot self-register
+      // against it, so OAuth must not be offered.
+      if (url.pathname === '/no-dcr/.well-known/openid-configuration') {
+        res.end(
+          JSON.stringify({
+            issuer: `${base}/no-dcr`,
+            authorization_endpoint: `${base}/authorize`,
+            token_endpoint: `${base}/oauth/token`,
+          }),
+        );
+        return;
+      }
+      // These are no longer called - clients talk to the provider directly.
+      // Kept so that a regression which starts proxying again is recorded as a
+      // call rather than vanishing into a 404.
       if (url.pathname === '/oidc/register') {
         res.writeHead(201).end(JSON.stringify({ client_id: 'stub-client-id', client_secret: 'stub-secret' }));
         return;
@@ -289,26 +309,28 @@ async function run() {
       'omits authorization_servers when none is configured',
     );
 
-    // Test 9: half-configured OAuth must be reported, not silently ignored -
-    // but it must not stop the server, or a typo in one variable would take
-    // API-key clients down with it (the unit restarts on failure, so exiting
-    // would mean a crash loop).
-    console.log('\nTest 9: half-configured OAuth is reported, not fatal...');
-    const halfConfigured = await startMcpServer(
-      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT}` }, // no AIQA_OAUTH_AUDIENCE
+    // Test 9: a provider that cannot serve the flow must be reported, not
+    // silently offered - but it must not stop the server, or a bad OAuth
+    // setting would take API-key clients down with it (the unit restarts on
+    // failure, so exiting would mean a crash loop).
+    console.log('\nTest 9: a provider without dynamic registration is reported, not fatal...');
+    const noDcrIdp = await startStubIdp();
+    const noDcrMcp = await startMcpServer(
+      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT}/no-dcr` },
       MCP_PORT_ALT,
     );
     try {
-      const halfBase = `http://localhost:${MCP_PORT_ALT}`;
-      const health: any = await (await fetch(`${halfBase}/health`)).json();
+      const noDcrBase = `http://localhost:${MCP_PORT_ALT}`;
+      const health: any = await (await fetch(`${noDcrBase}/health`)).json();
       check(health.oauth === 'error', `health reports oauth=${health.oauth}, expected error`);
-      const prm: any = await (await fetch(`${halfBase}/.well-known/oauth-protected-resource`)).json();
+      const prm: any = await (await fetch(`${noDcrBase}/.well-known/oauth-protected-resource`)).json();
       check(prm.authorization_servers === undefined, 'advertises no authorization server');
-      const keyed = await fetch(`${halfBase}/sse`, { headers: { Authorization: `Bearer ${API_KEY}` } });
+      const keyed = await fetch(`${noDcrBase}/sse`, { headers: { Authorization: `Bearer ${API_KEY}` } });
       check(keyed.status === 200, `API-key connections still work (HTTP ${keyed.status})`);
       await keyed.body?.cancel();
     } finally {
-      halfConfigured.kill();
+      noDcrMcp.kill();
+      noDcrIdp.close();
     }
 
     // Test 10: a session may only be driven by the key that opened it.
@@ -372,13 +394,18 @@ async function run() {
       'rejection carries a WWW-Authenticate challenge',
     );
 
-    // Tests 14-19: the OAuth broker, against a stub identity provider. These
-    // cover what the broker forwards and what it adds - Auth0's own behaviour
-    // is not under test here.
-    console.log('\nTests 14-19: OAuth broker...');
+    // Tests 14-17: the OAuth handoff, against a stub identity provider. The
+    // provider is not under test - what is under test is that clients are sent
+    // to it directly, and that this server no longer sits in the flow.
+    console.log('\nTests 14-17: OAuth discovery handoff...');
     const idp = await startStubIdp();
+    // Test 9 used a stub too, and idpCalls is shared. Reset before the server
+    // starts so the counts below describe only this server's traffic.
+    idpCalls.length = 0;
+    const discoveryCallCount = () =>
+      idpCalls.filter(call => call.url.endsWith('/.well-known/openid-configuration')).length;
     const oauthMcp = await startMcpServer(
-      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT}`, AIQA_OAUTH_AUDIENCE: OAUTH_AUDIENCE },
+      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT}` },
       MCP_PORT_OAUTH,
     );
     const oauthBase = `http://localhost:${MCP_PORT_OAUTH}`;
@@ -386,89 +413,50 @@ async function run() {
       const health: any = await (await fetch(`${oauthBase}/health`)).json();
       check(health.oauth === 'enabled', `health reports oauth=${health.oauth}, expected enabled`);
 
-      // The protected resource must name this server, not the provider: clients
-      // have to come through the broker for the audience to be added.
       const prm: any = await (await fetch(`${oauthBase}/.well-known/oauth-protected-resource`)).json();
+
+      // Clients are pointed at the provider, and at the issuer the provider
+      // names itself by - not the string we were configured with. The stub
+      // advertises a trailing slash the configured value does not have, so this
+      // fails if the configured string is passed through instead.
       check(
-        Array.isArray(prm.authorization_servers) && prm.authorization_servers[0] === oauthBase,
-        `advertises itself as the authorization server (${prm.authorization_servers?.[0]})`,
+        Array.isArray(prm.authorization_servers) &&
+          prm.authorization_servers[0] === `http://localhost:${IDP_PORT}/`,
+        `advertises the provider's own issuer (${prm.authorization_servers?.[0]})`,
       );
 
-      const asm: any = await (await fetch(`${oauthBase}/.well-known/oauth-authorization-server`)).json();
-      check(asm.issuer === oauthBase, 'metadata issuer is this server');
-      check(asm.authorization_endpoint === `${oauthBase}/authorize`, 'advertises its own /authorize');
-      check(asm.token_endpoint === `${oauthBase}/token`, 'advertises its own /token');
-      check(asm.registration_endpoint === `${oauthBase}/register`, 'advertises its own /register');
-      check(asm.revocation_endpoint === `${oauthBase}/revoke`, 'advertises /revoke, which upstream has');
-      check(
-        JSON.stringify(asm.code_challenge_methods_supported) === '["S256"]',
-        'requires S256 PKCE only, so a client cannot downgrade to plain',
-      );
-      check(
-        JSON.stringify(asm.token_endpoint_auth_methods_supported) === '["client_secret_post","none"]',
-        'mirrors the provider\'s client authentication methods',
-      );
+      // The resource is what clients send as RFC 8707 `resource`, and so the
+      // audience the provider issues for. If this is not this server's public
+      // URL, the provider-side API identifier cannot match it.
+      check(prm.resource === oauthBase, `declares its own URL as the resource (${prm.resource})`);
 
-      // /authorize hands off to the provider with the audience added - the whole
-      // reason this broker exists.
-      const authorize = await fetch(
-        `${oauthBase}/authorize?response_type=code&client_id=abc` +
-          `&redirect_uri=${encodeURIComponent('http://localhost:9999/callback')}` +
-          '&state=xyz&code_challenge=CH&code_challenge_method=S256',
-        { redirect: 'manual' },
-      );
-      check(authorize.status === 302, `redirects (HTTP ${authorize.status})`);
-      const handoff = new URL(authorize.headers.get('location') ?? 'http://invalid');
-      check(handoff.origin === `http://localhost:${IDP_PORT}`, 'redirects to the provider');
-      check(handoff.searchParams.get('audience') === OAUTH_AUDIENCE, 'adds the audience');
+      // The broker is gone: no metadata of our own describing endpoints we no
+      // longer serve, and none of the endpoints themselves. A client finding
+      // these would be routed back through a server that adds nothing.
+      const asm = await fetch(`${oauthBase}/.well-known/oauth-authorization-server`);
       check(
-        handoff.searchParams.get('state') === 'xyz' &&
-          handoff.searchParams.get('code_challenge') === 'CH' &&
-          handoff.searchParams.get('redirect_uri') === 'http://localhost:9999/callback',
-        'passes the client\'s own parameters through untouched',
+        asm.status === 404,
+        `serves no authorization server metadata of its own (HTTP ${asm.status})`,
       );
+      for (const path of ['/authorize?client_id=abc', '/token', '/register', '/revoke']) {
+        const method = path === '/authorize?client_id=abc' ? 'GET' : 'POST';
+        const gone = await fetch(`${oauthBase}${path}`, { method, redirect: 'manual' });
+        check(gone.status === 404, `${method} ${path} is not served (HTTP ${gone.status})`);
+      }
 
-      // A client must not be able to choose the audience: that would be asking
-      // for a token valid against a different API.
-      const spoofed = await fetch(
-        `${oauthBase}/authorize?client_id=abc&audience=${encodeURIComponent('https://elsewhere.example')}`,
-        { redirect: 'manual' },
-      );
-      const spoofedAudience = new URL(spoofed.headers.get('location') ?? 'http://invalid').searchParams.get(
-        'audience',
-      );
-      check(spoofedAudience === OAUTH_AUDIENCE, `client-supplied audience overridden (got ${spoofedAudience})`);
-
-      // Registration is the whole point of DCR: the client self-registers
-      // through us, and the provider's answer comes back untouched.
-      const registration = await fetch(`${oauthBase}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_name: 'test-client', redirect_uris: ['http://localhost:9999/callback'] }),
-      });
-      check(registration.status === 201, `register returns the provider's status (${registration.status})`);
-      check((await registration.json() as any).client_id === 'stub-client-id', "returns the provider's client_id");
-      const registerCall = idpCalls.find(call => call.url === '/oidc/register');
+      // Nothing above should have reached the provider. Discovery at startup is
+      // the only call this server makes to it, which is the whole point of the
+      // change: the login path no longer passes through here.
       check(
-        !!registerCall && JSON.parse(registerCall.body).client_name === 'test-client',
-        'the registration body reached the provider intact',
+        discoveryCallCount() === 1,
+        `contacted the provider once, for discovery (${discoveryCallCount()} calls)`,
       );
-
-      // The token endpoint is form-encoded, and the provider is the one
-      // validating PKCE, so the bytes must arrive unaltered.
-      const form = 'grant_type=authorization_code&code=abc&code_verifier=v&client_id=abc';
-      const token = await fetch(`${oauthBase}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: form,
-      });
-      check(token.status === 200, `token returns the provider's status (${token.status})`);
-      check((await token.json() as any).access_token === 'stub-access-token', 'the token response is passed back');
-      const tokenCall = idpCalls.find(call => call.url === '/oauth/token');
-      check(tokenCall?.body === form, 'the form body was forwarded byte for byte');
+      const proxied = idpCalls.filter(
+        call => !call.url.endsWith('/.well-known/openid-configuration'),
+      );
       check(
-        tokenCall?.contentType === 'application/x-www-form-urlencoded',
-        'the content type was preserved',
+        proxied.length === 0,
+        `forwarded nothing to the provider (${proxied.map(c => c.url).join(', ') || 'none'})`,
       );
     } finally {
       oauthMcp.kill();
@@ -481,7 +469,7 @@ async function run() {
     const brokenBase = `http://localhost:${MCP_PORT_BROKEN}`;
     const brokenMcp = await startMcpServer(
       // Nothing is listening on this port, so discovery is refused immediately.
-      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT_UNUSED}`, AIQA_OAUTH_AUDIENCE: OAUTH_AUDIENCE },
+      { AIQA_OAUTH_ISSUER: `http://localhost:${IDP_PORT_UNUSED}` },
       MCP_PORT_BROKEN,
     );
     try {
@@ -490,10 +478,8 @@ async function run() {
       const prm: any = await (await fetch(`${brokenBase}/.well-known/oauth-protected-resource`)).json();
       check(
         prm.authorization_servers === undefined,
-        'does not advertise an authorization server it cannot broker to',
+        'does not advertise an authorization server it could not reach',
       );
-      const authorize = await fetch(`${brokenBase}/authorize?client_id=abc`, { redirect: 'manual' });
-      check(authorize.status === 404, `/authorize is not served at all (HTTP ${authorize.status})`);
       const keyed = await fetch(`${brokenBase}/sse`, { headers: { Authorization: `Bearer ${API_KEY}` } });
       check(keyed.status === 200, `API-key connections are unaffected (HTTP ${keyed.status})`);
       await keyed.body?.cancel();

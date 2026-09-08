@@ -26,8 +26,9 @@ Use this checklist to verify your deployment setup is complete.
       **no spaces**. First entry keeps admin. Leaving this unset means audiences
       are not verified at all and every JWT caller drops to developer - the
       server logs a warning at startup if so
-- [ ] (Optional, MCP OAuth) `AIQA_OAUTH_ISSUER` - Auth0 issuer URL, e.g. `https://winterstein.eu.auth0.com/`
-- [ ] (Optional, MCP OAuth) `AIQA_OAUTH_AUDIENCE` - Auth0 API identifier tokens are issued for. Both or neither
+- [ ] (Optional, MCP OAuth) `AIQA_OAUTH_ISSUER` - Auth0 issuer URL, e.g. `https://winterstein.eu.auth0.com/`.
+      There is no audience variable: clients send the MCP server's own public URL as
+      RFC 8707 `resource`, so `MCP_PUBLIC_URL` is the audience
 
 **Secrets** (Settings → Secrets and variables → Actions → Secrets tab):
 - [ ] `DEPLOY_SSH_KEY` - Private SSH key (full content)
@@ -71,21 +72,29 @@ Use this checklist to verify your deployment setup is complete.
 Skip all of this to stay API-key only, which is the default. Full detail in
 `mcp/DEPLOYMENT.md`.
 
-- [ ] Auth0: API created (identifier `https://server-aiqa.winterwell.com`, RS256,
-      *Allow Offline Access* on for refresh tokens) - **outstanding**; until it
-      exists `/authorize` fails with `Service not found`
+- [ ] Auth0: **Resource Parameter Compatibility Profile** on (Settings → Advanced),
+      or Auth0 ignores the `resource` clients send and issues an opaque token
+      server-aiqa cannot verify - **outstanding**
+- [ ] Auth0: API created whose identifier is exactly `MCP_PUBLIC_URL`
+      (`https://mcp-aiqa.winterwell.com`), RS256, *Allow Offline Access* on for
+      refresh tokens - **outstanding**; until it exists Auth0 fails the login with
+      `Service not found`. Note this is the MCP server's URL, not server-aiqa's
 - [x] Auth0: OIDC Dynamic Application Registration enabled (Settings → Advanced)
+- [ ] Auth0: tenant-wide Classic login page cleared - `custom_login_page_on: false`
+      on the global *All Applications* client, and on any existing `tpc_` client.
+      Third-party clients (which all DCR clients are) cannot use Classic, so every
+      login fails until this is done - **outstanding**
 - [ ] Auth0: login connection promoted to domain level (DCR clients are third-party
       applications, which can only use domain-level connections)
 - [ ] Auth0: delete the `aiqa-mcp-DCR-PROBE*-delete-me` applications left by testing
-- [ ] GitHub **Variables**: `AIQA_OAUTH_ISSUER` and `AIQA_OAUTH_AUDIENCE` both set,
-      and the same audience appended to `AUTH0_AUDIENCE`. Both deploy workflows
-      rewrite `.env` on the box from scratch, so editing `.env` on the server by
-      hand is lost on the next deploy
+- [ ] GitHub **Variables**: `AIQA_OAUTH_ISSUER` set, and `MCP_PUBLIC_URL` appended to
+      `AUTH0_AUDIENCE` (after the first entry, so it gets developer not admin). Both
+      deploy workflows rewrite `.env` on the box from scratch, so editing `.env` on
+      the server by hand is lost on the next deploy
 - [ ] Deploy the server *before* the MCP server, so the new audience is accepted
       by the time OAuth clients can reach it
 - [ ] nginx config re-copied and reloaded (no workflow triggers on `deploy/**`),
-      or `/authorize`, `/token`, `/register` and the discovery documents 404
+      or the discovery documents 404
 - [ ] `curl https://mcp-aiqa.winterwell.com/health` reports `"oauth":"enabled"`
 - [ ] Connected once from a real client end to end, in a browser
 
