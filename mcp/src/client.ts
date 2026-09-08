@@ -122,12 +122,16 @@ export class AiqaApiClient {
 
   async listExamples(
     dataset?: string,
+    organisation?: string,
     query?: string,
     limit?: number,
     offset?: number
   ): Promise<any> {
     const params = new URLSearchParams();
     if (dataset) params.append('dataset', dataset);
+    // Only read for JWT callers: for an API key the server takes the
+    // organisation from the key record and ignores this.
+    if (organisation) params.append('organisation', organisation);
     if (query) params.append('q', query);
     if (limit) params.append('limit', limit.toString());
     if (offset) params.append('offset', offset.toString());

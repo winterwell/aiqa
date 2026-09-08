@@ -74,11 +74,18 @@ Skip all of this to stay API-key only, which is the default. Full detail in
 
 - [ ] Auth0: **Resource Parameter Compatibility Profile** on (Settings → Advanced),
       or Auth0 ignores the `resource` clients send and issues an opaque token
-      server-aiqa cannot verify - **outstanding**
-- [ ] Auth0: API created whose identifier is exactly `MCP_PUBLIC_URL`
-      (`https://mcp-aiqa.winterwell.com`), RS256, *Allow Offline Access* on for
-      refresh tokens - **outstanding**; until it exists Auth0 fails the login with
-      `Service not found`. Note this is the MCP server's URL, not server-aiqa's
+      server-aiqa cannot verify - **outstanding**, confirmed 2026-09-08: an
+      `/authorize` probe sending `resource=<MCP URL>` reached the login page
+      instead of failing, i.e. Auth0 is still ignoring `resource` (see
+      *Verifying the Auth0 side* below)
+- [ ] Auth0: API created whose identifier is the MCP server's public URL **with a
+      trailing slash** (`https://mcp-aiqa.winterwell.com/`), RS256, *Allow Offline
+      Access* on for refresh tokens - **outstanding**; until it exists Auth0 fails
+      the login with `Service not found`. The slash matters: Auth0 matches
+      identifiers exactly and Claude Code sends the slash form. Note this is the
+      MCP server's URL, not server-aiqa's. **Outstanding**, confirmed 2026-09-08:
+      both spellings return `Service not found`, identically to a made-up
+      audience (see *Verifying the Auth0 side* below)
 - [x] Auth0: OIDC Dynamic Application Registration enabled (Settings → Advanced)
 - [ ] Auth0: tenant-wide Classic login page cleared - `custom_login_page_on: false`
       on the global *All Applications* client, and on any existing `tpc_` client.
@@ -87,16 +94,51 @@ Skip all of this to stay API-key only, which is the default. Full detail in
 - [ ] Auth0: login connection promoted to domain level (DCR clients are third-party
       applications, which can only use domain-level connections)
 - [ ] Auth0: delete the `aiqa-mcp-DCR-PROBE*-delete-me` applications left by testing
-- [ ] GitHub **Variables**: `AIQA_OAUTH_ISSUER` set, and `MCP_PUBLIC_URL` appended to
-      `AUTH0_AUDIENCE` (after the first entry, so it gets developer not admin). Both
+- [x] GitHub **Variables**: `AIQA_OAUTH_ISSUER` set, and `MCP_PUBLIC_URL` appended to
+      `AUTH0_AUDIENCE` in **both** spellings, with and without the trailing slash
+      (after the first entry, so they get developer not admin). Both
       deploy workflows rewrite `.env` on the box from scratch, so editing `.env` on
-      the server by hand is lost on the next deploy
-- [ ] Deploy the server *before* the MCP server, so the new audience is accepted
-      by the time OAuth clients can reach it
+      the server by hand is lost on the next deploy.
+      Done 2026-09-08 on the `prod` environment; the pre-existing
+      `https://server-aiqa.winterwell.com` entry was kept, and the stale
+      `AIQA_OAUTH_AUDIENCE` variable (the old broker's, read by nothing) deleted
+- [x] Deploy the server *before* the MCP server, so the new audience is accepted
+      by the time OAuth clients can reach it - done 2026-09-08
 - [ ] nginx config re-copied and reloaded (no workflow triggers on `deploy/**`),
       or the discovery documents 404
-- [ ] `curl https://mcp-aiqa.winterwell.com/health` reports `"oauth":"enabled"`
+- [x] `curl https://mcp-aiqa.winterwell.com/health` reports `"oauth":"enabled"`
 - [ ] Connected once from a real client end to end, in a browser
+
+### Verifying the Auth0 side
+
+Both Auth0 items above can be checked without a browser, using any existing
+first-party client id and one of its registered callback URLs. Auth0 resolves
+the API *before* asking anyone to log in, so nothing is signed in and no state
+changes:
+
+```bash
+CID=<a first-party Auth0 client id>
+RU=https://app-aiqa.winterwell.com   # must already be a callback URL on CID
+
+# Does the API exist? Compare against a deliberately made-up identifier.
+for A in 'https://mcp-aiqa.winterwell.com/' 'https://nope.invalid/'; do
+  curl -sD- -o/dev/null "https://winterstein.eu.auth0.com/authorize?client_id=$CID\
+&response_type=code&redirect_uri=$RU&scope=openid&audience=$A" | grep -i '^location:'
+done
+```
+
+`Service not found: <identifier>` means no such API. A redirect to `/u/login`
+means it exists.
+
+Then swap `audience=` for `resource=` and re-run. While the API is still
+missing, the two answers differ diagnostically:
+
+- `Service not found` - the compatibility profile is **on** (it resolved
+  `resource` to an API and found none)
+- a redirect to `/u/login` - the profile is **off**, `resource` was ignored
+
+Once both items are done, `resource=<MCP URL>` should redirect to `/u/login`,
+and the issued token should be a JWT whose `aud` is the MCP URL.
 
 ## Post-Deployment Verification
 

@@ -158,7 +158,7 @@ function setupToolHandlers(server: Server, apiKey: string) {
         properties: {
           organisation: {
             type: 'string',
-            description: 'Organisation ID (UUID) - optional, filters by organisation',
+            description: 'Organisation ID (UUID)',
           },
           query: {
             type: 'string',
@@ -175,6 +175,7 @@ function setupToolHandlers(server: Server, apiKey: string) {
             default: 0,
           },
         },
+        required: ['organisation'],
       },
     },
     {
@@ -186,6 +187,13 @@ function setupToolHandlers(server: Server, apiKey: string) {
           dataset: {
             type: 'string',
             description: 'Dataset ID (UUID) - recommended to filter by dataset to reduce token usage',
+          },
+          organisation: {
+            type: 'string',
+            description:
+              'Organisation ID (UUID). Ignored when connected with an API key, which is ' +
+              'already tied to one organisation. Required when connected via OAuth and the ' +
+              'user belongs to more than one organisation, which is otherwise ambiguous.',
           },
           query: {
             type: 'string',
@@ -216,7 +224,7 @@ function setupToolHandlers(server: Server, apiKey: string) {
           },
           organisation: {
             type: 'string',
-            description: 'Organisation ID (UUID) - optional, filters by organisation',
+            description: 'Organisation ID (UUID)',
           },
           query: {
             type: 'string',
@@ -233,6 +241,7 @@ function setupToolHandlers(server: Server, apiKey: string) {
             default: 0,
           },
         },
+        required: ['organisation'],
       },
     },
     {
@@ -384,6 +393,7 @@ function setupToolHandlers(server: Server, apiKey: string) {
       case 'query_examples': {
         const examples = await client.listExamples(
           args.dataset as string | undefined,
+          args.organisation as string | undefined,
           args.query as string | undefined,
           args.limit as number | undefined,
           args.offset as number | undefined

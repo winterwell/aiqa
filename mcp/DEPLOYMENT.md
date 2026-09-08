@@ -308,11 +308,20 @@ that is our own misconfiguration.
    ignores `resource`, and every client gets an opaque token that server-aiqa
    rejects. Auth0 also recommends enabling *Include Issuer in Authorization
    Responses* (RFC 9207) alongside it.
-2. **Create an API** (Applications -> APIs) with identifier exactly
-   `https://mcp-aiqa.winterwell.com` - the MCP server's public URL, i.e.
-   `MCP_PUBLIC_URL`, because that is the `resource` its clients ask for. Signing
-   algorithm RS256. Enable *Allow Offline Access*, or refresh tokens are never
-   issued and users get sent back to the browser whenever a token expires.
+2. **Create an API** (Applications -> APIs) whose identifier is the MCP
+   server's public URL, because that is the `resource` its clients ask for.
+   Signing algorithm RS256. Enable *Allow Offline Access*, or refresh tokens are
+   never issued and users get sent back to the browser whenever a token expires.
+
+   **Use the trailing-slash form: `https://mcp-aiqa.winterwell.com/`.** Auth0
+   matches identifiers as opaque strings, so the value has to be byte-identical
+   to what clients send - and Claude Code sends
+   `resource=https%3A%2F%2Fmcp-aiqa.winterwell.com%2F`. It round-trips the
+   advertised resource through the WHATWG URL parser, which appends `/` to a
+   URL with an empty path. The MCP spec says clients *should* omit the trailing
+   slash, and this server advertises it without one, so a client that follows
+   that advice sends the bare form instead. Neither is safe to assume: register
+   the slash form, and have server-aiqa accept both (see below).
 
    Note this is **not** the existing `https://server-aiqa.winterwell.com` API.
    The audience identifies the resource the client is talking to, which is the
@@ -373,8 +382,12 @@ server-aiqa (`server/.env`) must accept tokens for that audience. Add it to the
 existing list rather than replacing the value, so webapp tokens keep verifying:
 
 ```bash
-AUTH0_AUDIENCE=https://winterstein.eu.auth0.com/api/v2/,https://mcp-aiqa.winterwell.com
+AUTH0_AUDIENCE=https://winterstein.eu.auth0.com/api/v2/,https://mcp-aiqa.winterwell.com/,https://mcp-aiqa.winterwell.com
 ```
+
+Both spellings of the MCP URL are listed because clients differ on the trailing
+slash (see step 2), and accepting both costs nothing here while removing the
+whole failure mode. Only the one Auth0 has an API for can actually be issued.
 
 The **first** audience in that list gets admin access; the ones after it get
 developer. That is deliberate: an OAuth-connected editor should not be able to
@@ -408,6 +421,23 @@ API-key clients down:
 What startup checks *cannot* catch is a missing or mismatched Auth0 API - that
 needs a browser login. It shows up as `access_denied: Service not found:
 <resource>` from Auth0, or as a clean login followed by 401s from server-aiqa.
+
+### If a client asks this server for /authorize
+
+A client that connected while the broker existed has the old authorization
+server metadata cached - including a `client_id` it registered *through* the
+broker - and keeps calling endpoints this server no longer has:
+
+```
+{"message":"Route GET:/authorize?...&client_id=tpc_...&resource=https%3A%2F%2Fmcp-aiqa.winterwell.com%2F not found",
+ "error":"Not Found","statusCode":404}
+```
+
+Nothing is wrong with the server: check `/health` reports `oauth: "enabled"` and
+the protected resource document names Auth0, and it is doing its job. The client
+has to be made to re-run discovery. In Claude Code that is `/mcp` -> the server
+-> *Clear authentication*; the cached registration lives in the OS keychain, not
+in `~/.claude.json`, so there is no file to delete.
 
 ### Client configuration
 
