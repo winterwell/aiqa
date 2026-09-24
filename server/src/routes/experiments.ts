@@ -158,18 +158,18 @@ export async function registerExperimentRoutes(fastify: FastifyInstance): Promis
 
   /**
    * Score an example result for an experiment. You must first create the experiment with the createExperiment endpoint.
-   * POST body: { output, trace, scores, messages, errors, rateLimited } (Result interface + output)
+   * POST body: { output, trace, scores, messages, errors, rateLimited, parameters, noRemoteScoring } (Result interface + output)
    * For each metric (from dataset or example), if scores has a value, use it;
    * otherwise the server runs scoring for that metric.
    * Security: Authenticated users only. Organisation membership verified by authenticate middleware. Verifies experiment.organisation matches request.organisation (endpoint handler).
    */
   fastify.post('/experiment/:id/example/:exampleid/scoreAndStore', { preHandler: authenticate }, async (request: AuthenticatedRequest, reply) => {
     if (!checkAccessDeveloperOrAdmin(request, reply)) return;
-    const { id: experimentId, exampleid: exampleId, noRemoteScoring } = request.params as { id: string; exampleid: string; noRemoteScoring: boolean };
-    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>, messages?: Record<string, string>, errors?: Record<string, string>, rateLimited?: boolean, parameters?: Record<string, any> };
+    const { id: experimentId, exampleid: exampleId } = request.params as { id: string; exampleid: string };
+    const body = request.body as { output: any; trace?: string; scores?: Record<string, number>, messages?: Record<string, string>, errors?: Record<string, string>, rateLimited?: boolean, parameters?: Record<string, any>, noRemoteScoring?: boolean };
+    const noRemoteScoring = body.noRemoteScoring === true;
     const organisation = request.organisation!;
     // Note: treat {} same as unset
-    // TODO update clients to send parameters (if set) so this gets used
     const runParameters = body.parameters && Object.keys(body.parameters).length > 0 ? body.parameters : undefined;
  
     // Validate required fields

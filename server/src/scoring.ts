@@ -46,9 +46,9 @@ export async function scoreMetric(
 function scoreMetricJavascript(metric: Metric, output: any, example: any): Promise<number> {
 	return new Promise<number>((resolve, reject) => {
 		try {
-			const functionBody = metric.parameters?.code || metric.parameters?.script;
+			const functionBody = metric.code || metric.parameters?.code || metric.parameters?.script;
 			if (!functionBody) {
-				return reject(new Error('No script or code found in metric.parameters'));
+				return reject(new Error('No code found in metric.code or metric.parameters'));
 			}
 
 			// Create a secure sandbox with vm2

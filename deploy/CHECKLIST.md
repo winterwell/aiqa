@@ -72,28 +72,39 @@ Use this checklist to verify your deployment setup is complete.
 Skip all of this to stay API-key only, which is the default. Full detail in
 `mcp/DEPLOYMENT.md`.
 
-- [ ] Auth0: **Resource Parameter Compatibility Profile** on (Settings → Advanced),
+- [x] Auth0: **Resource Parameter Compatibility Profile** on (Settings → Advanced),
       or Auth0 ignores the `resource` clients send and issues an opaque token
-      server-aiqa cannot verify - **outstanding**, confirmed 2026-09-08: an
-      `/authorize` probe sending `resource=<MCP URL>` reached the login page
-      instead of failing, i.e. Auth0 is still ignoring `resource` (see
-      *Verifying the Auth0 side* below)
+      server-aiqa cannot verify - done 2026-09-08. Confirmed by probe: a
+      made-up `resource` now fails with `Service not found`, where before the
+      profile was on it was ignored and any value reached the login page
 - [ ] Auth0: API created whose identifier is the MCP server's public URL **with a
       trailing slash** (`https://mcp-aiqa.winterwell.com/`), RS256, *Allow Offline
       Access* on for refresh tokens - **outstanding**; until it exists Auth0 fails
       the login with `Service not found`. The slash matters: Auth0 matches
       identifiers exactly and Claude Code sends the slash form. Note this is the
-      MCP server's URL, not server-aiqa's. **Outstanding**, confirmed 2026-09-08:
-      both spellings return `Service not found`, identically to a made-up
-      audience (see *Verifying the Auth0 side* below)
+      MCP server's URL, not server-aiqa's. Done 2026-09-08, slash form only -
+      and Auth0 turned out **not** to normalise the slash, so the bare form
+      still fails. See *The trailing slash* below
 - [x] Auth0: OIDC Dynamic Application Registration enabled (Settings → Advanced)
+- [ ] Auth0: on the MCP API, **Default Permissions for Third-Party Applications**
+      → *User-Delegated Access* set to **All** (Applications → APIs → the MCP API
+      → Settings) - **outstanding**. Every DCR client is a third-party
+      application, and those get no access to a custom API by default, however
+      the API itself is configured. Without it `/authorize` fails before the
+      login page renders, with `invalid_request: Client "tpc_..." is not
+      authorized to access resource server "<MCP URL>"`. *All* rather than
+      *Authorized* because the API defines no permissions and server-aiqa reads
+      none - it authorises on `aud` alone, so the scope set can be empty
 - [ ] Auth0: tenant-wide Classic login page cleared - `custom_login_page_on: false`
       on the global *All Applications* client, and on any existing `tpc_` client.
       Third-party clients (which all DCR clients are) cannot use Classic, so every
       login fails until this is done - **outstanding**
 - [ ] Auth0: login connection promoted to domain level (DCR clients are third-party
       applications, which can only use domain-level connections)
-- [ ] Auth0: delete the `aiqa-mcp-DCR-PROBE*-delete-me` applications left by testing
+- [ ] Auth0: delete the `aiqa-mcp-DCR-PROBE*-delete-me` applications left by testing,
+      and `aiqa-mcp-probe-2026-09-08-delete-me` (`tpc_1uLTCjDqhoQFWcjg2pCS8L`).
+      Auth0's DCR response carries no `registration_access_token`, so a probe
+      client cannot delete itself over RFC 7592 - it has to be done by hand
 - [x] GitHub **Variables**: `AIQA_OAUTH_ISSUER` set, and `MCP_PUBLIC_URL` appended to
       `AUTH0_AUDIENCE` in **both** spellings, with and without the trailing slash
       (after the first entry, so they get developer not admin). Both
@@ -139,6 +150,21 @@ missing, the two answers differ diagnostically:
 
 Once both items are done, `resource=<MCP URL>` should redirect to `/u/login`,
 and the issued token should be a JWT whose `aud` is the MCP URL.
+
+### The trailing slash
+
+Measured 2026-09-08, with the API registered as
+`https://mcp-aiqa.winterwell.com/`: Auth0 does **not** normalise the slash.
+`resource=https://mcp-aiqa.winterwell.com/` resolves; the bare
+`resource=https://mcp-aiqa.winterwell.com` returns `Service not found`.
+
+This server advertises the bare form in its protected resource document, so a
+client that passes the advertised value through unchanged fails, while Claude
+Code works because it round-trips the value through a URL parser that appends
+the slash. `AUTH0_AUDIENCE` already lists both spellings, so the only thing
+missing for the bare form is a second Auth0 API with that identifier. Worth
+adding if any client other than Claude Code has to connect; until then the
+slash form is the one that matters.
 
 ## Post-Deployment Verification
 

@@ -328,7 +328,31 @@ that is our own misconfiguration.
    MCP server; server-aiqa is told to accept it (see below). Reusing the
    server-aiqa identifier would mean advertising a `resource` that is not this
    server's own URL, which clients are entitled to reject.
-3. **Enable dynamic client registration** - done. Settings -> Advanced -> *OIDC
+
+   Auth0 does **not** normalise the slash: with the API registered as the slash
+   form, `resource=https://mcp-aiqa.winterwell.com` (bare) returns `Service not
+   found`. Since this server advertises the bare form, a client that uses the
+   advertised value verbatim fails. Register a second API with the bare
+   identifier if such a client has to connect - `AUTH0_AUDIENCE` already lists
+   both spellings, so nothing else needs changing.
+3. **Authorise third-party applications on that API.** Applications -> APIs ->
+   the MCP API -> Settings -> *Default Permissions for Third-Party
+   Applications*, and set *User-Delegated Access* to **All**. Every DCR client
+   is a third-party application, and third-party applications get no access to
+   a custom API by default. Skip this and `/authorize` fails before the login
+   page renders:
+
+   ```
+   invalid_request: Client "tpc_..." is not authorized to access resource
+   server "https://mcp-aiqa.winterwell.com/".
+   ```
+
+   *All* rather than *Authorized* because the API defines no permissions, and
+   server-aiqa reads none - it authorises on the token's `aud` alone (see
+   *Server configuration*), so an empty scope set is enough. The equivalent
+   Management API call is a `POST /api/v2/client-grants` carrying
+   `default_for: "third_party_clients"` and `subject_type: "user"`.
+4. **Enable dynamic client registration** - done. Settings -> Advanced -> *OIDC
    Dynamic Application Registration*. Equivalent Management API call:
    `PATCH /api/v2/tenants/settings` with
    `{"flags":{"enable_dynamic_client_registration":true}}`.
@@ -336,7 +360,7 @@ that is our own misconfiguration.
    anyone may POST to `/oidc/register` and create third-party application
    entries (they appear with a `tpc_` client_id prefix). That is inherent to
    DCR, and it is what lets clients self-register.
-4. **Turn off the tenant-wide Classic login page.** The global *All
+5. **Turn off the tenant-wide Classic login page.** The global *All
    Applications* client carries `custom_login_page_on: true` with no page
    behind it, which forces the Classic experience, and Auth0 refuses to serve
    Classic to third-party clients: *"Third Party clients are not allowed to use
@@ -346,7 +370,7 @@ that is our own misconfiguration.
    `{"custom_login_page_on":false}`. Existing `tpc_` clients need the same patch
    individually; the tenant flags themselves are already correct
    (`new_universal_login_experience_enabled: true`).
-5. **Promote the login connection to domain level.** Third-party applications
+6. **Promote the login connection to domain level.** Third-party applications
    can only use domain-level connections. Whichever connection your users log in
    with needs this, or registration succeeds and login then fails. This cannot
    be checked without a browser login, so it is the most likely remaining
