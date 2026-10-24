@@ -31,6 +31,9 @@ https://aiqa.winterwell.com - production website AND proxy to the server
 http://localhost:4000 - local webapp
 http://localhost:4318 - local server
 
+The easiest way to start local is
+`docker compose up`
+See DOCKER.md
 
 ## Deployment
 

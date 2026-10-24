@@ -2,6 +2,8 @@
 
 FROM node:20-slim AS base
 
+RUN npm config set strict-ssl false
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -42,7 +44,8 @@ RUN if [ ! -f server/opentelemetry-proto/opentelemetry/proto/collector/trace/v1/
 
 # Install dependencies and build
 WORKDIR /app/server
-RUN pnpm install && pnpm run build
+RUN pnpm approve-builds browser-tabs-lock esbuild protobufjs sharp
+RUN NODE_TLS_REJECT_UNAUTHORIZED=0 pnpm install && pnpm run build
 
 # Runtime stage
 FROM node:20-slim

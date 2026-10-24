@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aiqa"]
       interval: 5s
@@ -82,8 +82,12 @@ services:
       # Auth0 configuration (shared with webapp - can be overridden in root .env)
       AUTH0_DOMAIN: ${AUTH0_DOMAIN:-winterstein.eu.auth0.com}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://winterstein.eu.auth0.com/api/v2/}
+      # allow self-signed certificates at runtime for OAuth flexiblity
+      NODE_TLS_REJECT_UNAUTHORIZED: 0
+      AIQA_ADMIN_EMAIL: ${AIQA_ADMIN_EMAIL}
     ports:
       - "4418:${SERVER_PORT:-4318}"  # HTTP API — host 4418 → container SERVER_PORT (default 4318)
+      - "4318:${SERVER_PORT:-4318}"  # Is it OK to have both these lines??
       - "4417:${GRPC_PORT:-4317}"  # gRPC — host 4417 → container GRPC_PORT (default 4317)
     depends_on:
       postgres:
@@ -129,7 +133,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    # Removed volume mounts for production - use built images instead
+    # # Remove volume mounts for production - use built images instead
     # volumes:
     #   - ./server:/app/server
     #   - server_node_modules:/app/server/node_modules

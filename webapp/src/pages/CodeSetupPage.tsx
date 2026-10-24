@@ -134,10 +134,10 @@ function JavaScriptCodeSetupPane({ apiKey }: { apiKey?: ApiKey }) {
   return (
     <div>
  <h5>Install the client-js library</h5>
-<p><code>npm install @aiqa/client-js</code></p>
+<p><code>npm install aiqa-client</code></p>
 <HowToSetYourEnv />
 <h5>Wrap the functions you want to trace using the <code>withTracing</code> or <code>withTracingAsync</code> decorators</h5>
-<pre><code>{`import { withTracing, withTracingAsync } from '@aiqa/client-js';
+<pre><code>{`import { withTracing, withTracingAsync } from 'aiqa-client';
 
 const tracedFn = withTracing(fn);
 

@@ -15,6 +15,20 @@ docker-compose down
 # Stop and remove volumes (clean slate)
 docker-compose down -v
 ```
+### Troubleshooting the Quick Start
+
+#### Is required software installed?
+Docker or Collima
+
+The Docker plugin buildx
+Symptom: buildx Docker CLI plugin not found
+On MacOS: 
+brew install docker-buildx
+
+#### If ElasticSearch dies
+
+Elasticsearch the usual culprit is memory pressure/OOM.
+Try increasing the memory Docker has
 
 ## Services
 
@@ -27,6 +41,7 @@ docker-compose down -v
 - `nginx`: React frontend (port 4000)
 
 **Browser vs compose:** The webapp build defaults `VITE_AIQA_SERVER_URL` to `http://localhost:4318`. On the host, the API is published on **4418** by default, so for local Docker builds either pass `VITE_AIQA_SERVER_URL=http://localhost:4418` as a build arg for `nginx`, or use a reverse proxy that exposes the API on 4318.
+TODO can we simplify this?? Why not use 4318 everywhere??
 
 ## Environment Variables
 

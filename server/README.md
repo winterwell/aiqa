@@ -178,6 +178,8 @@ Or if using pnpm:
 
 **Note:** Make sure the script has access to the same environment variables (`.env` file or system environment) as the main server, including `DATABASE_URL` (or `PGHOST`/`PGDATABASE`/etc) and `ELASTICSEARCH_URL`.
 
+TODO is this setup for Dockerfile.server servers?
+
 ### How It Works
 
 1. Connects to PostgreSQL to fetch all organisations

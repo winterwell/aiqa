@@ -4,6 +4,8 @@
 # Build stage - build the webapp
 FROM node:20-slim AS webapp-builder
 
+# RUN npm config set strict-ssl false
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
@@ -12,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pnpm globally
-RUN npm install -g pnpm
+RUN NODE_TLS_REJECT_UNAUTHORIZED=0 npm install -g pnpm
 
 WORKDIR /app
 
@@ -43,7 +45,8 @@ ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 
 # Install dependencies and build
 WORKDIR /app/webapp
-RUN pnpm install
+RUN pnpm approve-builds browser-tabs-lock esbuild protobufjs sharp
+RUN NODE_TLS_REJECT_UNAUTHORIZED=0 pnpm install
 
 # Create symlink for shared common code
 RUN ln -s /app/server/src/common /app/webapp/src/common || true

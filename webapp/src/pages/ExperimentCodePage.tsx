@@ -97,7 +97,7 @@ const ExperimentCodePage: React.FC = () => {
                     <li>
                       <strong>Install the client-js library:</strong>
                       <br />
-                      <code>npm install @aiqa/client-js</code>
+                      <code>npm install aiqa-client</code>
                     </li>
                     <li>
 						<HowToSetYourEnv />

@@ -97,7 +97,7 @@ def my_ai_function(prompt: str):
 			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>npm install @aiqa/client</code></pre>
+					<pre class="mb-0"><code>npm install aiqa-client</code></pre>
 				</div>
 			</div>
 
@@ -113,7 +113,7 @@ export AIQA_API_KEY="your-api-key"</code></pre>
 			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>import { getAiqaClient, withTracing } from '@aiqa/client';
+					<pre class="mb-0"><code>import { getAiqaClient, withTracing } from 'aiqa-client';
 
 // Initialize client
 getAiqaClient();
@@ -171,11 +171,11 @@ asyncio.run(main())</code></pre>
 				</div>
 			</div>
 
-			<h3 class="h4 fw-bold mt-4 mb-3">JavaScript / TypeScript (<code>@aiqa/client-js</code>)</h3>
-			<p class="text-muted">Install <code>npm install @aiqa/client-js</code>, set the same environment variables, then use <code>ExperimentRunner</code> from the package. Pass <code>datasetId</code> and <code>organisationId</code>, call <code>createExperiment</code>, then <code>await runner.run(myEngine, scorer)</code>. The optional <code>scorer(output, example)</code> returns numeric metric scores. Use <code>getSummaryResults()</code> for aggregate stats. For more control, call <code>runExample</code> in a loop over <code>getExampleInputs()</code>.</p>
+			<h3 class="h4 fw-bold mt-4 mb-3">JavaScript / TypeScript (<code>aiqa-client</code>)</h3>
+			<p class="text-muted">Install <code>npm install aiqa-client</code>, set the same environment variables, then use <code>ExperimentRunner</code> from the package. Pass <code>datasetId</code> and <code>organisationId</code>, call <code>createExperiment</code>, then <code>await runner.run(myEngine, scorer)</code>. The optional <code>scorer(output, example)</code> returns numeric metric scores. Use <code>getSummaryResults()</code> for aggregate stats. For more control, call <code>runExample</code> in a loop over <code>getExampleInputs()</code>.</p>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>import { ExperimentRunner } from '@aiqa/client-js';
+					<pre class="mb-0"><code>import { ExperimentRunner } from 'aiqa-client';
 
 async function main() {
   const runner = new ExperimentRunner({
