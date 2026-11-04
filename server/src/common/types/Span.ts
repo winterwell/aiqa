@@ -77,6 +77,7 @@ export function getSpanInput(span: Span) {
   return span.attributes?.input;
 }
 export function getSpanOutput(span: Span) {
+  // At this time, we don't check gen_ai.outputs or gen_ai.outputs.messages - preferring to standardise on attributes.output which is more generic.
   return span.attributes?.output;
 }
 

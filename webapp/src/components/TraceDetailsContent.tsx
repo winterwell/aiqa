@@ -82,7 +82,6 @@ function getSpanSummary(span: Span, children: SpanTree[]): string | ChatMessage 
       return message;
     }
   }
-
   // If no summary from output, check child spans
   for (const child of children) {
     const childSummary = getSpanSummary(child.span, child.children);
