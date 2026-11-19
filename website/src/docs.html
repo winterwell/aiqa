@@ -134,10 +134,28 @@ async function myAiFunction(prompt: string) {
 				Each traced function creates a span that includes all relevant information.
 			</p>
 
+
 			<h3 class="h4 fw-bold mt-4 mb-3">Conversations</h3>
 			<p>
 				Group related traces together using conversation IDs. This is especially useful for 
 				multi-step AI interactions or user sessions.
+			</p>
+
+			<h3 id="feedback-tracing" class="h4 fw-bold mt-4 mb-3">Add feedback tracing</h3>
+			<p>
+				Send user feedback as a span in the same trace as the AI response, using your existing OTLP export to AIQA. Set these span attributes:
+			</p>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>{
+  "gen_ai.operation.name": "feedback",
+  "feedback.value": "positive",
+  "feedback.comment": "The answer was helpful"
+}</code></pre>
+				</div>
+			</div>
+			<p class="text-muted">
+				Use <code>negative</code> for a thumbs-down; the comment is optional. Keep the original trace ID so AIQA can associate the feedback with the response.
 			</p>
 
 			<hr class="my-5"/>

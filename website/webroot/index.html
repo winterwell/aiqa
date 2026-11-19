@@ -6,7 +6,20 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
 	<meta name="author" content="AIQA">
-	<link rel="icon" href="/favicon.ico">
+	<meta property="og:title" content="AIQA - AI Quality Assurance Made Simple">
+	<meta property="og:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta property="og:type" content="website">
+	<meta property="og:url" content="https://aiqa.winterwell.com/">
+	<meta property="og:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<meta property="og:image:type" content="image/png">
+	<meta property="og:image:width" content="600">
+	<meta property="og:image:height" content="600">
+	<meta property="og:image:alt" content="AIQA logo">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="AIQA - AI Quality Assurance Made Simple">
+	<meta name="twitter:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta name="twitter:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<link rel="icon" type="image/svg+xml" href="/img/aiqa-badge.svg">
 
 	<title>AIQA - AI Quality Assurance Made Simple</title>
 
@@ -21,8 +34,8 @@
 	<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
 	<div class="container">
 		<a class="navbar-brand fw-bold d-flex align-items-center" href="/">
-			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
-			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
 			AIQA
 		</a>
 		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
@@ -58,7 +71,6 @@
 
 
 	<main>
-		
 <div class="hero-section bg-primary text-white py-4 py-md-5 mb-4 mb-md-5">
 	<div class="container">
 		<div class="row align-items-center">
@@ -252,7 +264,7 @@ await flush_tracing()</code></pre>
 						</div>
 						<!-- JavaScript -->
 						<div class="tab-pane fade" id="javascript" role="tabpanel" aria-labelledby="javascript-tab">
-							<pre class="mb-0"><code class="text-light">import { withTracing } from '@aiqa/client';
+							<pre class="mb-0"><code class="text-light">import { withTracing } from 'aiqa-client';
 
 // Just wrap your function
 const myAiFunction = withTracing(async (prompt: string) => {
@@ -400,7 +412,7 @@ curl -X POST https://your-aiqa-server.com/v1/traces \\
 		<div class="row">
 			<div class="col-md-6">
 				<div class="d-flex align-items-center mb-3">
-					<img src="/common/icons/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
+					<img src="/img/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
 					<h5 class="mb-0">AIQA</h5>
 				</div>
 				<p class="text-muted">AI Quality Assurance made simple. Test your AI systems with confidence.</p>

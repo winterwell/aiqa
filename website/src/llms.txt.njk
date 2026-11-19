@@ -1,0 +1,14 @@
+---
+permalink: /llms.txt
+---
+
+# AIQA
+
+AIQA helps teams trace and evaluate AI applications using OpenTelemetry.
+
+## For coding agents
+
+- Read the [integration docs](https://aiqa.winterwell.com/docs.html) before changing an AIQA integration.
+- Send traces to the configured AIQA OTLP endpoint using the project's API key. Keep credentials out of source control.
+- To record thumbs-up/down feedback, export a span in the response's trace with `gen_ai.operation.name=feedback`, `feedback.value=positive|negative`, and optional `feedback.comment`.
+- Keep the feedback span's trace ID the same as the AI response's trace ID.

@@ -26,9 +26,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install LESS compiler
-        run: npm install -g less
-
       - name: Verify website directory exists
         run: |
           pwd
@@ -55,12 +52,6 @@ jobs:
         working-directory: ./website
         run: |
           cp -r ../webapp/public/common webroot/common
-
-      - name: Compile LESS to CSS
-        working-directory: ./website
-        run: |
-          mkdir -p webroot/style
-          lessc style/main.less webroot/style/main.css
 
       - name: Build website with Eleventy
         working-directory: ./website

@@ -6,7 +6,20 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
 	<meta name="author" content="AIQA">
-	<link rel="icon" href="/favicon.ico">
+	<meta property="og:title" content="Documentation - AIQA">
+	<meta property="og:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta property="og:type" content="website">
+	<meta property="og:url" content="https://aiqa.winterwell.com/docs.html">
+	<meta property="og:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<meta property="og:image:type" content="image/png">
+	<meta property="og:image:width" content="600">
+	<meta property="og:image:height" content="600">
+	<meta property="og:image:alt" content="AIQA logo">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="Documentation - AIQA">
+	<meta name="twitter:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta name="twitter:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<link rel="icon" type="image/svg+xml" href="/img/aiqa-badge.svg">
 
 	<title>Documentation - AIQA</title>
 
@@ -21,8 +34,8 @@
 	<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
 	<div class="container">
 		<a class="navbar-brand fw-bold d-flex align-items-center" href="/">
-			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
-			<img src="/common/icons/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="128" class="me-2 d-none d-md-block" style="display: block;">
+			<img src="/img/aiqa-badge.svg" alt="AIQA Logo" height="64" class="me-2 d-md-none" style="display: block;">
 			AIQA
 		</a>
 		<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
@@ -58,7 +71,6 @@
 
 
 	<main>
-		
 <div class="container py-5">
 	<div class="row">
 		<div class="col-lg-10 mx-auto">
@@ -152,7 +164,7 @@ def my_ai_function(prompt: str):
 			<h3 class="h4 fw-bold mt-4 mb-3">Installation</h3>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>npm install @aiqa/client</code></pre>
+					<pre class="mb-0"><code>npm install aiqa-client</code></pre>
 				</div>
 			</div>
 
@@ -168,7 +180,7 @@ export AIQA_API_KEY="your-api-key"</code></pre>
 			<h3 class="h4 fw-bold mt-4 mb-3">Basic Usage</h3>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>import { getAiqaClient, withTracing } from '@aiqa/client';
+					<pre class="mb-0"><code>import { getAiqaClient, withTracing } from 'aiqa-client';
 
 // Initialize client
 getAiqaClient();
@@ -189,10 +201,28 @@ async function myAiFunction(prompt: string) {
 				Each traced function creates a span that includes all relevant information.
 			</p>
 
+
 			<h3 class="h4 fw-bold mt-4 mb-3">Conversations</h3>
 			<p>
 				Group related traces together using conversation IDs. This is especially useful for 
 				multi-step AI interactions or user sessions.
+			</p>
+
+			<h3 id="feedback-tracing" class="h4 fw-bold mt-4 mb-3">Add feedback tracing</h3>
+			<p>
+				Send user feedback as a span in the same trace as the AI response, using your existing OTLP export to AIQA. Set these span attributes:
+			</p>
+			<div class="card bg-dark text-light mb-4">
+				<div class="card-body">
+					<pre class="mb-0"><code>{
+  "gen_ai.operation.name": "feedback",
+  "feedback.value": "positive",
+  "feedback.comment": "The answer was helpful"
+}</code></pre>
+				</div>
+			</div>
+			<p class="text-muted">
+				Use <code>negative</code> for a thumbs-down; the comment is optional. Keep the original trace ID so AIQA can associate the feedback with the response.
 			</p>
 
 			<hr class="my-5"/>
@@ -226,11 +256,11 @@ asyncio.run(main())</code></pre>
 				</div>
 			</div>
 
-			<h3 class="h4 fw-bold mt-4 mb-3">JavaScript / TypeScript (<code>@aiqa/client-js</code>)</h3>
-			<p class="text-muted">Install <code>npm install @aiqa/client-js</code>, set the same environment variables, then use <code>ExperimentRunner</code> from the package. Pass <code>datasetId</code> and <code>organisationId</code>, call <code>createExperiment</code>, then <code>await runner.run(myEngine, scorer)</code>. The optional <code>scorer(output, example)</code> returns numeric metric scores. Use <code>getSummaryResults()</code> for aggregate stats. For more control, call <code>runExample</code> in a loop over <code>getExampleInputs()</code>.</p>
+			<h3 class="h4 fw-bold mt-4 mb-3">JavaScript / TypeScript (<code>aiqa-client</code>)</h3>
+			<p class="text-muted">Install <code>npm install aiqa-client</code>, set the same environment variables, then use <code>ExperimentRunner</code> from the package. Pass <code>datasetId</code> and <code>organisationId</code>, call <code>createExperiment</code>, then <code>await runner.run(myEngine, scorer)</code>. The optional <code>scorer(output, example)</code> returns numeric metric scores. Use <code>getSummaryResults()</code> for aggregate stats. For more control, call <code>runExample</code> in a loop over <code>getExampleInputs()</code>.</p>
 			<div class="card bg-dark text-light mb-4">
 				<div class="card-body">
-					<pre class="mb-0"><code>import { ExperimentRunner } from '@aiqa/client-js';
+					<pre class="mb-0"><code>import { ExperimentRunner } from 'aiqa-client';
 
 async function main() {
   const runner = new ExperimentRunner({
@@ -302,7 +332,7 @@ main();</code></pre>
 		<div class="row">
 			<div class="col-md-6">
 				<div class="d-flex align-items-center mb-3">
-					<img src="/common/icons/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
+					<img src="/img/aiqa-badge.svg" alt="AIQA Badge" height="40" class="me-2">
 					<h5 class="mb-0">AIQA</h5>
 				</div>
 				<p class="text-muted">AI Quality Assurance made simple. Test your AI systems with confidence.</p>

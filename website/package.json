@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "description": "AIQA website built with Eleventy",
   "scripts": {
-    "build": "eleventy",
-    "dev": "eleventy --serve",
+    "build:css": "mkdir -p webroot/style && lessc style/main.less webroot/style/main.css",
+    "build": "npm run build:css && eleventy",
+    "dev": "npm run build:css && eleventy --serve",
     "watch": "eleventy --watch"
   },
   "devDependencies": {
-    "@11ty/eleventy": "^2.0.1"
+    "@11ty/eleventy": "^2.0.1",
+    "less": "^4.9.1"
   }
 }

@@ -6,7 +6,20 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
 	<meta name="author" content="AIQA">
-	<link rel="icon" href="/favicon.ico">
+	<meta property="og:title" content="{% if title %}{{ title }}{% else %}AIQA - AI Quality Assurance Made Simple{% endif %}">
+	<meta property="og:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta property="og:type" content="website">
+	<meta property="og:url" content="https://aiqa.winterwell.com{{ page.url }}">
+	<meta property="og:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<meta property="og:image:type" content="image/png">
+	<meta property="og:image:width" content="600">
+	<meta property="og:image:height" content="600">
+	<meta property="og:image:alt" content="AIQA logo">
+	<meta name="twitter:card" content="summary">
+	<meta name="twitter:title" content="{% if title %}{{ title }}{% else %}AIQA - AI Quality Assurance Made Simple{% endif %}">
+	<meta name="twitter:description" content="AIQA - AI Quality Assurance. Test your AI systems with confidence. Quality, reliability, and ease of use.">
+	<meta name="twitter:image" content="https://aiqa.winterwell.com/img/aiqa-social-preview.png">
+	<link rel="icon" type="image/svg+xml" href="/img/aiqa-badge.svg">
 
 	<title>{% if title %}{{ title }}{% else %}AIQA - AI Quality Assurance Made Simple{% endif %}</title>
 
@@ -21,7 +34,7 @@
 	{% include "navbar.html" %}
 
 	<main>
-		{{ content | safe }}
+		{{- content | safe }}
 	</main>
 
 	{% include "footer.html" %}

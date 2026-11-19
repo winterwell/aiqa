@@ -21,22 +21,24 @@ would include only if the WebSearch tool was used to search for "fish" (potentia
 ## Sampling and filtering settings
 
 Can be set by env vars, or can be set dynamically per-organization in the webapp.
+Env-vars take priority if set.
+Dynamic vars are the recommended way.
 
 Env vars:
 
 Client-side
 
-AIQA_SAMPLING_FREQUENCY: [0-1] where 1 means keep all traces. Default: 1
+AIQA_SAMPLING_RATE: [0-1] where 1 means keep all traces. Default: 1
 AIQA_SPAN_FILTER: string[], default none = ["include-all"]
 AIQA_TRACE_FILTER: string[], default none = ["include-all"]
 
 Server side:
 
-AIQA_SERVER_SAMPLING_FREQUENCY: [0-1] where 1 means keep all traces. Default: 1
+AIQA_SERVER_SAMPLING_RATE: [0-1] where 1 means keep all traces. Default: 1
 AIQA_SERVER_SPAN_FILTER: string[], default none = ["include-all"]
 AIQA_SERVER_TRACE_FILTER: string[], default none = ["include-all"]
 
-Client and server side sampling and filtering can both apply - in which case only traces which pass both get stored.
+Client and server side sampling and filtering can both apply - in which case they compound and only traces which pass both get stored.
 
 For dynamic settings, clients should call the server to get and apply the latest settings.
 This is controlled by client-side env vars:

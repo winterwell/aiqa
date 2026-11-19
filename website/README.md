@@ -26,6 +26,8 @@ npm install
 npm run build
 ```
 
+Both `build` and `dev` compile `style/main.less` to `webroot/style/main.css` with the local LESS compiler before running Eleventy. This happens at startup; rerun `npm run build:css` or restart `dev` after editing LESS files.
+
 ### Development Server
 
 ```bash
