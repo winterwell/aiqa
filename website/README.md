@@ -10,6 +10,8 @@ The AIQA website, built with Eleventy (11ty).
 - `style/` - LESS stylesheets (compiled to CSS)
 - `webroot/` - Generated HTML output (do not edit directly)
 
+TODO let's copy webapp/public/common to website/webroot/common so that the website can reuse webapp images.
+
 ## Development
 
 The site uses Eleventy to convert HTML templates in `src/` to HTML in `webroot/`.

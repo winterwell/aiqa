@@ -3,6 +3,7 @@ module.exports = function(eleventyConfig) {
   // Note: Static assets in webroot will be preserved during build
   // We copy style directory to output
   eleventyConfig.addPassthroughCopy("style");
+  eleventyConfig.addPassthroughCopy({ "src/img": "img" });
 
   return {
     dir: {
