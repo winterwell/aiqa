@@ -1,63 +1,53 @@
 
-## Work & priorities
+## Project Management
 
  - We have lots of work in progress.
- - Work is often left unfinished.
+ - Work items are often left unfinished.
  - Urgent requests routinely jump the queue.
  - It can be hard to tell what the team is actually working on.
- - Tasks often over-run.
  - Tasks don't have delivery dates.
+ - Tasks have delivery dates but regularly over-run.
+ - Management and planning meetings take up more than 20% of staff time.
+ - Work gets delayed by approval / sign-off queues.
+
+## Coordination and Shared Knowledge
+
+ - Some systems have a "only Alice knows how this works" person.
+ - Important work lives in Slack/Teams/email/people's heads.
+ - Tasks don't have a clear owner, and can get stuck in limbo.
+ - We need meetings or messages to discover the status of ordinary work.
+ - Onboarding new staff is slow.
+ - We have multiple sources of truth for work / status.
+ - People debate whether code matches what was asked for.
+ - Key people worry about taking holiday.
 
 ## Bugs & operational work
 
  - Customers/users often discover problems before we do.
+ - Individual developers can't run and test the whole system.
  - Testing is mostly manual.
  - Testing is only automated - we don't have regular manual quality checks.
  - Bugs get reported but are sometimes forgotten or lost.
- - The same kinds of problems keep recurring.
  - Customer support issues regularly interrupt and delay planned work.
- - We fix the immediate problem but rarely fix the underlying cause.
- - The system feels slow to users.
+ - Our software feels slow to users.
+ - Issues surface in production which weren't visible in development.
 
-## Build → release
+## Release!
 
  - Work is sometimes "done" but not actually released.
- - Releases are manual, stressful, or dependent on particular people.
+ - Releases depend on a particular person.
  - We aren't always sure what version a client is using.
- - Small changes can take surprisingly long to get live.
- - Developers hesitate to change certain areas because nobody is
-confident what might break.
+ - Clients don't always get told of new features.
 
-## Customer → company feedback loop
+## Client Engagement
 
  - Someone reports a problem, we fix it, but nobody tells them.
- - Support/customer-facing teams can't easily see whether something has
-been fixed or released.
- - Designers and engineers don't routinely see customer support issues.
+ - Support staff can't easily see whether something has been fixed or released.
  - Designers and engineers have no customer contact.
-
-## Ownership & ways of working
-
- - Some systems have a “only Alice knows how this works” person.
- - Important work lives in Slack/Teams/email/people's heads.
- - Issues don't have a natural owner, and can get stuck in limbo.
- - We need meetings/messages to discover the status of ordinary work.
- - Onboarding new staff is slow.
- - Work gets delayed by approval queues.
- - Staff have to get approval for minor changes.
-
-## Tools, environments & information
-
- - We have multiple sources of truth for work/status.
- - Dev/test/production behave differently enough to cause surprises.
- - Access, environments or tooling regularly block people getting work done.
- - Documentation is often missing, stale, or difficult to find.
  
-## Can we tell if we're getting better?
+## Measurement & Reliability
 
- - We can't say what our velocity is. measure activity more easily than flow, quality or reliability.
- - We can't readily say how long work normally takes from start to production.
- - We can't readily say how often we deploy or how often deployments
-cause problems.
- - Management status can look green until suddenly it isn't.
- - We make process improvements mostly after something painful happens.
+ - We don't know which features users actually use.
+ - We can't estimate when features will be delivered.
+ - We don't know how close servers are to falling over.
+ - We make improvements mostly after something painful happens.
