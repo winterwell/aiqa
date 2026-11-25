@@ -16,3 +16,4 @@ server/.npmrc webapp/.npmrc
 **/__pycache__
 website/webroot
 doc/talks/7-deadly-sins/reveal.js-master.zip
+.DS_Store
