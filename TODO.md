@@ -1,5 +1,23 @@
 TODO
 
+View by conversation id - we have - make it easier to find
+Better conversation view
+
+Attribution for agentic systems:
+Problem: multi-step and multi-turn flows
+Solutions:
+Attribute blame to particular steps (credit is not worth attributing as good is needed at most steps)
+ - manually: user picks the steps to blame
+ - LLM: identify the end problem (ideally with user input), then look for the cause. Can use other good/unknown runs for comparison (provide a tool).
+ - data-science: if we have enough data
+     - look for markers that distinguish good/bad runs
+     - advanced: make the steps differentiable by a proxy small network acting at a simplified level
+ - smart: shifts towards data-driven as data grows
+Note: Steps are sequential and hierarchical. Blame can be set at any level or across a few steps.
+Total blame should sum to 1. If there were several different issues, then split them out.
+Once we have blame - analyse by llm for cause in prompts
+
+
 Drift detection and test coverage / gaps feature:
 
 Tracing without otel? ...
